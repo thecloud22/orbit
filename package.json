@@ -25,7 +25,8 @@
     "db:generate": "pnpm --filter @orbit/db generate",
     "db:seed": "pnpm --filter @orbit/db seed",
     "agent:run": "pnpm --filter @orbit/browser-worker agent:run",
-    "test:runtime": "vitest run --config vitest.runtime.config.ts"
+    "test:runtime": "vitest run --config vitest.runtime.config.ts",
+    "test:e2e:watchtower": "vitest run --config vitest.e2e.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

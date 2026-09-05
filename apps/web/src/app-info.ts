@@ -6,5 +6,5 @@ export interface AppInfo {
 export const APP_INFO: AppInfo = {
   title: 'Orbit Watchtower',
   description:
-    'Scaffold only. The agent list, run trigger, and run evidence views are implemented in Task 8.',
+    'Start the Find Service Request agent and inspect the run it produced: status, outcome, steps, events, and the evidence recorded for each.',
 };

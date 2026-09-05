@@ -285,6 +285,70 @@ it. When a step fails, Orbit captures a best-effort screenshot and DOM snapshot
 with the `error_context` role, and a failure to capture them never replaces the
 failure that caused them.
 
+## Watchtower
+
+Watchtower is the Phase 1 trigger and evidence console: start the seeded agent,
+watch the run reach a terminal state, and open the evidence it recorded.
+
+```bash
+# once per machine
+pnpm --filter @orbit/demo-portal exec playwright install chromium
+
+pnpm db:migrate && pnpm db:seed
+pnpm dev            # demo portal :3001, API :3002, Watchtower :3000
+```
+
+Open `http://localhost:3000`, enter `SR-1001`, and press **Start run**. The page
+polls until the run is terminal and then shows the outcome, the extracted output,
+the ordered steps and events, and the evidence.
+
+- `SR-1001` → **Succeeded — request found**, with status and assigned team.
+- `SR-9999` → **Succeeded — request not found**. That is a business outcome, not
+  a failure, and the UI says so.
+- A run can be reopened by id: `http://localhost:3000/?runId=run_...`.
+
+Watchtower calls the API on its own origin; the Vite dev server proxies `/v1` to
+`http://127.0.0.1:3002`, so the API needs no CORS configuration and no API host is
+baked into the bundle. Set `ORBIT_API_URL` to point the proxy elsewhere.
+
+### API routes
+
+| Route | Purpose |
+|---|---|
+| `GET /v1/agent-versions` | Published versions and their input schemas |
+| `POST /v1/agent-versions/:id/runs` | Start a run; `202` with the run id |
+| `GET /v1/runs/:runId` | Run detail: status, outcome, inputs, outputs, error, steps, events, artifacts |
+| `GET /v1/runs/:runId/events` | Ordered events; `?afterSequence=` for just the new ones |
+| `GET /v1/runs/:runId/summary` | Status poll without the timelines |
+| `GET /v1/runs/:runId/artifacts/:artifactId` | Controlled evidence bytes |
+
+Every failure is the structured error envelope from `docs/contracts/api.md`.
+
+### Evidence access
+
+`data/artifacts` is never statically served. Evidence leaves Orbit only through
+the run-scoped artifact route, which addresses it by two opaque ids, proves the
+artifact belongs to that run, reads through the artifact service using the
+*persisted* storage key, and verifies the digest before sending a byte. A caller
+never supplies a key or a path, and no response ever contains one.
+
+Screenshots are served `inline`; everything else, a DOM snapshot especially, is an
+`attachment` with a locked-down `Content-Security-Policy`, so a captured page
+cannot execute on the API's origin. Watchtower follows the same rule: it previews
+screenshots and offers HTML snapshots and traces as downloads.
+
+### Phase 1 limitations
+
+- **Runs execute inside the API process.** There is no queue, worker fleet, or
+  scheduler (ADR-011). A dispatched run launches a browser in that process and
+  continues after the response is sent.
+- **No server-side duplicate suppression.** Watchtower disables its button while a
+  request is in flight, but two clients — or two tabs — can start two runs at
+  once, and the API will create two. This is a UI guard, not a server guarantee.
+- **No cancellation.** A started run runs to completion.
+- **No authentication.** Every request is the fixed development actor, and any
+  caller who can reach the API can read any run and its evidence.
+
 ## Validation commands
 
 ```bash
@@ -294,16 +358,27 @@ pnpm format:check   # Prettier
 pnpm test           # Vitest unit tests; needs no database
 pnpm test:db        # Vitest database integration tests against TEST_DATABASE_URL
 pnpm test:runtime   # real Chromium + demo portal + TEST_DATABASE_URL
+pnpm test:e2e:watchtower  # the whole stack: browser -> Watchtower -> API -> runtime
 pnpm verify         # typecheck, lint, format:check, test, test:db
 ```
 
-`pnpm test` deliberately requires nothing but a checkout. The other two suites
-are separate Vitest projects because each needs more: `vitest.db.config.ts` needs
-a running PostgreSQL server and truncates tables between tests, and
+`pnpm test` deliberately requires nothing but a checkout. The other suites are
+separate Vitest projects because each needs more: `vitest.db.config.ts` needs a
+running PostgreSQL server and truncates tables between tests;
 `vitest.runtime.config.ts` additionally needs an installed Chromium and the demo
-portal. `pnpm test:runtime` starts the portal itself when nothing is listening on
-port 3001 and reuses an already-running one otherwise, stopping only what it
-started. Neither of those is part of `pnpm verify`, for the same reason
+portal; and `vitest.e2e.config.ts` brings up the whole Watchtower stack.
+
+`pnpm test:runtime` and `pnpm test:e2e:watchtower` are **separate projects on
+purpose**: the end-to-end stack runs a long-lived API against `orbit_test`, and
+the Task 6 runtime tests truncate that database between their own tests. Sharing
+one project would pull the seeded Agent Version out from under a live server. Run
+them as separate commands, not concurrently.
+
+Each suite starts the servers it needs when nothing is listening and reuses what
+is already running, stopping only what it started. The end-to-end stack uses its
+own ports — API `3102`, Watchtower `3010` — so it never collides with `pnpm dev`,
+and points its API at `orbit_test` and a disposable artifact root, never at
+`data/artifacts`. None of these is part of `pnpm verify`, for the same reason
 `pnpm test:e2e` is not.
 
 ### Browser tests

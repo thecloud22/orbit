@@ -1,0 +1,141 @@
+import type { AgentIr } from '@orbit/agent-ir';
+import type {
+  ArtifactKind,
+  ArtifactLinkRole,
+  BusinessOutcome,
+  OrbitError,
+  RunInputs,
+  RunOutputs,
+  RunStatus,
+  RunStepStatus,
+  RunTrigger,
+} from '@orbit/contracts';
+
+/**
+ * The wire shapes Watchtower consumes, and the projections that build them.
+ *
+ * This module is the boundary between what Orbit persists and what it is willing
+ * to say out loud. Storage keys are absent by construction, and a view is built
+ * field by field in `projections.ts`, so adding a column to a table can never
+ * silently publish it.
+ *
+ * It deliberately imports neither Fastify nor @orbit/db: Watchtower consumes
+ * these types through the `@orbit/api/views` subpath, and the UI's type graph
+ * must not reach the database layer any more than its runtime code does.
+ */
+
+/** Keys that must never appear in an outbound payload, whatever produced them. */
+export const REDACTED_PAYLOAD_KEYS = ['storageKey'] as const;
+
+export interface AgentVersionView {
+  readonly id: string;
+  readonly agentId: string;
+  readonly name: string;
+  readonly version: string;
+  readonly description: string | null;
+  readonly lifecycleStatus: string;
+  readonly inputSchema: AgentIr['inputs'];
+}
+
+export interface RunSummaryView {
+  readonly id: string;
+  readonly status: RunStatus;
+  readonly businessOutcome: BusinessOutcome;
+  readonly agentVersionId: string;
+  readonly queuedAt: string;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+}
+
+export interface RunStepView {
+  readonly id: string;
+  readonly agentStepId: string;
+  readonly stepType: string;
+  readonly sequence: number;
+  readonly attempt: number;
+  readonly status: RunStepStatus;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+  readonly output: Record<string, unknown> | null;
+  readonly error: OrbitError | null;
+}
+
+export interface RunEventView {
+  readonly id: string;
+  readonly sequence: number;
+  readonly eventType: string;
+  readonly occurredAt: string;
+  readonly runStepId: string | null;
+  readonly agentStepId: string | null;
+  readonly payload: Record<string, unknown>;
+  readonly artifactRefs: readonly string[];
+}
+
+/**
+ * Artifact metadata as Watchtower sees it.
+ *
+ * `storageKey` is absent by construction — the UI addresses evidence by id
+ * through `url`, and no caller ever names a location in the artifact store.
+ */
+export interface ArtifactView {
+  readonly id: string;
+  readonly kind: ArtifactKind;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+  readonly sha256: string;
+  readonly createdAt: string;
+  readonly runStepId: string | null;
+  readonly roles: readonly ArtifactLinkRole[];
+  /** The controlled API route that serves these bytes. */
+  readonly url: string;
+}
+
+export interface RunDetailView extends RunSummaryView {
+  readonly agentVersion: { readonly id: string; readonly name: string; readonly version: string };
+  readonly trigger: RunTrigger;
+  readonly inputs: RunInputs;
+  readonly outputs: RunOutputs | null;
+  readonly error: OrbitError | null;
+  readonly steps: readonly RunStepView[];
+  readonly events: readonly RunEventView[];
+  readonly artifacts: readonly ArtifactView[];
+}
+
+export interface CreateRunResultView {
+  readonly runId: string;
+  readonly status: RunStatus;
+  readonly businessOutcome: BusinessOutcome;
+  readonly agentVersionId: string;
+  readonly createdAt: string;
+}
+
+export interface DataEnvelope<T> {
+  readonly data: T;
+}
+
+/**
+ * Removes keys that describe where bytes live.
+ *
+ * The runtime records `storageKey` in an `artifact.created` payload because the
+ * event log is internal evidence. Publishing it would hand a caller the artifact
+ * store's internal addressing, which the controlled artifact routes exist
+ * specifically to avoid — so it is stripped on the way out rather than never
+ * recorded.
+ */
+export function redactPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const redacted: Record<string, unknown> = {};
+  const denied = new Set<string>(REDACTED_PAYLOAD_KEYS);
+
+  for (const [key, value] of Object.entries(payload)) {
+    if (!denied.has(key)) {
+      redacted[key] = value;
+    }
+  }
+
+  return redacted;
+}
+
+/** The controlled route that serves an artifact's bytes. Never a storage key. */
+export function artifactUrl(runId: string, artifactId: string): string {
+  return `/v1/runs/${runId}/artifacts/${artifactId}`;
+}

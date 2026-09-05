@@ -1,6 +1,14 @@
+import { ZodError } from 'zod';
 import Fastify, { type FastifyInstance } from 'fastify';
 
+import type { ApiContext } from './context';
+import { ApiError, internalError, toErrorEnvelope } from './errors';
+import { registerAgentVersionRoutes } from './routes/agent-versions';
+import { registerArtifactRoutes } from './routes/artifacts';
+import { registerRunRoutes } from './routes/runs';
+
 export interface BuildServerOptions {
+  readonly context: ApiContext;
   /** Pino log level. Tests pass 'silent' to keep output readable. */
   readonly logLevel?: string;
 }
@@ -8,16 +16,66 @@ export interface BuildServerOptions {
 /**
  * Builds the Orbit API server.
  *
- * Task 1 scaffold: exposes only a liveness probe so the process can be proven
- * to boot. The Phase 1 business routes (GET /v1/agent-versions,
- * POST /v1/agent-versions/:id/runs, GET /v1/runs/:runId) arrive in Task 7.
+ * Every route reaches the database, artifact storage, and the runtime only
+ * through `ApiContext`, whose members are interfaces — which is what lets the
+ * HTTP surface be tested against fakes with no PostgreSQL and no browser.
  */
-export function buildServer(options: BuildServerOptions = {}): FastifyInstance {
+export function buildServer(options: BuildServerOptions): FastifyInstance {
   const app = Fastify({
-    logger: { level: options.logLevel ?? process.env.LOG_LEVEL ?? 'info' },
+    logger: { level: options.logLevel ?? process.env['LOG_LEVEL'] ?? 'info' },
   });
 
   app.get('/health', () => ({ status: 'ok' as const }));
+
+  registerAgentVersionRoutes(app, options.context);
+  registerRunRoutes(app, options.context);
+  registerArtifactRoutes(app, options.context);
+
+  app.setNotFoundHandler((_request, reply) => {
+    const error = new ApiError({
+      code: 'VALIDATION_ERROR',
+      statusCode: 404,
+      message: 'No such route.',
+    });
+    return reply.code(404).send(toErrorEnvelope(error));
+  });
+
+  /**
+   * One place decides what a failure looks like on the wire.
+   *
+   * An unclassified failure becomes a generic 500: the real error is logged
+   * server-side, never serialized. A database message or a stack trace in a
+   * response body would hand a caller exactly the internal detail every other
+   * part of this API is careful not to expose.
+   */
+  app.setErrorHandler((error, request, reply) => {
+    if (error instanceof ApiError) {
+      if (error.statusCode >= 500) {
+        request.log.error({ err: error, code: error.code }, 'Request failed.');
+      } else {
+        request.log.info({ code: error.code, statusCode: error.statusCode }, 'Request rejected.');
+      }
+      return reply.code(error.statusCode).send(toErrorEnvelope(error));
+    }
+
+    if (error instanceof ZodError) {
+      const validation = new ApiError({
+        code: 'VALIDATION_ERROR',
+        statusCode: 400,
+        message: 'The request is not valid.',
+        details: error.issues.map((issue) => ({
+          field: issue.path.join('.') || 'body',
+          message: issue.message,
+        })),
+      });
+      return reply.code(400).send(toErrorEnvelope(validation));
+    }
+
+    request.log.error({ err: error }, 'Unhandled request failure.');
+    return reply
+      .code(500)
+      .send(toErrorEnvelope(internalError('The request could not be completed.')));
+  });
 
   return app;
 }

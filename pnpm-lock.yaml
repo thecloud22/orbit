@@ -32,15 +32,33 @@ importers:
 
   apps/api:
     dependencies:
+      '@orbit/agent-ir':
+        specifier: workspace:*
+        version: link:../../packages/agent-ir
+      '@orbit/artifact-service':
+        specifier: workspace:*
+        version: link:../../packages/artifact-service
+      '@orbit/artifacts':
+        specifier: workspace:*
+        version: link:../../packages/artifacts
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       '@orbit/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@orbit/executor-playwright':
+        specifier: workspace:*
+        version: link:../../packages/executor-playwright
+      '@orbit/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
       fastify:
         specifier: ^5.0.0
         version: 5.12.3
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
     devDependencies:
       '@types/node':
         specifier: ^26.0.0
@@ -125,6 +143,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@orbit/api':
+        specifier: workspace:*
+        version: link:../api
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -138,6 +159,9 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.0.0
         version: 4.3.3(vite@7.3.6(@types/node@26.4.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13)(yaml@2.9.0))
+      '@types/node':
+        specifier: ^26.0.0
+        version: 26.4.1
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.18
@@ -147,6 +171,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^5.0.0
         version: 5.2.0(supports-color@7.2.0)(vite@7.3.6(@types/node@26.4.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13)(yaml@2.9.0))
+      playwright:
+        specifier: 1.62.1
+        version: 1.62.1
       tailwindcss:
         specifier: ^4.0.0
         version: 4.3.3

@@ -9,13 +9,29 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@orbit/agent-ir": "workspace:*",
+    "@orbit/artifact-service": "workspace:*",
+    "@orbit/artifacts": "workspace:*",
     "@orbit/contracts": "workspace:*",
     "@orbit/db": "workspace:*",
-    "fastify": "^5.0.0"
+    "@orbit/executor-playwright": "workspace:*",
+    "@orbit/runtime": "workspace:*",
+    "fastify": "^5.0.0",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.9.0"
+  },
+  "exports": {
+    "./views": {
+      "types": "./src/views.ts",
+      "default": "./src/views.ts"
+    },
+    "./testing/stack-ports": {
+      "types": "./src/testing/stack-ports.ts",
+      "default": "./src/testing/stack-ports.ts"
+    }
   }
 }

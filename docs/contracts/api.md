@@ -90,6 +90,10 @@ POST /v1/agent-versions/:agentVersionId/runs
 
 ### Response
 
+`202 Accepted`. The run row and its `run.queued` event are durable before this
+response is sent; browser execution continues afterwards and is never coupled to
+the HTTP request lifecycle (ADR-011). Watchtower polls for the real state.
+
 ```json
 {
   "data": {
@@ -102,12 +106,20 @@ POST /v1/agent-versions/:agentVersionId/runs
 }
 ```
 
+`trigger` is optional; when omitted the API records the fixed development actor.
+
 ### Validation behavior
 
 - Unknown agent version: `404`.
 - Invalid input payload: `400` with field-level validation errors.
 - Unsupported trigger: `400`.
+- Agent Version that is not published, or that declares a construct the runtime
+  does not support: `400`. No run row is created.
 - Run creation/internal persistence failure: `500` with safe error ID.
+
+Input validation is `prepareExecution` from `@orbit/runtime` — the same gate the
+browser-worker CLI applies, so the API and the CLI cannot disagree about what a
+valid request is.
 
 ## Get run
 
@@ -153,21 +165,52 @@ GET /v1/runs/:runId
 }
 ```
 
-## Optional run events endpoint
+## Run events
 
 ```text
 GET /v1/runs/:runId/events
+GET /v1/runs/:runId/events?afterSequence=12
 ```
 
-Phase 1 may initially poll `GET /v1/runs/:runId`. If an events endpoint exists, it returns ordered persisted events. Server-Sent Events may be added after the basic polling run detail works.
+Returns ordered persisted events. `afterSequence` returns only events newer than a
+sequence the caller already has. Server-Sent Events are out of Phase 1 scope;
+Watchtower polls.
+
+## Run summary
+
+```text
+GET /v1/runs/:runId/summary
+```
+
+The status poll without the timeline payloads: status, business outcome, and
+timestamps only.
 
 ## Artifact retrieval
 
 ```text
-GET /v1/artifacts/:artifactId
+GET /v1/runs/:runId/artifacts/:artifactId
 ```
 
-Phase 1 behavior may stream local artifact bytes or return an authorized local URL. The abstraction must permit a future signed object-storage URL.
+**Run-scoped by design.** An artifact is addressed by two opaque ids, and the
+route serves it only after proving it is evidence *of that run* — owned by it, or
+linked to the run, one of its steps, or one of its events. An artifact that does
+not exist and one that belongs to another run return the identical `404`, so the
+route cannot be used to discover which artifact ids are real.
+
+- Bytes are read through `@orbit/artifact-service` using the **persisted** storage
+  key. A caller never supplies a key, a filename, or a path.
+- The sha-256 is recomputed and verified before anything is sent. A mismatch is
+  `500` with code `ARTIFACT_STORAGE_ERROR` and no bytes.
+- The response carries the stored content type, `X-Orbit-Sha256`, and
+  `X-Content-Type-Options: nosniff`.
+- Only `image/png` is served `inline`. Every other artifact — a DOM snapshot in
+  particular — is `attachment` with `Content-Security-Policy: default-src 'none';
+  sandbox`, so a captured third-party page can never execute on the API's origin.
+- `data/artifacts` is never statically served.
+
+The route returns bytes directly in Phase 1. Returning a signed object-storage URL
+later changes this handler only; the addressing scheme already carries no
+location.
 
 ## Error envelope
 
@@ -186,6 +229,13 @@ Phase 1 behavior may stream local artifact bytes or return an authorized local U
   }
 }
 ```
+
+## Known gap: no `NOT_FOUND` error code
+
+The Phase 1 error taxonomy in `@orbit/contracts` has no `NOT_FOUND` code, so a
+`404` is returned with code `VALIDATION_ERROR` and a message naming what was not
+found. The HTTP status is the authoritative signal. Widening the taxonomy is a
+contract change and has not been made.
 
 ## Non-goals
 
