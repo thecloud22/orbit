@@ -8,13 +8,21 @@ The objective is to use the strongest reasoning model for architectural, securit
 
 This is an engineering control, not a substitute for code review, tests, repository conventions, or human approval.
 
-## Default Model
+## Operating Rule
 
-Use Opus by default.
+Use this default workflow:
 
-Opus owns repository understanding, system design, implementation decisions, security boundaries, persistence boundaries, public contracts, and final review.
+```text
+Opus decides.
+Sonnet executes bounded work.
+Opus reviews and commits.
+```
 
-Do not delegate work to Sonnet until Opus has established the intended behavior and explicitly bounded the task.
+Opus owns repository understanding, task planning, system design, acceptance criteria, security boundaries, persistence boundaries, public contracts, dependency decisions, and final review.
+
+Sonnet may implement, test, or repair narrowly bounded work only after Opus has established the intended behavior and explicitly constrained the task.
+
+Use Opus directly for any task involving ambiguity, architecture, security, durability, data integrity, contracts, persistence, dependencies, or cross-package behavior.
 
 ## Opus Responsibilities
 
@@ -46,6 +54,7 @@ Sonnet may be used only for bounded, well-specified work after Opus has defined 
 
 Appropriate Sonnet tasks include:
 
+- Implementing a small, local production-code change when Opus has specified the exact behavior, affected files, public interface, and safety boundaries.
 - Running focused tests and accurately reporting output.
 - Writing narrowly specified unit tests.
 - Updating a test assertion when expected behavior is already decided.
@@ -69,7 +78,7 @@ Sonnet must not independently:
 - Change filesystem root policy, storage-key grammar, path traversal protections, symlink handling, atomic-write behavior, checksum behavior, overwrite behavior, or cleanup boundaries.
 - Change persistence ordering across filesystem, database, API, queue, or worker boundaries.
 - Make security, authentication, authorization, policy, approval, tenancy, or retention decisions.
-- Modify production behavior outside the files explicitly authorized by Opus.
+- Modify production code except in files explicitly authorized by Opus and only for behavior explicitly specified by Opus.
 - Make commits.
 - Suppress, weaken, skip, or delete tests to make a check pass.
 
