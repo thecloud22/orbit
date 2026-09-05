@@ -1,0 +1,25 @@
+{
+  "name": "@orbit/browser-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@orbit/agent-ir": "workspace:*",
+    "@orbit/artifacts": "workspace:*",
+    "@orbit/contracts": "workspace:*",
+    "@orbit/db": "workspace:*",
+    "@orbit/executor-playwright": "workspace:*",
+    "@orbit/runtime": "workspace:*",
+    "pino": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.9.0"
+  }
+}

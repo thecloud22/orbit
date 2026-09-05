@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+.vite/
+
+# Test and coverage output
+coverage/
+playwright-report/
+test-results/
+
+# Local runtime data (artifact bytes: screenshots, DOM snapshots, traces)
+data/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+pnpm-debug.log*
+
+# OS
+.DS_Store

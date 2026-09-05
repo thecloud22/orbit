@@ -1,0 +1,28 @@
+# Orbit local development infrastructure.
+#
+# The host port is 55432 (not the PostgreSQL default 5432) so Orbit can run
+# alongside a PostgreSQL instance already installed on the host.
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: orbit-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-orbit}
+      POSTGRES_USER: ${POSTGRES_USER:-orbit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orbit_local_dev}
+    ports:
+      - '${POSTGRES_PORT:-55432}:5432'
+    volumes:
+      - orbit_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-orbit} -d ${POSTGRES_DB:-orbit}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  orbit_postgres_data:
+    driver: local

@@ -62,13 +62,13 @@ apps/
 
 packages/
   contracts/           # Shared Zod schemas, events, errors, IDs
-  sop-graph/           # Business-process representation; no Playwright dependency
   agent-ir/            # Typed executable workflow contract
   runtime/             # Executor-neutral workflow runtime
   executor-playwright/ # Playwright action implementations
   artifacts/           # Artifact storage interfaces and adapters
   db/                  # Drizzle schema, migrations, repositories
-  policy/              # Phase 1 domain/action allowlist checks
+  sop-graph/           # (not created yet) Business-process representation
+  policy/              # (not created yet) Domain/action allowlist checks
 
 docs/
   product/             # Product requirements, roadmap, production vision
@@ -82,42 +82,75 @@ fixtures/              # Agent IR, input, and test fixtures
 
 ## Prerequisites
 
-Expected local prerequisites:
-
-- Node.js LTS
-- pnpm
-- Docker and Docker Compose
-- Git
-
-Exact supported versions should be added when the project scaffold is created.
+| Tool | Required | Notes |
+|---|---|---|
+| Node.js | `>=24` | 24.x is Active LTS. Verified on 26.8.1. |
+| pnpm | `>=11` | Pinned to `pnpm@11.25.0` via `packageManager`; `corepack enable` reproduces it. |
+| Docker + Compose | v2 | Only required for PostgreSQL. |
+| Git | any recent | |
 
 ## Local setup
 
-> The commands below are target commands. Verify package scripts after implementation and update this section if the final commands differ.
-
 ```bash
+cp .env.example .env
 pnpm install
-docker compose up -d
-pnpm db:migrate
-pnpm dev
+docker compose up -d     # starts PostgreSQL on host port 55432
+pnpm db:migrate          # placeholder until Task 4
+pnpm dev                 # runs all apps in parallel
 ```
 
-Expected local services:
+Local services:
 
-| Service | Expected local address | Purpose |
+| Service | Local address | Purpose |
 |---|---|---|
 | Watchtower web app | `http://localhost:3000` | Trigger and inspect runs |
 | API | `http://localhost:3002` | Agent/run/evidence API |
 | Demo portal | `http://localhost:3001/requests` | Controlled service-request target |
-| PostgreSQL | `localhost:5432` | Metadata, run state, events |
+| PostgreSQL | `localhost:55432` | Metadata, run state, events |
+
+> **Why port 55432?** PostgreSQL's default 5432 is frequently already taken by a
+> host-installed PostgreSQL (for example a Homebrew service). Orbit's containerised
+> database publishes on `55432` so it can run alongside one without conflict.
+> Change `POSTGRES_PORT` in `.env` if you prefer a different port.
 
 ## Validation commands
 
 ```bash
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm test:e2e
+pnpm typecheck      # tsc --noEmit across every workspace
+pnpm lint           # ESLint, including architecture boundary rules
+pnpm format:check   # Prettier
+pnpm test           # Vitest
+pnpm verify         # all of the above in one command
+```
+
+`pnpm test:e2e` (Playwright Test) is added in Task 2 with the demo portal.
+
+## Troubleshooting
+
+**`docker compose up -d` fails to connect to the daemon**
+
+```bash
+open -a Docker                    # start Docker Desktop, then wait for it to report Running
+docker context use desktop-linux  # Docker Desktop's socket, if the active context is 'default'
+docker compose up -d
+docker compose ps                 # postgres should report (healthy)
+```
+
+Validate the Compose file without a running daemon:
+
+```bash
+docker compose config
+```
+
+**Port 55432 already in use** — change `POSTGRES_PORT` in `.env`; Compose reads it.
+
+**`ERR_PNPM_IGNORED_BUILDS: esbuild`** — esbuild's postinstall is allow-listed in
+`pnpm-workspace.yaml`. If pnpm still blocks it, run `pnpm approve-builds --all`.
+
+**Reset the database volume** (destroys all local data):
+
+```bash
+docker compose down -v && docker compose up -d
 ```
 
 ## Phase 1 scope
