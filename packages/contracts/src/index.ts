@@ -12,5 +12,6 @@ export const PACKAGE_NAME = '@orbit/contracts' as const;
 export * from './artifacts';
 export * from './errors';
 export * from './events';
+export * from './generate-id';
 export * from './ids';
 export * from './run';

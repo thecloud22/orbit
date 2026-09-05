@@ -109,6 +109,42 @@ export default tseslint.config(
     },
   },
 
+  // The database layer is the only package that talks to PostgreSQL, and it
+  // stays underneath the applications: nothing here may reach up into the API,
+  // the UI, or the browser executor.
+  {
+    files: ['packages/db/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['react', 'react-dom', 'react/*', 'react-dom/*'],
+              message:
+                'The database layer must not depend on React. See CLAUDE.md > Architecture rules.',
+            },
+            {
+              group: ['fastify', '@fastify/*'],
+              message:
+                'The database layer must not depend on Fastify. See CLAUDE.md > Architecture rules.',
+            },
+            {
+              group: ['playwright', 'playwright-core', '@playwright/*', '@playwright/test'],
+              message:
+                'The database layer must not depend on Playwright. See CLAUDE.md > Architecture rules.',
+            },
+            {
+              group: ['@orbit/api', '@orbit/web', '@orbit/browser-worker', '@orbit/demo-portal'],
+              message:
+                'The database layer must not depend on an application; applications depend on it. See CLAUDE.md > Architecture rules.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // The web application must never reach the database directly.
   {
     files: ['apps/web/**/*.{ts,tsx}'],

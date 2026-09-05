@@ -109,7 +109,36 @@ ${variables.requestStatus}
 ${variables.assignedTeam}
 ```
 
-The runtime must not execute arbitrary JavaScript, shell expressions, or dynamically evaluated code.
+A value is either a literal string or exactly one whole-string reference. There is no template
+concatenation, and the runtime must not execute arbitrary JavaScript, shell expressions, or
+dynamically evaluated code.
+
+### `${result.<field>}`
+
+`${result.<field>}` is **not** a global runtime variable and does not name anything that outlives a
+step. It is valid **only inside `browser.extract.assign`**, where it refers to a field of that same
+step's extraction result:
+
+```yaml
+- id: extract_request_data
+  type: browser.extract
+  fields:
+    requestStatus: { locator: { strategy: test_id, value: request-status }, method: text }
+  assign:
+    requestStatus: ${result.requestStatus}   # this step's own extraction result
+```
+
+Rules:
+
+- The field named after `result.` must be declared in the same step's `fields`; an unknown field is
+  rejected with `UNKNOWN_EXTRACT_FIELD`.
+- `${result.<field>}` anywhere other than an extract step's `assign` is rejected with
+  `REFERENCE_NOT_ALLOWED_HERE`.
+- Conversely, an `assign` value must be a `${result.<field>}` reference: assigning
+  `${inputs.…}` or `${variables.…}` there is rejected with `REFERENCE_NOT_ALLOWED_HERE`.
+
+To use an extracted value later, read the **variable** it was assigned to
+(`${variables.requestStatus}`), never `${result.…}`.
 
 ## Locator contract
 

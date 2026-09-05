@@ -1,7 +1,15 @@
-# Orbit local development infrastructure.
+# Optional Orbit local development infrastructure.
 #
-# The host port is 55432 (not the PostgreSQL default 5432) so Orbit can run
-# alongside a PostgreSQL instance already installed on the host.
+# NOT REQUIRED. Local development targets the PostgreSQL server installed on the
+# machine, configured through DATABASE_URL alone (see README > Local database).
+# No build, test, or validation step depends on this file; it is kept as an
+# alternative for contributors without a local PostgreSQL server.
+#
+# The host port is 55432 (not the PostgreSQL default 5432) so this container can
+# run alongside a PostgreSQL instance already installed on the host. If you use
+# it, set DATABASE_URL accordingly:
+#
+#   DATABASE_URL=postgresql://orbit:orbit_local_dev@localhost:55432/orbit
 
 services:
   postgres:

@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-import { artifactIdSchema, eventIdSchema, runIdSchema, runStepIdSchema } from './ids';
+import {
+  artifactIdSchema,
+  artifactLinkIdSchema,
+  eventIdSchema,
+  runIdSchema,
+  runStepIdSchema,
+} from './ids';
 
 /** Artifact bytes live outside PostgreSQL; only this metadata is persisted there. */
 export const artifactKindSchema = z.enum([
@@ -27,23 +33,45 @@ export const artifactMetadataSchema = z.strictObject({
 export type ArtifactMetadata = z.infer<typeof artifactMetadataSchema>;
 
 /**
+ * The evidential role an artifact plays for its target.
+ *
+ * Role is not the same as artifact kind: a `browser_screenshot` is the artifact
+ * kind, while `screenshot_after_action` and `error_context` are two different
+ * reasons that screenshot is attached. Watchtower renders by role.
+ */
+export const artifactLinkRoleSchema = z.enum([
+  'screenshot_after_action',
+  'dom_snapshot',
+  'browser_trace',
+  'error_context',
+  'extracted_json',
+]);
+export type ArtifactLinkRole = z.infer<typeof artifactLinkRoleSchema>;
+
+/**
  * An artifact may be linked to several kinds of entity. Phase 1 requires links
  * to a run, a run step, and the relevant event; later phases add SOP nodes,
  * agent versions, and approval requests as further members of this union.
  */
+const artifactLinkBase = {
+  id: artifactLinkIdSchema,
+  artifactId: artifactIdSchema,
+  role: artifactLinkRoleSchema,
+};
+
 export const artifactLinkSchema = z.discriminatedUnion('targetType', [
   z.strictObject({
-    artifactId: artifactIdSchema,
+    ...artifactLinkBase,
     targetType: z.literal('run'),
     targetId: runIdSchema,
   }),
   z.strictObject({
-    artifactId: artifactIdSchema,
+    ...artifactLinkBase,
     targetType: z.literal('run_step'),
     targetId: runStepIdSchema,
   }),
   z.strictObject({
-    artifactId: artifactIdSchema,
+    ...artifactLinkBase,
     targetType: z.literal('run_event'),
     targetId: eventIdSchema,
   }),

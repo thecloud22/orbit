@@ -8,6 +8,9 @@ pnpm-lock.yaml
 # directories named "data" inside apps or packages are still formatted.
 /data
 
+# Generated migration SQL and Drizzle's journal/snapshots are tool output.
+packages/db/drizzle
+
 # Documentation and fixtures are authored verbatim and must not be reformatted.
 **/*.md
 fixtures/**

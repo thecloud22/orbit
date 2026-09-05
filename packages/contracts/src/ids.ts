@@ -56,3 +56,9 @@ export const requestIdSchema = z
   .regex(idPattern('req'), 'must be an opaque id prefixed with "req_"')
   .brand<'RequestId'>();
 export type RequestId = z.infer<typeof requestIdSchema>;
+
+export const artifactLinkIdSchema = z
+  .string()
+  .regex(idPattern('artl'), 'must be an opaque id prefixed with "artl_"')
+  .brand<'ArtifactLinkId'>();
+export type ArtifactLinkId = z.infer<typeof artifactLinkIdSchema>;

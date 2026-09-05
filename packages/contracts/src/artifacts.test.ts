@@ -44,18 +44,21 @@ describe('artifact metadata', () => {
 });
 
 describe('artifact links', () => {
+  const link = {
+    id: 'artl_01JABC',
+    artifactId: 'art_01JABC',
+    role: 'screenshot_after_action',
+  };
+
   it('links an artifact to a run, a step, and an event', () => {
     expect(
-      artifactLinkSchema.parse({
-        artifactId: 'art_01JABC',
-        targetType: 'run',
-        targetId: 'run_01JABC',
-      }).targetType,
+      artifactLinkSchema.parse({ ...link, targetType: 'run', targetId: 'run_01JABC' }).targetType,
     ).toBe('run');
 
     expect(
       artifactLinkSchema.parse({
-        artifactId: 'art_01JABC',
+        ...link,
+        role: 'browser_trace',
         targetType: 'run_event',
         targetId: 'evt_01JABC',
       }).targetType,
@@ -64,19 +67,36 @@ describe('artifact links', () => {
 
   it('rejects a target id that does not match its target type', () => {
     expect(
-      artifactLinkSchema.safeParse({
-        artifactId: 'art_01JABC',
-        targetType: 'run_step',
-        targetId: 'run_01JABC',
-      }).success,
+      artifactLinkSchema.safeParse({ ...link, targetType: 'run_step', targetId: 'run_01JABC' })
+        .success,
     ).toBe(false);
   });
 
   it('rejects an unsupported target type', () => {
     expect(
       artifactLinkSchema.safeParse({
-        artifactId: 'art_01JABC',
+        ...link,
         targetType: 'approval_request',
+        targetId: 'run_01JABC',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('requires a role, so evidence always says why an artifact is attached', () => {
+    expect(
+      artifactLinkSchema.safeParse({
+        id: link.id,
+        artifactId: link.artifactId,
+        targetType: 'run',
+        targetId: 'run_01JABC',
+      }).success,
+    ).toBe(false);
+
+    expect(
+      artifactLinkSchema.safeParse({
+        ...link,
+        role: 'looks_interesting',
+        targetType: 'run',
         targetId: 'run_01JABC',
       }).success,
     ).toBe(false);

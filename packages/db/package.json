@@ -13,12 +13,22 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "migrate": "echo 'No migrations yet. Database schema and migrations are implemented in Task 4.'"
+    "generate": "drizzle-kit generate",
+    "migrate": "tsx src/cli/migrate.ts",
+    "seed": "tsx src/cli/seed.ts"
   },
   "dependencies": {
-    "@orbit/contracts": "workspace:*"
+    "@orbit/agent-ir": "workspace:*",
+    "@orbit/contracts": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.23.0",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.0.0",
     "typescript": "^5.9.0"
   }
 }

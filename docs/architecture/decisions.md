@@ -350,3 +350,41 @@ Tier 5: bounded autonomous recovery
 - Policies, approval, idempotency, audits, and evaluations grow with authority.
 
 ---
+
+## ADR-014: Enforce Agent Version immutability and event append-only in the repository layer first
+
+**Status:** Accepted
+
+**Phase:** 1
+
+### Context
+
+ADR-005 requires immutable Agent Versions, and the events contract requires an append-only event log. Both invariants can be enforced in the application layer, in the database, or in both. Database triggers are the stronger guarantee: they hold even against a stray `psql` session or a future caller that bypasses the repositories. They also add DDL that must be hand-written outside Drizzle's generated migrations, and they are only meaningful once more than one process writes to the database.
+
+### Decision
+
+Phase 1 enforces both invariants in `@orbit/db`:
+
+- `AgentVersionRepository` exposes no update, publish, patch, or delete method.
+- `RunEventRepository` exposes only `append` and read methods.
+- Every Agent Version row stores `ir_sha256`, a checksum over the canonical JSON of its Agent IR. The checksum is recomputed on every read, so an out-of-band edit raises `DatabaseIntegrityError` instead of being executed.
+- Integration tests assert all of the above, including that a tampered row is detected.
+
+Database-level enforcement — triggers, or revoking `UPDATE`/`DELETE` from the application role — is deferred to production hardening.
+
+### Consequences
+
+- Phase 1 stays with a single generated migration and no hand-maintained DDL.
+- The invariants are enforced wherever Orbit code writes, and violations from outside Orbit are detected on read rather than prevented on write.
+- **TODO (production hardening):** add `agent_versions` and `run_events` triggers, or column-level privilege revocation, before more than one service writes to this database.
+- The checksum column that makes detection possible is already in place, so adding enforcement later is additive.
+
+### Alternatives considered
+
+| Alternative | Why not now |
+|---|---|
+| Triggers in Phase 1 | Real value, but hand-written DDL and rollback complexity before any second writer exists |
+| Application enforcement with no checksum | Tampering would be undetectable rather than merely unprevented |
+| Append-only enforced by an event-store abstraction | More machinery than one repository interface needs at this stage |
+
+---
