@@ -170,11 +170,33 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
+  packages/artifact-service:
+    dependencies:
+      '@orbit/artifacts':
+        specifier: workspace:*
+        version: link:../artifacts
+      '@orbit/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@orbit/db':
+        specifier: workspace:*
+        version: link:../db
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
   packages/artifacts:
     dependencies:
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../contracts
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
     devDependencies:
       typescript:
         specifier: ^5.9.0

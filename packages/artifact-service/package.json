@@ -1,5 +1,5 @@
 {
-  "name": "@orbit/artifacts",
+  "name": "@orbit/artifact-service",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,17 +9,15 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
-    },
-    "./testing": {
-      "types": "./src/testing/index.ts",
-      "default": "./src/testing/index.ts"
     }
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@orbit/artifacts": "workspace:*",
     "@orbit/contracts": "workspace:*",
+    "@orbit/db": "workspace:*",
     "zod": "^4.5.4"
   },
   "devDependencies": {

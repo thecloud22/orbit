@@ -28,9 +28,14 @@ silently.
 
 ## Current state
 
-Task 4 (PostgreSQL schema, migrations, and repositories) is complete; see
-`docs/tasks/reports/TASK-004-postgres-persistence-report.md` for its outcome, limitations, and the
-exact prerequisites the next task inherits. Task 5 (local artifact storage) has not started.
+Task 5 (local artifact storage) is complete: `@orbit/artifacts` provides the storage interface and
+its local filesystem adapter, and `@orbit/artifact-service` composes byte storage with the Task 4
+repositories in the required order. See ADR-015 for the storage-key grammar, containment model, and
+orphaned-bytes policy. Task 6 (runtime and Playwright browser worker) has not started, and is the
+first caller of the artifact service.
+
+Task 4 (PostgreSQL schema, migrations, and repositories) remains the authority on persistence; see
+`docs/tasks/reports/TASK-004-postgres-persistence-report.md` for its limitations.
 
 ## Task 5 — additional required reading
 

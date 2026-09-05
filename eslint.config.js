@@ -109,6 +109,63 @@ export default tseslint.config(
     },
   },
 
+  // Artifact storage owns bytes and nothing else. It must stay free of the
+  // database so that the storage interface remains replaceable on its own
+  // (ADR-010); composing bytes with metadata is @orbit/artifact-service's job.
+  {
+    files: ['packages/artifacts/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...noFrameworksInDomainPackages,
+            {
+              group: ['@orbit/db', '@orbit/db/*'],
+              message:
+                'Artifact storage must not depend on the database layer. Composition belongs to @orbit/artifact-service. See CLAUDE.md > Architecture rules.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // The composition root is permitted to import both @orbit/artifacts and
+  // @orbit/db — that is its purpose — but it stays out of the applications.
+  {
+    files: ['packages/artifact-service/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['react', 'react-dom', 'react/*', 'react-dom/*'],
+              message:
+                'The artifact service must not depend on React. See CLAUDE.md > Architecture rules.',
+            },
+            {
+              group: ['fastify', '@fastify/*'],
+              message:
+                'The artifact service must not depend on Fastify. See CLAUDE.md > Architecture rules.',
+            },
+            {
+              group: ['playwright', 'playwright-core', '@playwright/*', '@playwright/test'],
+              message:
+                'The artifact service must not depend on Playwright. See CLAUDE.md > Architecture rules.',
+            },
+            {
+              group: ['@orbit/api', '@orbit/web', '@orbit/browser-worker', '@orbit/demo-portal'],
+              message:
+                'The artifact service must not depend on an application; applications depend on it. See CLAUDE.md > Architecture rules.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // The database layer is the only package that talks to PostgreSQL, and it
   // stays underneath the applications: nothing here may reach up into the API,
   // the UI, or the browser executor.
