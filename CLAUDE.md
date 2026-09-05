@@ -270,6 +270,12 @@ Before implementing a non-trivial task:
 
 When uncertain, prefer the smallest implementation that satisfies the documented Phase 1 acceptance criteria.
 
+## Model routing
+
+Read and follow `docs/engineering/model-routing.md` before planning, delegating, modifying code, or committing work.
+
+Use Opus by default. Sonnet is limited to explicitly bounded test, TypeScript, lint, formatting, and mechanical repair tasks after Opus has established the intended behavior.
+
 ## Commands
 
 Update this section as the repository evolves. Do not invent commands; verify them against package scripts.
