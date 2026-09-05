@@ -32,6 +32,18 @@ Task 4 (PostgreSQL schema, migrations, and repositories) is complete; see
 `docs/tasks/reports/TASK-004-postgres-persistence-report.md` for its outcome, limitations, and the
 exact prerequisites the next task inherits. Task 5 (local artifact storage) has not started.
 
+## Task 5 — additional required reading
+
+Before planning or implementing Task 5 (local artifact storage), read, in addition to the general
+list above:
+
+14. `docs/architecture/task-5-artifact-storage-preflight.md` — the preflight checklist of
+    decisions the Task 5 plan must make explicit (artifact root, opaque storage keys, path
+    traversal, symlink containment, atomic writes, temporary-file cleanup, overwrite behavior,
+    checksum behavior, database ordering, test cleanup containment) and the restated Task 5
+    exclusions. It does not implement Task 5 or decide anything beyond what Task 4's schema,
+    repository contracts, and existing ADRs already require.
+
 ## Maintaining this file
 
 Update the "Current state" section as tasks complete. Do not add or remove required-reading
