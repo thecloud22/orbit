@@ -2,8 +2,11 @@ node_modules
 dist
 build
 coverage
-data
 pnpm-lock.yaml
+
+# Local runtime artifact bytes, anchored to the repo root so source
+# directories named "data" inside apps or packages are still formatted.
+/data
 
 # Documentation and fixtures are authored verbatim and must not be reformatted.
 **/*.md

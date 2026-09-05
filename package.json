@@ -18,6 +18,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "pnpm --filter @orbit/demo-portal test:e2e",
     "db:migrate": "pnpm --filter @orbit/db migrate",
     "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test"
   },

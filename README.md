@@ -123,7 +123,19 @@ pnpm test           # Vitest
 pnpm verify         # all of the above in one command
 ```
 
-`pnpm test:e2e` (Playwright Test) is added in Task 2 with the demo portal.
+### Browser tests
+
+The demo portal has Playwright browser tests. Chromium must be installed once
+per machine (the binary lives in `~/Library/Caches/ms-playwright`, outside the repo):
+
+```bash
+pnpm --filter @orbit/demo-portal exec playwright install chromium
+pnpm test:e2e
+```
+
+`pnpm test:e2e` starts the demo portal on port 3001 itself, and reuses an
+already-running server if you have one — so it works against `pnpm dev` and
+against `pnpm --filter @orbit/demo-portal preview` alike.
 
 ## Troubleshooting
 

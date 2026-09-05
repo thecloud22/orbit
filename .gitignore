@@ -12,8 +12,10 @@ coverage/
 playwright-report/
 test-results/
 
-# Local runtime data (artifact bytes: screenshots, DOM snapshots, traces)
-data/
+# Local runtime data (artifact bytes: screenshots, DOM snapshots, traces).
+# Anchored to the repo root so it cannot swallow source directories named
+# "data" inside apps or packages.
+/data/
 
 # Environment
 .env

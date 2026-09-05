@@ -8,4 +8,10 @@ export default defineConfig({
     port: 3001,
     strictPort: true,
   },
+  // vite preview defaults to 4173; the portal must answer on 3001 in both
+  // dev and preview so http://localhost:3001/requests is a stable target.
+  preview: {
+    port: 3001,
+    strictPort: true,
+  },
 });
