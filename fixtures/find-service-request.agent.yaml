@@ -52,6 +52,7 @@ permissions:
       - navigate
       - fill
       - click
+      - expect_one_of
       - extract
       - assert
       - screenshot

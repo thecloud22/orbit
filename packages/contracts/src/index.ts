@@ -1,12 +1,16 @@
 /**
  * @orbit/contracts
  *
- * Shared domain contracts: Zod schemas, opaque IDs, run status and business
- * outcome types, structured events, artifact metadata, and the error taxonomy.
+ * Shared domain contracts: opaque IDs, run status and business outcome,
+ * structured events, artifact metadata, and the typed error taxonomy.
  *
- * Boundary: depends on nothing. Must never import React, Fastify, Drizzle,
- * or Playwright.
- *
- * Task 1 scaffold: contains no contracts yet. Implemented in Task 3.
+ * Boundary: depends on nothing but Zod. Must never import React, Fastify,
+ * Drizzle, Playwright, or the filesystem.
  */
 export const PACKAGE_NAME = '@orbit/contracts' as const;
+
+export * from './artifacts';
+export * from './errors';
+export * from './events';
+export * from './ids';
+export * from './run';

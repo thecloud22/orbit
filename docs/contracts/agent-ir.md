@@ -304,6 +304,28 @@ sourceSopStepIds:
 
 This mapping supports Watchtower's expected-versus-observed evidence view.
 
+### Phase 1 traceability bridge
+
+SOP Graph does not exist until Phase 2, so there is no versioned node set to
+validate step references against. For Phase 1 the Agent Version declares its own
+registry of source step IDs, and every step is validated against it:
+
+```yaml
+source:
+  sopId: sop_find_service_request
+  sopVersion: '0.1'
+  sourceSopStepIds:
+    - sop_step_open_portal
+    - sop_step_search_and_verify
+```
+
+A step referencing an ID absent from `source.sourceSopStepIds` is rejected with
+`SOP_STEP_NOT_DECLARED`. This is deliberately a bridge: it enforces real
+traceability without inventing a SOP artifact ahead of the phase that owns one.
+**Phase 2 replaces it** with validation against versioned SOP Graph nodes, at
+which point `source.sourceSopStepIds` becomes a derived value rather than the
+authority.
+
 ## Permissions
 
 ```yaml
@@ -322,6 +344,29 @@ permissions:
 ```
 
 Runtime must enforce permissions. Agent IR permission declarations are not merely documentation.
+
+### Step type to permission mapping
+
+Each browser-prefixed step consumes exactly one action grant, and evidence
+capture consumes its own:
+
+| Step type | Required `allowedActions` entry |
+|---|---|
+| `browser.navigate` | `navigate` |
+| `browser.fill` | `fill` |
+| `browser.click` | `click` |
+| `browser.assert` | `assert` |
+| `browser.expect_one_of` | `expect_one_of` |
+| `browser.extract` | `extract` |
+| `evidence.captureScreenshot: true` | `screenshot` |
+| `evidence.captureDomSnapshot: true` | `dom_snapshot` |
+
+`complete` and `fail` are absent by design: they terminate the workflow and
+touch no browser capability, so they require no browser grant and must not be
+added to `allowedActions`.
+
+A step whose action is not granted is rejected with `ACTION_NOT_PERMITTED`;
+ungranted evidence capture is rejected with `EVIDENCE_NOT_PERMITTED`.
 
 ## Validation requirements
 

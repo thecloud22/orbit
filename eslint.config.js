@@ -24,8 +24,22 @@ const noFrameworksInDomainPackages = [
       'Domain packages must not depend on the database layer. See CLAUDE.md > Architecture rules.',
   },
   {
-    group: ['playwright', 'playwright-core', '@playwright/*'],
+    group: ['playwright', 'playwright-core', '@playwright/*', '@playwright/test'],
     message: 'Domain packages must not depend on Playwright. See CLAUDE.md > Architecture rules.',
+  },
+];
+
+/**
+ * Domain packages never touch the filesystem: parsing functions take text, not
+ * paths, so callers own reading bytes. Tests are exempt — reading the seeded
+ * fixture from disk is exactly what they are for — but they keep every
+ * framework restriction above.
+ */
+const noFilesystemInDomainPackages = [
+  {
+    group: ['fs', 'path', 'node:fs', 'node:fs/*', 'node:path'],
+    message:
+      'Domain packages must not touch the filesystem. Parsing functions take text, not paths; callers own reading bytes.',
   },
 ];
 
@@ -58,6 +72,17 @@ export default tseslint.config(
   // They must stay free of every framework so they remain portable and testable.
   {
     files: ['packages/contracts/**/*.ts', 'packages/agent-ir/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [...noFrameworksInDomainPackages, ...noFilesystemInDomainPackages] },
+      ],
+    },
+  },
+
+  // Domain package tests may read fixtures from disk, but stay framework-free.
+  {
+    files: ['packages/contracts/**/*.test.ts', 'packages/agent-ir/**/*.test.ts'],
     rules: {
       'no-restricted-imports': ['error', { patterns: noFrameworksInDomainPackages }],
     },
