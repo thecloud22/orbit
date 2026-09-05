@@ -1,0 +1,161 @@
+schemaVersion: "0.1"
+id: agent_find_service_request
+version: "0.1.0"
+name: Find Service Request
+description: Locate a service request and verify its current status and assigned team.
+
+source:
+  sopId: sop_find_service_request
+  sopVersion: "0.1"
+  sourceSopStepIds:
+    - sop_step_open_portal
+    - sop_step_search_and_verify
+
+lifecycle:
+  status: published
+  trustTier: observe
+
+trigger:
+  type: watchtower_manual
+
+inputs:
+  requestNumber:
+    type: string
+    required: true
+    label: Service request number
+    description: Service request number to locate in the portal.
+    validation:
+      minLength: 1
+      maxLength: 100
+    examples:
+      - SR-1001
+
+variables:
+  requestStatus:
+    type: string
+  assignedTeam:
+    type: string
+
+outputs:
+  requestNumber:
+    type: string
+  requestStatus:
+    type: string
+  assignedTeam:
+    type: string
+
+permissions:
+  browser:
+    allowedDomains:
+      - localhost
+    allowedActions:
+      - navigate
+      - fill
+      - click
+      - extract
+      - assert
+      - screenshot
+      - dom_snapshot
+
+steps:
+  - id: open_request_portal
+    type: browser.navigate
+    sourceSopStepIds:
+      - sop_step_open_portal
+    url: http://localhost:3001/requests
+    timeoutMs: 30000
+    evidence:
+      captureScreenshot: true
+      captureDomSnapshot: true
+    assertions:
+      - type: locator_visible
+        locator:
+          strategy: test_id
+          value: request-number-input
+
+  - id: enter_request_number
+    type: browser.fill
+    sourceSopStepIds:
+      - sop_step_search_and_verify
+    locator:
+      strategy: test_id
+      value: request-number-input
+    value: ${inputs.requestNumber}
+    timeoutMs: 15000
+    evidence:
+      captureScreenshot: true
+
+  - id: submit_request_search
+    type: browser.click
+    sourceSopStepIds:
+      - sop_step_search_and_verify
+    locator:
+      strategy: test_id
+      value: search-request-button
+    timeoutMs: 15000
+    evidence:
+      captureScreenshot: true
+      captureDomSnapshot: true
+
+  - id: detect_request_result
+    type: browser.expect_one_of
+    sourceSopStepIds:
+      - sop_step_search_and_verify
+    timeoutMs: 15000
+    alternatives:
+      - whenVisible:
+          strategy: test_id
+          value: request-result
+        next: verify_request_number
+      - whenVisible:
+          strategy: test_id
+          value: request-not-found
+        next: complete_not_found
+
+  - id: verify_request_number
+    type: browser.assert
+    sourceSopStepIds:
+      - sop_step_search_and_verify
+    assertion:
+      type: locator_has_text
+      locator:
+        strategy: test_id
+        value: request-number-result
+      expected: ${inputs.requestNumber}
+
+  - id: extract_request_data
+    type: browser.extract
+    sourceSopStepIds:
+      - sop_step_search_and_verify
+    fields:
+      requestStatus:
+        locator:
+          strategy: test_id
+          value: request-status
+        method: text
+      assignedTeam:
+        locator:
+          strategy: test_id
+          value: assigned-team
+        method: text
+    assign:
+      requestStatus: ${result.requestStatus}
+      assignedTeam: ${result.assignedTeam}
+
+  - id: complete_found
+    type: complete
+    sourceSopStepIds:
+      - sop_step_search_and_verify
+    outcome: request_found
+    outputs:
+      requestNumber: ${inputs.requestNumber}
+      requestStatus: ${variables.requestStatus}
+      assignedTeam: ${variables.assignedTeam}
+
+  - id: complete_not_found
+    type: complete
+    sourceSopStepIds:
+      - sop_step_search_and_verify
+    outcome: request_not_found
+    outputs:
+      requestNumber: ${inputs.requestNumber}
