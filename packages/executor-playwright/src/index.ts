@@ -7,9 +7,11 @@
  *
  * Boundary: implements approved Agent IR steps; it does not control workflow
  * order or determine business outcomes. Playwright code must not leak into
- * @orbit/agent-ir or @orbit/contracts.
- *
- * Task 1 scaffold: Playwright is intentionally not installed yet. The
- * dependency and the executor arrive in Task 6.
+ * @orbit/agent-ir, @orbit/contracts, or @orbit/runtime — this package is the
+ * only one in the workspace that depends on it.
  */
 export const PACKAGE_NAME = '@orbit/executor-playwright' as const;
+
+export * from './errors';
+export * from './locator';
+export * from './playwright-executor';

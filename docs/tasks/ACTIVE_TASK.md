@@ -28,26 +28,30 @@ silently.
 
 ## Current state
 
-Task 5 (local artifact storage) is complete: `@orbit/artifacts` provides the storage interface and
-its local filesystem adapter, and `@orbit/artifact-service` composes byte storage with the Task 4
-repositories in the required order. See ADR-015 for the storage-key grammar, containment model, and
-orphaned-bytes policy. Task 6 (runtime and Playwright browser worker) has not started, and is the
-first caller of the artifact service.
+Task 6 (runtime and Playwright browser worker) is complete: `@orbit/runtime` interprets Agent IR
+over two ports — `BrowserExecutor` and `RunStore` — `@orbit/executor-playwright` implements the
+first with Playwright, and `@orbit/runtime/persistence` implements the second over the Task 4
+repositories and the Task 5 artifact service. `pnpm agent:run -- --request-number SR-1001` executes
+the seeded Agent Version against the running demo portal and records the full evidence trail. See
+`docs/tasks/reports/TASK-006-browser-runtime-report.md` for the supported Agent IR profile, the
+event timeline, the evidence and failure policies, and known limitations.
+
+Task 7 (Fastify run and query APIs) is next. It must reuse `prepareExecution` from `@orbit/runtime`
+rather than reimplementing Agent Version and input validation.
+
+Task 5 (local artifact storage) provides the storage interface and its local filesystem adapter;
+`@orbit/artifact-service` composes byte storage with the Task 4 repositories in the required order.
+See ADR-015 for the storage-key grammar, containment model, and orphaned-bytes policy.
 
 Task 4 (PostgreSQL schema, migrations, and repositories) remains the authority on persistence; see
 `docs/tasks/reports/TASK-004-postgres-persistence-report.md` for its limitations.
 
-## Task 5 — additional required reading
+## Historical task reading
 
-Before planning or implementing Task 5 (local artifact storage), read, in addition to the general
-list above:
-
-14. `docs/architecture/task-5-artifact-storage-preflight.md` — the preflight checklist of
-    decisions the Task 5 plan must make explicit (artifact root, opaque storage keys, path
-    traversal, symlink containment, atomic writes, temporary-file cleanup, overwrite behavior,
-    checksum behavior, database ordering, test cleanup containment) and the restated Task 5
-    exclusions. It does not implement Task 5 or decide anything beyond what Task 4's schema,
-    repository contracts, and existing ADRs already require.
+`docs/architecture/task-5-artifact-storage-preflight.md` records the decisions the Task 5 plan had
+to make explicit (artifact root, opaque storage keys, path traversal, symlink containment, atomic
+writes, temporary-file cleanup, overwrite behavior, checksum behavior, database ordering, test
+cleanup containment). It remains the reference for artifact storage behavior.
 
 ## Maintaining this file
 

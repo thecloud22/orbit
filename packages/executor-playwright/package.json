@@ -16,7 +16,9 @@
   },
   "dependencies": {
     "@orbit/agent-ir": "workspace:*",
-    "@orbit/contracts": "workspace:*"
+    "@orbit/contracts": "workspace:*",
+    "@orbit/runtime": "workspace:*",
+    "playwright": "1.62.1"
   },
   "devDependencies": {
     "typescript": "^5.9.0"

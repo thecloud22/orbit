@@ -23,7 +23,9 @@
     "db:migrate": "pnpm --filter @orbit/db migrate",
     "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm test:db",
     "db:generate": "pnpm --filter @orbit/db generate",
-    "db:seed": "pnpm --filter @orbit/db seed"
+    "db:seed": "pnpm --filter @orbit/db seed",
+    "agent:run": "pnpm --filter @orbit/browser-worker agent:run",
+    "test:runtime": "vitest run --config vitest.runtime.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

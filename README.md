@@ -57,14 +57,14 @@ An unknown request such as `SR-9999` should complete with the valid business out
 apps/
   web/                 # Orbit Watchtower React application
   api/                 # Orbit Fastify API
-  browser-worker/      # Runtime interpreter and Playwright worker
+  browser-worker/      # Composition root; `pnpm agent:run` executes one run
   demo-portal/         # Controlled target portal for Phase 1
 
 packages/
   contracts/           # Shared Zod schemas, events, errors, IDs
   agent-ir/            # Typed executable workflow contract
-  runtime/             # Executor-neutral workflow runtime
-  executor-playwright/ # Playwright action implementations
+  runtime/             # Executor-neutral workflow runtime and its ports
+  executor-playwright/ # Playwright action implementations (the only Playwright dependency)
   artifacts/           # Artifact storage interface and local filesystem adapter
   artifact-service/    # Composes artifact bytes with artifact metadata
   db/                  # Drizzle schema, migrations, repositories
@@ -234,6 +234,57 @@ Artifact storage tests never touch `ARTIFACT_STORAGE_DIR`. They create disposabl
 roots under the operating system temp directory, and the cleanup helper refuses to
 remove any directory it did not create itself.
 
+## Running an agent
+
+Task 6 executes the seeded Agent Version against the demo portal and records the
+evidence. There is one command, and it runs exactly one agent once — no queue,
+no scheduler, no background worker (ADR-011).
+
+The demo portal must already be running, the way `pnpm db:migrate` expects a
+running PostgreSQL server. The command fails fast with a clear message if it is
+not; it never starts or stops the target itself.
+
+```bash
+# once per machine
+pnpm --filter @orbit/demo-portal exec playwright install chromium
+
+# terminal 1
+pnpm --filter @orbit/demo-portal dev
+
+# terminal 2
+pnpm agent:run -- --request-number SR-1001   # succeeded / request_found
+pnpm agent:run -- --request-number SR-9999   # succeeded / request_not_found
+pnpm agent:run -- --request-number SR-1001 --headed
+```
+
+| Flag | Meaning |
+|---|---|
+| `--request-number <value>` | Required. The typed dynamic input. |
+| `--agent-version-id <id>` | Defaults to the seeded `agentv_find_service_request_0_1_0`. |
+| `--headed` | Runs the browser headed for debugging. Headless is the default; `ORBIT_BROWSER_HEADED=true` does the same. |
+
+The command prints one JSON object — run id, terminal status, business outcome,
+outputs, error, the ordered steps, and every artifact with its kind, role, size,
+digest, and storage key — and exits non-zero unless the run succeeded.
+
+### Inspecting what a run recorded
+
+```bash
+psql "$DATABASE_URL" -c "select id, status, business_outcome, outputs from runs order by queued_at desc limit 5;"
+psql "$DATABASE_URL" -c "select sequence, agent_step_id, status from run_steps where run_id = '<runId>' order by sequence;"
+psql "$DATABASE_URL" -c "select sequence, event_type, agent_step_id from run_events where run_id = '<runId>' order by sequence;"
+psql "$DATABASE_URL" -c "select kind, content_type, size_bytes, storage_key from artifacts where run_id = '<runId>';"
+ls -R data/artifacts/runs/<runId>
+```
+
+A run's evidence is a screenshot and DOM snapshot after each step that declares
+them, a screenshot and DOM snapshot of the final result state, and one Playwright
+trace for the whole run. The trace is persisted **before** the run is marked
+succeeded: a run is never reported as succeeded without the evidence that proves
+it. When a step fails, Orbit captures a best-effort screenshot and DOM snapshot
+with the `error_context` role, and a failure to capture them never replaces the
+failure that caused them.
+
 ## Validation commands
 
 ```bash
@@ -242,12 +293,18 @@ pnpm lint           # ESLint, including architecture boundary rules
 pnpm format:check   # Prettier
 pnpm test           # Vitest unit tests; needs no database
 pnpm test:db        # Vitest database integration tests against TEST_DATABASE_URL
-pnpm verify         # all of the above in one command
+pnpm test:runtime   # real Chromium + demo portal + TEST_DATABASE_URL
+pnpm verify         # typecheck, lint, format:check, test, test:db
 ```
 
-`pnpm test` deliberately requires nothing but a checkout. The database
-integration suite is a separate project (`vitest.db.config.ts`) because it needs
-a running PostgreSQL server and truncates tables between tests.
+`pnpm test` deliberately requires nothing but a checkout. The other two suites
+are separate Vitest projects because each needs more: `vitest.db.config.ts` needs
+a running PostgreSQL server and truncates tables between tests, and
+`vitest.runtime.config.ts` additionally needs an installed Chromium and the demo
+portal. `pnpm test:runtime` starts the portal itself when nothing is listening on
+port 3001 and reuses an already-running one otherwise, stopping only what it
+started. Neither of those is part of `pnpm verify`, for the same reason
+`pnpm test:e2e` is not.
 
 ### Browser tests
 

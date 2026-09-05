@@ -9,6 +9,14 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./persistence": {
+      "types": "./src/persistence/index.ts",
+      "default": "./src/persistence/index.ts"
+    },
+    "./testing": {
+      "types": "./src/testing/index.ts",
+      "default": "./src/testing/index.ts"
     }
   },
   "scripts": {
@@ -16,8 +24,10 @@
   },
   "dependencies": {
     "@orbit/agent-ir": "workspace:*",
+    "@orbit/artifact-service": "workspace:*",
     "@orbit/artifacts": "workspace:*",
-    "@orbit/contracts": "workspace:*"
+    "@orbit/contracts": "workspace:*",
+    "@orbit/db": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.0"

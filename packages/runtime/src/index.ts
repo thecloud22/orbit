@@ -6,10 +6,19 @@
  * structured events.
  *
  * Boundary: depends on executor *interfaces* only, never on a concrete
- * executor such as @orbit/executor-playwright. The browser worker composes
- * the runtime with an executor implementation. Playwright must never decide
- * workflow order or business outcomes.
- *
- * Task 1 scaffold: contains no runtime yet. Implemented in Task 6.
+ * executor such as @orbit/executor-playwright, and never on Playwright,
+ * Drizzle, or a database driver. The PostgreSQL-backed implementation of the
+ * persistence port lives behind the `@orbit/runtime/persistence` subpath, so
+ * this entry point stays free of it.
  */
 export const PACKAGE_NAME = '@orbit/runtime' as const;
+
+export * from './errors';
+export * from './evidence';
+export * from './interpolate';
+export * from './interpreter';
+export * from './inputs';
+export * from './logger';
+export * from './ports';
+export * from './prepare';
+export * from './profile';

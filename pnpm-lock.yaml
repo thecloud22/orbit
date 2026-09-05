@@ -57,6 +57,9 @@ importers:
       '@orbit/agent-ir':
         specifier: workspace:*
         version: link:../../packages/agent-ir
+      '@orbit/artifact-service':
+        specifier: workspace:*
+        version: link:../../packages/artifact-service
       '@orbit/artifacts':
         specifier: workspace:*
         version: link:../../packages/artifacts
@@ -254,6 +257,12 @@ importers:
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@orbit/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      playwright:
+        specifier: 1.62.1
+        version: 1.62.1
     devDependencies:
       typescript:
         specifier: ^5.9.0
@@ -264,12 +273,18 @@ importers:
       '@orbit/agent-ir':
         specifier: workspace:*
         version: link:../agent-ir
+      '@orbit/artifact-service':
+        specifier: workspace:*
+        version: link:../artifact-service
       '@orbit/artifacts':
         specifier: workspace:*
         version: link:../artifacts
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@orbit/db':
+        specifier: workspace:*
+        version: link:../db
     devDependencies:
       typescript:
         specifier: ^5.9.0
