@@ -3,10 +3,19 @@ import type {
   AgentVersionRecord,
   RunRecord,
   RunStepRecord,
+  ExecutionBindingRecord,
   SopDocumentRecord,
   SopGraphRevisionRecord,
 } from '@orbit/db';
-import { describeStep, describeStepById, describeVariable, producedBy } from '@orbit/sop-graph';
+import { stepChecksum } from '@orbit/db';
+import { isBindableStepKind, validateBindingAgainstStep } from '@orbit/execution-mapping';
+import {
+  describeStep,
+  describeStepById,
+  describeVariable,
+  producedBy,
+  type SopGraph,
+} from '@orbit/sop-graph';
 import type { ArtifactLink, ArtifactMetadata, EventEnvelope } from '@orbit/contracts';
 
 import {
@@ -22,7 +31,9 @@ import {
   type SopDocumentSummaryView,
   type SopDraftView,
   type SopReviewStepView,
+  type SopBindingsView,
   type SopReviewView,
+  type SopStepBindingView,
 } from './views';
 
 /**
@@ -289,5 +300,92 @@ export function toSopDocumentSummaryView(summary: {
     status: summary.status,
     revisionCount: summary.revisionCount,
     createdAt: summary.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Binding status per step, projected for the review page.
+ *
+ * The step's *label* is deliberately absent. It already reaches the UI through
+ * `SopReviewStepView.summary`, computed by the one `describeStep` call site
+ * above, and the panel joins on `stepId` rather than rendering it a second time
+ * — which is the whole reason that call site is the only one.
+ */
+export function toSopBindingsView(input: {
+  readonly documentId: string;
+  readonly revisionId: string;
+  readonly graph: SopGraph;
+  readonly current: readonly ExecutionBindingRecord[];
+  readonly all: readonly ExecutionBindingRecord[];
+  readonly declaredNames: readonly string[];
+}): SopBindingsView {
+  const currentByStep = new Map(input.current.map((binding) => [binding.stepId, binding]));
+
+  const supersededByStep = new Map<string, number>();
+  for (const binding of input.all) {
+    if (binding.state === 'superseded') {
+      supersededByStep.set(binding.stepId, (supersededByStep.get(binding.stepId) ?? 0) + 1);
+    }
+  }
+
+  const steps: readonly SopStepBindingView[] = input.graph.steps.map((step) => {
+    const bindable = isBindableStepKind(step.kind);
+    const binding = currentByStep.get(step.id);
+
+    // Reused rather than a hand-rolled hash comparison: the same validator the
+    // recorder runs before persisting, so "stale" here means exactly what it
+    // means there, and any other mismatch comes along for free.
+    const issues =
+      binding === undefined
+        ? []
+        : validateBindingAgainstStep(binding.binding, {
+            stepId: step.id,
+            kind: step.kind,
+            declaredNames: input.declaredNames,
+            stepSha256: stepChecksum(step),
+          });
+
+    const approved = binding !== undefined && binding.state === 'approved';
+
+    return {
+      stepId: step.id,
+      kind: step.kind,
+      bindable,
+      status: binding?.state ?? null,
+      bindingId: binding?.id ?? null,
+      supersededCount: supersededByStep.get(step.id) ?? 0,
+      stale: issues.some((issue) => issue.code === 'STALE_BINDING'),
+      issues: issues.map((issue) => ({ code: issue.code, message: issue.message })),
+      selectors: approved
+        ? binding.binding.body.target.selectors.map((locator) => ({
+            strategy: locator.strategy,
+            value: locator.value,
+            name: locator.name ?? null,
+          }))
+        : null,
+      fingerprint: approved
+        ? {
+            role: binding.binding.body.target.fingerprint.role,
+            accessibleName: binding.binding.body.target.fingerprint.accessibleName,
+            text: binding.binding.body.target.fingerprint.text,
+            width: binding.binding.body.target.fingerprint.boundingBox?.width ?? null,
+            height: binding.binding.body.target.fingerprint.boundingBox?.height ?? null,
+          }
+        : null,
+    };
+  });
+
+  const bindableSteps = steps.filter((step) => step.bindable);
+
+  return {
+    documentId: input.documentId,
+    revisionId: input.revisionId,
+    steps,
+    summary: {
+      bindable: bindableSteps.length,
+      bound: bindableSteps.filter((step) => step.status !== null).length,
+      approved: bindableSteps.filter((step) => step.status === 'approved').length,
+      stale: bindableSteps.filter((step) => step.stale).length,
+    },
   };
 }

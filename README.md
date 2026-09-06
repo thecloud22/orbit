@@ -495,6 +495,28 @@ Suggestions are advisory and never applied. Two of them — selector robustness
 and coverage — use no model at all, because ranking three known strategies and
 computing a set difference are exact questions. See **ADR-019**.
 
+### Seeing which steps are mapped
+
+The SOP Graph review page shows, per step, whether an Execution Binding exists
+and how far it got — not recorded, recorded, awaiting review, approved, or
+rejected — with the selector chain and fingerprint for approved ones.
+
+**Read-only, and permanently so.** Recording a binding means a person
+demonstrating a step in a real browser, which a web page cannot witness, so
+creating one and moving it through its lifecycle happen in the recorder CLI and
+nowhere else. The endpoint behind the panel names no write method, and a test
+runs it against a context where every write throws.
+
+Two things the panel reports separately, because they are different facts:
+
+- **Status and staleness.** An *approved* binding whose step has since been
+  edited is still approved and still not safe to run. Staleness is derived at
+  read time by comparing the binding's `stepSha256` against the step as it
+  reads now — the same check the recorder runs before persisting.
+- **Status and history.** `superseded` is never a current status: a binding is
+  superseded only when its replacement is written alongside it. Re-recordings
+  show as a count instead.
+
 Still not built: Agent IR generation (2.5) and publishing (2.6).
 
 ## Watchtower
@@ -541,6 +563,7 @@ baked into the bundle. Set `ORBIT_API_URL` to point the proxy elsewhere.
 | `POST /v1/sop-revisions/:id/reorder` | Move a step; creates the superseding revision |
 | `POST /v1/sop-revisions/:id/answers` | Answer a clarification question |
 | `POST /v1/sop-revisions/:id/transitions` | Lifecycle action, legal set derived from the transition table |
+| `GET /v1/sop-documents/:documentId/bindings` | Execution Binding status per step; read-only |
 
 Every failure is the structured error envelope from `docs/contracts/api.md`.
 

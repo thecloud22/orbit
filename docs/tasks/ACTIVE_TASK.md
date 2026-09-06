@@ -40,13 +40,18 @@ checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `@orbit/sop-generation` turns free text into a proposed graph; `@orbit/sop-service` persists drafts
 and drives review; `@orbit/execution-mapping` defines the Execution Binding and the runtime verifies
 its fingerprint before every real action; and `@orbit/execution-recorder` plus `apps/recorder`
-produce bindings from a human's one-time demonstration against a sandbox.
+produce bindings from a human's one-time demonstration against a sandbox. Watchtower's review page
+shows, read-only, which steps have bindings and how far each got — the gap 4b's own report flagged.
 
 Four rules are binding and recorded in ADRs: only `draft` and `needs_clarification` revisions may be
 changed, and every clarification question must be answered before `in_review` (**ADR-017**); a
 mismatch between an approved binding and the live page stops the run rather than substituting an
 element (**ADR-018**); and script injection is confined to one file, unreachable from anything that
 executes an agent, with recorder/runtime fingerprint parity proven by a contract test (**ADR-019**).
+
+Binding status and staleness are reported separately: an approved binding whose step has since been
+edited is still approved and still not safe to run, and `superseded` is never a current status
+because supersession only happens alongside a replacement.
 
 **Sub-phase 2.5 is next**: compiling approved bindings into candidate Agent IR. It consumes the
 binding contract 2.4a froze and the bindings 2.4b produces, and must import `stepChecksum` from

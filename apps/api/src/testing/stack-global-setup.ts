@@ -7,7 +7,10 @@ import {
   databaseNameFromUrl,
   runMigrations,
   seedFindServiceRequest,
+  stepChecksum,
 } from '@orbit/db';
+import { EXECUTION_BINDING_SCHEMA_VERSION, type SelectorChain } from '@orbit/execution-mapping';
+import { escalationReviewGraph } from '@orbit/sop-graph/testing';
 import { loadTestEnv, resolveTestDatabaseUrl, truncateOrbitTables } from '@orbit/db/testing';
 import {
   brokenExtractLocatorAgentIr,
@@ -16,7 +19,14 @@ import {
   waitForPortReleased,
 } from '@orbit/runtime/testing';
 
-import { E2E_API_PORT, E2E_API_URL, E2E_WATCHTOWER_URL, E2E_WEB_PORT } from './stack-ports';
+import {
+  E2E_API_PORT,
+  E2E_API_URL,
+  E2E_BOUND_DOCUMENT_ID,
+  E2E_BOUND_STEP_ID,
+  E2E_WATCHTOWER_URL,
+  E2E_WEB_PORT,
+} from './stack-ports';
 
 /**
  * Brings up the Watchtower stack for the end-to-end test.
@@ -53,6 +63,8 @@ export default async function setup(): Promise<() => Promise<void>> {
     const repositories = createRepositories(handle.db);
     await repositories.agents.upsert({ id: brokenIr.id, name: brokenIr.name });
     await repositories.agentVersions.create({ agentIr: brokenIr });
+
+    await seedBoundDocument(repositories);
   } finally {
     await handle.close();
   }
@@ -111,4 +123,71 @@ export default async function setup(): Promise<() => Promise<void>> {
   process.stdout.write(`\nWatchtower stack ready: ${E2E_WATCHTOWER_URL} -> ${E2E_API_URL}\n`);
 
   return stopAll;
+}
+
+/**
+ * A SOP document with one approved Execution Binding and every other step
+ * unbound.
+ *
+ * The binding is seeded through the repositories rather than recorded, because
+ * recording one means a person demonstrating a step in a real browser — the
+ * recorder CLI's whole job, and not something an automated stack can stand in
+ * for. What the end-to-end test needs is a document in that state, not the act
+ * of getting there, which is covered against a real browser in
+ * `apps/recorder/src/capture.runtime.test.ts`.
+ */
+async function seedBoundDocument(
+  repositories: ReturnType<typeof createRepositories>,
+): Promise<void> {
+  const graph = escalationReviewGraph();
+  const step = graph.steps.find((candidate) => candidate.id === E2E_BOUND_STEP_ID);
+
+  if (step === undefined) {
+    throw new Error(`The escalation fixture has no step "${E2E_BOUND_STEP_ID}" to bind.`);
+  }
+
+  const document = await repositories.sopDocuments.create({
+    id: E2E_BOUND_DOCUMENT_ID as never,
+    title: 'Escalation review with a mapped step',
+    sourceText: 'Sign in to the portal and review the escalation.',
+  });
+
+  const revision = await repositories.sopGraphRevisions.create({
+    documentId: document.id,
+    graph,
+    provenance: { kind: 'authored' },
+  });
+
+  const selectors: SelectorChain = [
+    { strategy: 'test_id', value: 'search-request-button' },
+    { strategy: 'role_and_name', value: 'button', name: 'Search' },
+  ];
+
+  const binding = await repositories.executionBindings.create({
+    documentId: document.id,
+    binding: {
+      schemaVersion: EXECUTION_BINDING_SCHEMA_VERSION,
+      stepId: step.id,
+      body: {
+        kind: 'click',
+        target: {
+          selectors,
+          fingerprint: {
+            role: 'button',
+            accessibleName: 'Search',
+            text: 'Search',
+            boundingBox: { x: 604, y: 142, width: 78, height: 36 },
+          },
+        },
+      },
+      capturedAgainstRevisionId: revision.id,
+      stepSha256: stepChecksum(step),
+    },
+  });
+
+  // Through its real lifecycle, not straight to approved: the repository refuses
+  // draft -> approved, and seeding around that would be seeding a state the
+  // application cannot produce.
+  await repositories.executionBindings.submitForReview(binding.id);
+  await repositories.executionBindings.approve(binding.id, { reviewNote: 'Seeded for the E2E.' });
 }

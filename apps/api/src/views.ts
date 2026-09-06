@@ -278,3 +278,74 @@ export interface SopDocumentSummaryView {
   readonly revisionCount: number;
   readonly createdAt: string;
 }
+
+/**
+ * Whether a step has an Execution Binding, and what state it is in.
+ *
+ * Read-only by construction. Bindings are created, confirmed and moved through
+ * their lifecycle by the recorder CLI (ADR-019); this view exists so that
+ * someone reviewing a SOP Graph in Watchtower can see whether its steps have
+ * been mapped, which they otherwise could not.
+ */
+export interface SopBindingSelectorView {
+  readonly strategy: string;
+  readonly value: string;
+  readonly name: string | null;
+}
+
+export interface SopBindingFingerprintView {
+  readonly role: string | null;
+  readonly accessibleName: string | null;
+  readonly text: string | null;
+  readonly width: number | null;
+  readonly height: number | null;
+}
+
+export interface SopBindingIssueView {
+  readonly code: string;
+  readonly message: string;
+}
+
+export interface SopStepBindingView {
+  readonly stepId: string;
+  readonly kind: string;
+  /** False for `manual_review`, which routes to a person and takes no binding. */
+  readonly bindable: boolean;
+  /** `draft`, `needs_review`, `approved`, `rejected` — or null when unbound. */
+  readonly status: string | null;
+  readonly bindingId: string | null;
+  /**
+   * How many superseded bindings precede the current one.
+   *
+   * `superseded` is never a *current* status: a binding is superseded only when
+   * its replacement is written in the same transaction, so supersession is
+   * history rather than state. A count is how that history stays visible.
+   */
+  readonly supersededCount: number;
+  /**
+   * Whether the bound step has changed since the binding was recorded.
+   *
+   * Orthogonal to `status`, and deliberately so: an *approved* binding can be
+   * stale, and showing only the status would let "approved" read as "usable"
+   * when the step has since moved underneath it.
+   */
+  readonly stale: boolean;
+  readonly issues: readonly SopBindingIssueView[];
+  /** Published for approved bindings only; a draft is still in flux. */
+  readonly selectors: readonly SopBindingSelectorView[] | null;
+  readonly fingerprint: SopBindingFingerprintView | null;
+}
+
+export interface SopBindingsSummaryView {
+  readonly bindable: number;
+  readonly bound: number;
+  readonly approved: number;
+  readonly stale: number;
+}
+
+export interface SopBindingsView {
+  readonly documentId: string;
+  readonly revisionId: string;
+  readonly steps: readonly SopStepBindingView[];
+  readonly summary: SopBindingsSummaryView;
+}

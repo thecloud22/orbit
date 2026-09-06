@@ -3,6 +3,7 @@ import type {
   CreateRunResultView,
   DataEnvelope,
   RunDetailView,
+  SopBindingsView,
   SopDocumentSummaryView,
   SopDraftView,
   SopReviewView,
@@ -198,4 +199,15 @@ export async function transitionSopRevision(
     action,
     ...(note === undefined ? {} : { note }),
   });
+}
+
+/**
+ * Reads which steps have Execution Bindings.
+ *
+ * There is no companion write here, and there will not be one: bindings are
+ * created and moved through their lifecycle by the recorder CLI, which requires
+ * a human demonstrating a step against a real page (ADR-019).
+ */
+export async function getSopBindings(documentId: string): Promise<SopBindingsView> {
+  return getJson<SopBindingsView>(`/v1/sop-documents/${documentId}/bindings`);
 }

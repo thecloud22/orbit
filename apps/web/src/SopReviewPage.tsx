@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import type { SopReviewView } from '@orbit/api/views';
+import type { SopBindingsView, SopReviewView } from '@orbit/api/views';
 
 import {
   answerSopQuestion,
   ApiRequestError,
   editSopStep,
+  getSopBindings,
   getSopReview,
   reorderSopStep,
   transitionSopRevision,
 } from './api-client';
+import { SopBindingPanel } from './SopBindingPanel';
 import { SopStepEditor } from './SopStepEditor';
 import {
   describeReviewFailure,
@@ -34,12 +36,20 @@ export interface SopReviewPageProps {
  */
 export function SopReviewPage({ documentId }: SopReviewPageProps) {
   const [review, setReview] = useState<SopReviewView | null>(null);
+  const [bindings, setBindings] = useState<SopBindingsView | null>(null);
   const [failure, setFailure] = useState<ReviewFailure | null>(null);
   const [busy, setBusy] = useState(false);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
+    // Loaded alongside the review, and deliberately not fatal: binding
+    // visibility is additional information about a workflow, so failing to
+    // fetch it must not stop the workflow itself being reviewed.
+    void getSopBindings(documentId)
+      .then(setBindings)
+      .catch(() => setBindings(null));
+
     try {
       setReview(await getSopReview(documentId));
       setFailure(null);
@@ -210,6 +220,8 @@ export function SopReviewPage({ documentId }: SopReviewPageProps) {
           ))}
         </ol>
       </section>
+
+      <SopBindingPanel bindings={bindings} steps={review.steps} />
 
       {review.clarifications.length > 0 && (
         <section className="rounded border border-slate-200 p-4" data-testid="sop-clarifications">

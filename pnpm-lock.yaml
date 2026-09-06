@@ -47,6 +47,9 @@ importers:
       '@orbit/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@orbit/execution-mapping':
+        specifier: workspace:*
+        version: link:../../packages/execution-mapping
       '@orbit/executor-playwright':
         specifier: workspace:*
         version: link:../../packages/executor-playwright

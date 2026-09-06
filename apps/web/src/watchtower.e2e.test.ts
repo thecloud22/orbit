@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 
-import { E2E_API_URL, E2E_WATCHTOWER_URL } from '@orbit/api/testing/stack-ports';
+import {
+  E2E_API_URL,
+  E2E_BOUND_DOCUMENT_ID,
+  E2E_BOUND_STEP_ID,
+  E2E_WATCHTOWER_URL,
+} from '@orbit/api/testing/stack-ports';
 import { chromium, type Browser, type Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -633,6 +638,88 @@ describe('Watchtower end to end', () => {
 
       // Approval is the end of this phase: nothing here publishes or runs.
       expect(await page.getByTestId('sop-action-approve').count()).toBe(0);
+
+      await page.close();
+    });
+  });
+
+  /**
+   * Binding visibility, which 4b's report flagged as the gap this closes:
+   * bindings are confirmed in a terminal, so a reviewer here could not see
+   * whether a workflow had been mapped at all.
+   *
+   * The document is seeded with one approved binding and every other step
+   * unbound, because there is no way to record one from a web page.
+   */
+  describe('seeing which steps are mapped to a real page', () => {
+    async function openSeededReview(page: Page) {
+      await page.goto(`${E2E_WATCHTOWER_URL}/?documentId=${E2E_BOUND_DOCUMENT_ID}`, {
+        waitUntil: 'load',
+      });
+      await expect.poll(() => page.getByTestId('sop-review').count(), { timeout: 30_000 }).toBe(1);
+    }
+
+    it('shows an approved binding with the selectors it was recorded with', async () => {
+      const page = await open();
+      await openSeededReview(page);
+
+      await expect
+        .poll(() => page.getByTestId('sop-bindings').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      const status = page.getByTestId(`sop-binding-status-${E2E_BOUND_STEP_ID}`);
+      expect((await status.textContent()) ?? '').toBe('Approved');
+
+      const selectors =
+        (await page.getByTestId('sop-binding-selectors').first().textContent()) ?? '';
+      expect(selectors).toContain('test_id=search-request-button');
+      expect(selectors).toContain('role_and_name=button "Search"');
+
+      const fingerprint =
+        (await page.getByTestId('sop-binding-fingerprint').first().textContent()) ?? '';
+      expect(fingerprint).toContain('button');
+      expect(fingerprint).toContain('Search');
+
+      await page.close();
+    });
+
+    it('shows the unbound steps as not recorded, and unbindable ones as needing nothing', async () => {
+      const page = await open();
+      await openSeededReview(page);
+
+      await expect
+        .poll(() => page.getByTestId('sop-bindings').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      const rows = (await page.getByTestId('sop-binding-row').allTextContents()).join('\n');
+
+      expect(rows).toContain('Not recorded');
+      // A manual_review step will never have a binding; calling that a gap
+      // would report a permanent, correct state as missing work.
+      expect(rows).toContain('No binding needed');
+      expect(rows).toContain('routes to a person');
+
+      const summary = (await page.getByTestId('sop-bindings-summary').textContent()) ?? '';
+      expect(summary).toContain('1 of');
+      expect(summary).toContain('approved');
+
+      await page.close();
+    });
+
+    it('offers no way to create, approve or change a binding', async () => {
+      const page = await open();
+      await openSeededReview(page);
+
+      await expect
+        .poll(() => page.getByTestId('sop-bindings').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      // Read-only by design: recording a binding means demonstrating a step in
+      // a browser, which happens in the recorder CLI and nowhere else.
+      const panel = page.getByTestId('sop-bindings');
+      expect(await panel.locator('button').count()).toBe(0);
+      expect(await panel.locator('input').count()).toBe(0);
+      expect((await panel.textContent()) ?? '').toContain('pnpm record:binding');
 
       await page.close();
     });

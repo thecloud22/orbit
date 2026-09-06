@@ -15,6 +15,7 @@
     "@orbit/artifacts": "workspace:*",
     "@orbit/contracts": "workspace:*",
     "@orbit/db": "workspace:*",
+    "@orbit/execution-mapping": "workspace:*",
     "@orbit/executor-playwright": "workspace:*",
     "@orbit/runtime": "workspace:*",
     "@orbit/sop-generation": "workspace:*",
