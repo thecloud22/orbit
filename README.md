@@ -521,6 +521,18 @@ Still not built: Agent IR generation (2.5) and publishing (2.6).
 
 ## Watchtower
 
+Watchtower has a persistent header with **Home** and **Documents**. Navigation is
+query parameters, not a router — a run is reopened with `?runId=`, a workflow
+with `?documentId=`, and the document list is `?view=documents`. The view is
+derived from the URL on every history event, so a link, a bookmark, a reload and
+the back button all agree, and every nav item is a real anchor that opens in a
+new tab like any other link.
+
+**Documents** lists every SOP Graph with its status, step count and revision
+count, each row opening its review page. That list is how a workflow is reached
+at all: before it existed the endpoint was serving documents nobody could
+navigate to.
+
 Watchtower is the Phase 1 trigger and evidence console: start the seeded agent,
 watch the run reach a terminal state, and open the evidence it recorded.
 
@@ -556,7 +568,7 @@ baked into the bundle. Set `ORBIT_API_URL` to point the proxy elsewhere.
 | `GET /v1/runs/:runId/summary` | Status poll without the timelines |
 | `GET /v1/runs/:runId/artifacts/:artifactId` | Controlled evidence bytes |
 | `POST /v1/sop-drafts` | Generate a draft SOP Graph from `{ sourceText }`, or a new revision from `{ documentId }`; `201` |
-| `GET /v1/sop-documents` | SOP documents with their derived status |
+| `GET /v1/sop-documents` | SOP documents with derived status, step count and revision count |
 | `GET /v1/sop-documents/:documentId` | The current revision, rendered for review |
 | `GET /v1/sop-revisions/:revisionId` | One revision, for history |
 | `PATCH /v1/sop-revisions/:id/steps/:stepId` | Edit a step; creates the superseding revision |

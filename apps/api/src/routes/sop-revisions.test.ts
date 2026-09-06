@@ -114,6 +114,78 @@ describe('GET /v1/sop-documents/:documentId', () => {
   });
 });
 
+describe('GET /v1/sop-documents', () => {
+  function listing(documents: readonly unknown[]) {
+    return buildServer({
+      logLevel: 'silent',
+      context: createStubContext({
+        sopDocuments: {
+          list: () => Promise.resolve(documents as never),
+          summarize: (id) =>
+            Promise.resolve(
+              (documents as readonly { id: string }[]).find((entry) => entry.id === id) as never,
+            ),
+        },
+      }),
+    });
+  }
+
+  const summary = {
+    id: DOCUMENT_ID,
+    title: 'Escalation review',
+    sourceText: 'Sign in and review.',
+    status: 'draft',
+    revisionCount: 2,
+    stepCount: 26,
+    createdAt: new Date('2026-09-06T12:00:00.000Z'),
+    updatedAt: new Date('2026-09-06T12:00:00.000Z'),
+  };
+
+  it('lists documents with their size and status', async () => {
+    const app = listing([summary]);
+    await app.ready();
+
+    const response = await app.inject({ method: 'GET', url: '/v1/sop-documents' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toEqual([
+      {
+        documentId: DOCUMENT_ID,
+        title: 'Escalation review',
+        status: 'draft',
+        revisionCount: 2,
+        stepCount: 26,
+        createdAt: '2026-09-06T12:00:00.000Z',
+      },
+    ]);
+
+    await app.close();
+  });
+
+  it('returns an empty list rather than an error when there are no documents', async () => {
+    const app = listing([]);
+    await app.ready();
+
+    const response = await app.inject({ method: 'GET', url: '/v1/sop-documents' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toEqual([]);
+
+    await app.close();
+  });
+
+  it('never publishes the authored source text', async () => {
+    const app = listing([summary]);
+    await app.ready();
+
+    const response = await app.inject({ method: 'GET', url: '/v1/sop-documents' });
+
+    expect(response.body).not.toContain('Sign in and review.');
+
+    await app.close();
+  });
+});
+
 describe('PATCH /v1/sop-revisions/:revisionId/steps/:stepId', () => {
   const validStep = escalationReviewGraph().steps.find((step) => step.id === 'open_portal');
 

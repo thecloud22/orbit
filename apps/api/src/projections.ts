@@ -292,6 +292,7 @@ export function toSopDocumentSummaryView(summary: {
   readonly title: string;
   readonly status: string | null;
   readonly revisionCount: number;
+  readonly stepCount: number;
   readonly createdAt: Date;
 }): SopDocumentSummaryView {
   return {
@@ -299,6 +300,7 @@ export function toSopDocumentSummaryView(summary: {
     title: summary.title,
     status: summary.status,
     revisionCount: summary.revisionCount,
+    stepCount: summary.stepCount,
     createdAt: summary.createdAt.toISOString(),
   };
 }

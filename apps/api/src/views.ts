@@ -276,6 +276,8 @@ export interface SopDocumentSummaryView {
   readonly title: string;
   readonly status: string | null;
   readonly revisionCount: number;
+  /** Steps in the current revision; 0 when the document has no live revision. */
+  readonly stepCount: number;
   readonly createdAt: string;
 }
 

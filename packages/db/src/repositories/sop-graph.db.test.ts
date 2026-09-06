@@ -322,3 +322,53 @@ describe('SOP graph persistence', () => {
     expect(await repositories.agents.list()).toHaveLength(0);
   });
 });
+
+describe('summarizing a document', () => {
+  const getDatabase = useTestDatabase();
+
+  it("reports the current revision's step count, not the first one's", async () => {
+    const repositories = createRepositories(getDatabase().db);
+    const document = await repositories.sopDocuments.create({
+      title: 'Escalation review',
+      sourceText: 'Sign in and review the escalation.',
+    });
+
+    const first = await repositories.sopGraphRevisions.create({
+      documentId: document.id,
+      graph: minimalGraph(),
+      provenance: { kind: 'authored' },
+    });
+
+    const summaryAfterFirst = await repositories.sopDocuments.summarize(document.id);
+    expect(summaryAfterFirst?.stepCount).toBe(minimalGraph().steps.length);
+
+    // A bigger graph supersedes the small one; the summary must follow the live
+    // revision rather than whichever came first.
+    await repositories.sopGraphRevisions.create({
+      documentId: document.id,
+      graph: escalationReviewGraph(),
+      provenance: { kind: 'edited', note: 'Expanded.' },
+      parentRevisionId: first.id,
+    });
+
+    const summary = await repositories.sopDocuments.summarize(document.id);
+
+    expect(summary?.stepCount).toBe(escalationReviewGraph().steps.length);
+    expect(summary?.revisionCount).toBe(2);
+    expect(summary?.status).toBe('draft');
+  });
+
+  it('reports no steps for a document with no revision yet', async () => {
+    const repositories = createRepositories(getDatabase().db);
+    const document = await repositories.sopDocuments.create({
+      title: 'Nothing drafted yet',
+      sourceText: 'Written, not yet drafted.',
+    });
+
+    const summary = await repositories.sopDocuments.summarize(document.id);
+
+    expect(summary?.stepCount).toBe(0);
+    expect(summary?.status).toBeNull();
+    expect(summary?.revisionCount).toBe(0);
+  });
+});

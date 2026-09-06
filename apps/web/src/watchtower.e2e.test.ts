@@ -725,6 +725,87 @@ describe('Watchtower end to end', () => {
     });
   });
 
+  /**
+   * Navigation, which Watchtower had none of: every view already had a URL and
+   * nothing linked them, so a workflow was unreachable unless you knew its id.
+   */
+  describe('navigating Watchtower', () => {
+    it('shows the nav on every view and marks where you are', async () => {
+      const page = await open();
+
+      await expect
+        .poll(() => page.getByTestId('watchtower-nav').count(), { timeout: 20_000 })
+        .toBe(1);
+      expect(await page.getByTestId('nav-home').getAttribute('aria-current')).toBe('page');
+      expect(await page.getByTestId('nav-documents').getAttribute('aria-current')).toBeNull();
+
+      await page.getByTestId('nav-documents').click();
+      await expect
+        .poll(() => page.getByTestId('documents-page').count(), { timeout: 20_000 })
+        .toBe(1);
+      expect(await page.getByTestId('nav-documents').getAttribute('aria-current')).toBe('page');
+
+      await page.close();
+    });
+
+    it('gives every nav link a real href, so it can be opened in a new tab', async () => {
+      const page = await open();
+
+      // Anchors rather than buttons: middle-click and copy-link must keep
+      // working, which a button silently breaks.
+      expect(await page.getByTestId('nav-documents').getAttribute('href')).toBe('?view=documents');
+      expect(await page.getByTestId('nav-home').getAttribute('href')).toBe('/');
+
+      await page.close();
+    });
+
+    it('lists documents and opens the right review page when one is clicked', async () => {
+      const page = await open('/?view=documents');
+
+      await expect
+        .poll(() => page.getByTestId('documents-page').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      const row = page.getByTestId(`document-row-${E2E_BOUND_DOCUMENT_ID}`);
+      await expect.poll(() => row.count(), { timeout: 20_000 }).toBe(1);
+
+      const detail = (await row.getByTestId('document-detail').textContent()) ?? '';
+      expect(detail).toContain('steps');
+      expect(detail).toContain('revision');
+
+      await row.click();
+
+      await expect.poll(() => page.getByTestId('sop-review').count(), { timeout: 30_000 }).toBe(1);
+      expect(page.url()).toContain(`documentId=${E2E_BOUND_DOCUMENT_ID}`);
+
+      await page.close();
+    });
+
+    it('honours the browser back button', async () => {
+      // Before this, pushState was called and nothing listened for popstate, so
+      // back changed the URL and left the previous view on screen.
+      const page = await open('/?view=documents');
+      await expect
+        .poll(() => page.getByTestId('documents-page').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      await page.getByTestId(`document-row-${E2E_BOUND_DOCUMENT_ID}`).click();
+      await expect.poll(() => page.getByTestId('sop-review').count(), { timeout: 30_000 }).toBe(1);
+
+      await page.goBack();
+
+      await expect
+        .poll(() => page.getByTestId('documents-page').count(), { timeout: 20_000 })
+        .toBe(1);
+      expect(await page.getByTestId('sop-review').count()).toBe(0);
+
+      await page.goForward();
+      await expect.poll(() => page.getByTestId('sop-review').count(), { timeout: 20_000 }).toBe(1);
+
+      await page.close();
+    });
+  });
+
   describe('artifact integrity', () => {
     it('serves bytes that match the digest recorded for the run', async () => {
       const { runId, detail } = await succeededRun();

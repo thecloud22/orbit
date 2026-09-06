@@ -10,6 +10,9 @@ import { RunTimeline } from './RunTimeline';
 import { describeSopDraftFailure, type SopDraftFailure } from './sop-draft-view-model';
 import { SopDraftForm } from './SopDraftForm';
 import { SopDraftPanel } from './SopDraftPanel';
+import { DocumentsPage } from './DocumentsPage';
+import { Nav } from './Nav';
+import { searchForView, viewFromSearch, type View } from './navigation';
 import { SopReviewPage } from './SopReviewPage';
 import { StartRunForm } from './StartRunForm';
 import { useRun } from './useRun';
@@ -28,28 +31,34 @@ export function App() {
   const [draft, setDraft] = useState<SopDraftView | null>(null);
   const [draftFailure, setDraftFailure] = useState<SopDraftFailure | null>(null);
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
-  const [reviewingDocumentId, setReviewingDocumentId] = useState<string | null>(() =>
-    new URLSearchParams(window.location.search).get('documentId'),
-  );
+  const [view, setView] = useState<View>(() => viewFromSearch(window.location.search));
   const run = useRun();
 
   /**
-   * Opening a draft for review is a URL, matching how a run is reopened by id.
-   * Watchtower has no router, and one query parameter is enough for the two
-   * things it can show.
+   * The browser's own history, honoured.
+   *
+   * Before this, `pushState` was called and nothing listened for `popstate`, so
+   * the back button changed the URL and left the page showing the previous
+   * view — a URL and a screen quietly disagreeing. Deriving the view from the
+   * URL on every history event is what keeps them the same thing.
    */
-  function openReview(documentId: string) {
-    const url = new URL(window.location.href);
-    url.searchParams.set('documentId', documentId);
-    window.history.pushState({}, '', url);
-    setReviewingDocumentId(documentId);
-  }
+  useEffect(() => {
+    function syncFromUrl() {
+      setView(viewFromSearch(window.location.search));
+    }
 
-  function closeReview() {
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
+  }, []);
+
+  function navigate(next: View) {
     const url = new URL(window.location.href);
-    url.searchParams.delete('documentId');
+    url.search = searchForView(next);
+
+    // The run parameter is view-scoped: carrying it onto Documents would leave
+    // a stale run id in a URL someone might share.
     window.history.pushState({}, '', url);
-    setReviewingDocumentId(null);
+    setView(next);
   }
 
   async function generateDraft(sourceText: string) {
@@ -121,32 +130,31 @@ export function App() {
     };
   }, []);
 
-  if (reviewingDocumentId !== null) {
+  if (view.kind !== 'home') {
     return (
-      <main className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
-        <header>
-          <h1 className="text-2xl font-semibold text-slate-900">{APP_INFO.title}</h1>
-          <button
-            className="mt-2 text-sm text-slate-600 underline"
-            data-testid="close-review"
-            onClick={closeReview}
-            type="button"
-          >
-            ← Back to Watchtower
-          </button>
-        </header>
-
-        <SopReviewPage documentId={reviewingDocumentId} />
-      </main>
+      <Shell current={view} onNavigate={navigate}>
+        {view.kind === 'review' ? (
+          <>
+            <button
+              className="self-start text-sm text-slate-600 underline"
+              data-testid="close-review"
+              onClick={() => navigate({ kind: 'documents' })}
+              type="button"
+            >
+              ← Back to workflows
+            </button>
+            <SopReviewPage documentId={view.documentId} />
+          </>
+        ) : (
+          <DocumentsPage onOpen={navigate} />
+        )}
+      </Shell>
     );
   }
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
-      <header>
-        <h1 className="text-2xl font-semibold text-slate-900">{APP_INFO.title}</h1>
-        <p className="mt-1 text-sm text-slate-600">{APP_INFO.description}</p>
-      </header>
+    <Shell current={view} onNavigate={navigate}>
+      <p className="text-sm text-slate-600">{APP_INFO.description}</p>
 
       <section className="rounded border border-slate-200 p-4">
         <h2 className="text-sm font-semibold text-slate-900" data-testid="agent-name">
@@ -226,7 +234,7 @@ export function App() {
           <button
             className="rounded border border-slate-300 px-3 py-1.5 text-sm"
             data-testid="open-draft-review"
-            onClick={() => openReview(draft.documentId)}
+            onClick={() => navigate({ kind: 'review', documentId: draft.documentId })}
             type="button"
           >
             Review and edit this draft
@@ -235,7 +243,37 @@ export function App() {
       )}
 
       <SopDraftPanel draft={draft} failure={draftFailure} />
-    </main>
+    </Shell>
+  );
+}
+
+/**
+ * The frame every view sits in.
+ *
+ * Title and navigation live here rather than being repeated per view, so a
+ * reader never loses their place by opening a document — which is what happened
+ * before, when the review page replaced the whole page including any way back.
+ */
+function Shell({
+  current,
+  onNavigate,
+  children,
+}: {
+  readonly current: View;
+  readonly onNavigate: (view: View) => void;
+  readonly children: React.ReactNode;
+}) {
+  return (
+    <div className="min-h-screen">
+      <header className="border-b border-slate-200">
+        <div className="mx-auto max-w-4xl px-8 pt-8 pb-3">
+          <h1 className="text-2xl font-semibold text-slate-900">{APP_INFO.title}</h1>
+        </div>
+        <Nav current={current} onNavigate={onNavigate} />
+      </header>
+
+      <main className="mx-auto flex max-w-4xl flex-col gap-6 p-8">{children}</main>
+    </div>
   );
 }
 

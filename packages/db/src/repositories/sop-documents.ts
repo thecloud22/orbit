@@ -1,5 +1,5 @@
 import { newSopDocumentId, type SopDocumentId } from '@orbit/contracts';
-import { asc, desc, eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 
 import type { Executor } from '../client';
 import { toSopDocumentRecord, type SopDocumentRecord } from '../mappers';
@@ -22,6 +22,8 @@ export interface CreateSopDocumentInput {
 export interface SopDocumentSummary extends SopDocumentRecord {
   readonly status: SopRevisionState | null;
   readonly revisionCount: number;
+  /** Steps in the current revision's graph; 0 when there is no live revision. */
+  readonly stepCount: number;
 }
 
 /**
@@ -79,24 +81,30 @@ export function createSopDocumentRepository(executor: Executor): SopDocumentRepo
         return null;
       }
 
-      const all = await executor
-        .select({ state: sopGraphRevisions.state, number: sopGraphRevisions.revisionNumber })
-        .from(sopGraphRevisions)
-        .where(eq(sopGraphRevisions.documentId, id))
-        .orderBy(asc(sopGraphRevisions.revisionNumber));
-
-      const live = await executor
-        .select({ state: sopGraphRevisions.state })
+      // One pass over the document's revisions, newest first. This replaced two
+      // queries that scanned the same rows for different columns; the graph
+      // rides along so a step count costs no extra round trip. Revisions are
+      // few by design — each one is a human edit — so loading them together is
+      // cheaper than fetching the current graph separately.
+      const revisions = await executor
+        .select({
+          state: sopGraphRevisions.state,
+          graph: sopGraphRevisions.graph,
+        })
         .from(sopGraphRevisions)
         .where(eq(sopGraphRevisions.documentId, id))
         .orderBy(desc(sopGraphRevisions.revisionNumber));
 
-      const current = live.find((revision) => revision.state !== 'superseded');
+      const current = revisions.find((revision) => revision.state !== 'superseded');
 
       return {
         ...toSopDocumentRecord(row),
         status: current?.state ?? null,
-        revisionCount: all.length,
+        revisionCount: revisions.length,
+        // A count for display, read straight off the stored document rather
+        // than through the validating mapper: a summary must not fail to render
+        // because one revision somewhere no longer parses.
+        stepCount: Array.isArray(current?.graph.steps) ? current.graph.steps.length : 0,
       };
     },
   };

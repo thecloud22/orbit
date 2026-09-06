@@ -42,6 +42,8 @@ and drives review; `@orbit/execution-mapping` defines the Execution Binding and 
 its fingerprint before every real action; and `@orbit/execution-recorder` plus `apps/recorder`
 produce bindings from a human's one-time demonstration against a sandbox. Watchtower's review page
 shows, read-only, which steps have bindings and how far each got — the gap 4b's own report flagged.
+Watchtower also has navigation and a Documents list, so a workflow is reachable without knowing its
+id.
 
 Four rules are binding and recorded in ADRs: only `draft` and `needs_clarification` revisions may be
 changed, and every clarification question must be answered before `in_review` (**ADR-017**); a
