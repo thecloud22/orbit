@@ -3,6 +3,7 @@ import type {
   AgentRepository,
   AgentVersionRepository,
   ArtifactRepository,
+  ExecutionBindingRepository,
   RunEventRepository,
   RunRepository,
   RunStepRepository,
@@ -49,6 +50,7 @@ export interface StubContextOptions {
   readonly runSteps?: Partial<RunStepRepository>;
   readonly runEvents?: Partial<RunEventRepository>;
   readonly artifacts?: Partial<ArtifactRepository>;
+  readonly executionBindings?: Partial<ExecutionBindingRepository>;
   readonly sopDocuments?: Partial<SopDocumentRepository>;
   readonly sopGraphRevisions?: Partial<SopGraphRevisionRepository>;
   readonly artifactService?: Partial<ArtifactService>;
@@ -72,6 +74,7 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
       // it fails loudly with the method name.
       sopDocuments: stubbed('sopDocuments', options.sopDocuments ?? {}),
       sopGraphRevisions: stubbed('sopGraphRevisions', options.sopGraphRevisions ?? {}),
+      executionBindings: stubbed('executionBindings', options.executionBindings ?? {}),
     },
     artifactService: stubbed('artifactService', options.artifactService ?? {}),
     dispatcher: stubbed('dispatcher', options.dispatcher ?? {}),

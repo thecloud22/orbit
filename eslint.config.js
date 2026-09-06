@@ -95,6 +95,32 @@ const noTestDoublesInProductionCode = [
 ];
 
 /**
+ * The Execution Binding describes and compares; it cannot act.
+ *
+ * A binding decides what a real browser clicks, which makes this the package
+ * where a convenient import would do the most damage. It must not reach
+ * persistence, a browser, the runtime, or the SOP Graph — the last of those
+ * because ADR-002 keeps business intent and executable detail independent in
+ * both directions.
+ */
+const noExecutionInExecutionMapping = [
+  {
+    group: ['@orbit/db', '@orbit/db/*', '@orbit/runtime', '@orbit/runtime/*'],
+    message:
+      "Execution mapping must not depend on persistence or the runtime. It describes a binding; acting on one is the runtime's job.",
+  },
+  {
+    group: ['@orbit/sop-graph', '@orbit/sop-graph/*'],
+    message:
+      'A binding is executable detail and a graph is business intent. Validating one against a step takes a description of that step from the caller. See ADR-002.',
+  },
+  {
+    group: ['net', 'http', 'https', 'dns', 'node:net', 'node:http', 'node:https', 'node:dns'],
+    message: 'Execution mapping never contacts a network.',
+  },
+];
+
+/**
  * Domain packages never touch the filesystem: parsing functions take text, not
  * paths, so callers own reading bytes. Tests are exempt — reading the seeded
  * fixture from disk is exactly what they are for — but they keep every
@@ -322,6 +348,36 @@ export default tseslint.config(
     files: ['apps/api/src/testing/**/*.ts', 'apps/api/src/**/*.test.ts'],
     rules: {
       'no-restricted-imports': 'off',
+    },
+  },
+
+  // The Execution Binding is a description, not an action, and this rule is the
+  // enforcement of that claim rather than a comment asserting it.
+  {
+    files: ['packages/execution-mapping/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...noFrameworksInDomainPackages,
+            ...noFilesystemInDomainPackages,
+            ...noExecutionInExecutionMapping,
+          ],
+        },
+      ],
+    },
+  },
+
+  // Its tests may read the source tree — the boundary scan has to open every
+  // file to prove what is not in it. Only the filesystem rule is lifted.
+  {
+    files: ['packages/execution-mapping/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [...noFrameworksInDomainPackages, ...noExecutionInExecutionMapping] },
+      ],
     },
   },
 

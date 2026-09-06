@@ -259,6 +259,9 @@ importers:
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@orbit/execution-mapping':
+        specifier: workspace:*
+        version: link:../execution-mapping
       '@orbit/sop-graph':
         specifier: workspace:*
         version: link:../sop-graph
@@ -288,6 +291,19 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
+  packages/execution-mapping:
+    dependencies:
+      '@orbit/agent-ir':
+        specifier: workspace:*
+        version: link:../agent-ir
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
   packages/executor-playwright:
     dependencies:
       '@orbit/agent-ir':
@@ -296,6 +312,9 @@ importers:
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@orbit/execution-mapping':
+        specifier: workspace:*
+        version: link:../execution-mapping
       '@orbit/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -324,6 +343,9 @@ importers:
       '@orbit/db':
         specifier: workspace:*
         version: link:../db
+      '@orbit/execution-mapping':
+        specifier: workspace:*
+        version: link:../execution-mapping
     devDependencies:
       typescript:
         specifier: ^5.9.0

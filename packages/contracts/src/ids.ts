@@ -84,6 +84,20 @@ export const sopAnswerIdSchema = z
   .brand<'SopAnswerId'>();
 export type SopAnswerId = z.infer<typeof sopAnswerIdSchema>;
 
+/**
+ * Execution Binding identifier (Phase 2.4).
+ *
+ * A binding records which element on a real page a SOP step acts on. It is a
+ * separate entity from the graph it binds to — a graph is business intent, a
+ * binding is how that intent reaches a browser (ADR-002) — so it carries its
+ * own id rather than being addressed through the revision.
+ */
+export const executionBindingIdSchema = z
+  .string()
+  .regex(idPattern('execbind'), 'must be an opaque id prefixed with "execbind_"')
+  .brand<'ExecutionBindingId'>();
+export type ExecutionBindingId = z.infer<typeof executionBindingIdSchema>;
+
 export const artifactLinkIdSchema = z
   .string()
   .regex(idPattern('artl'), 'must be an opaque id prefixed with "artl_"')

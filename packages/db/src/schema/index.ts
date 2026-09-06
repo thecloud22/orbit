@@ -27,6 +27,7 @@ export * from './sop-graph-revisions';
 
 /** Truncation order for the test reset: children before parents. */
 export const ORBIT_TABLE_NAMES = [
+  'execution_bindings',
   'sop_clarification_answers',
   'sop_graph_revisions',
   'sop_documents',
@@ -38,3 +39,4 @@ export const ORBIT_TABLE_NAMES = [
   'agent_versions',
   'agents',
 ] as const;
+export * from './execution-bindings';

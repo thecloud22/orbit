@@ -6,3 +6,4 @@ export * from './run-event';
 export * from './run-step';
 export * from './sop-document';
 export * from './sop-graph-revision';
+export * from './execution-binding';

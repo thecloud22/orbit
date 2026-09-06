@@ -4,6 +4,7 @@ import {
   artifactIdSchema,
   artifactLinkIdSchema,
   eventIdSchema,
+  executionBindingIdSchema,
   requestIdSchema,
   runIdSchema,
   runStepIdSchema,
@@ -15,6 +16,7 @@ import {
   type ArtifactId,
   type ArtifactLinkId,
   type EventId,
+  type ExecutionBindingId,
   type RequestId,
   type RunId,
   type RunStepId,
@@ -165,4 +167,8 @@ export function newSopRevisionId(): SopRevisionId {
 
 export function newSopAnswerId(): SopAnswerId {
   return sopAnswerIdSchema.parse(`sopans_${monotonicUlid()}`);
+}
+
+export function newExecutionBindingId(): ExecutionBindingId {
+  return executionBindingIdSchema.parse(`execbind_${monotonicUlid()}`);
 }

@@ -2,6 +2,10 @@ import type { Executor, OrbitDatabase } from '../client';
 import { createAgentRepository, type AgentRepository } from './agents';
 import { createAgentVersionRepository, type AgentVersionRepository } from './agent-versions';
 import { createArtifactRepository, type ArtifactRepository } from './artifacts';
+import {
+  createExecutionBindingRepository,
+  type ExecutionBindingRepository,
+} from './execution-bindings';
 import { createRunEventRepository, type RunEventRepository } from './run-events';
 import { createRunStepRepository, type RunStepRepository } from './run-steps';
 import { createRunRepository, type RunRepository } from './runs';
@@ -14,6 +18,7 @@ import {
 export * from './agent-versions';
 export * from './agents';
 export * from './artifacts';
+export * from './execution-bindings';
 export * from './run-events';
 export * from './run-steps';
 export * from './runs';
@@ -29,6 +34,7 @@ export interface OrbitRepositories {
   readonly artifacts: ArtifactRepository;
   readonly sopDocuments: SopDocumentRepository;
   readonly sopGraphRevisions: SopGraphRevisionRepository;
+  readonly executionBindings: ExecutionBindingRepository;
 }
 
 export function createRepositories(executor: Executor): OrbitRepositories {
@@ -41,6 +47,7 @@ export function createRepositories(executor: Executor): OrbitRepositories {
     artifacts: createArtifactRepository(executor),
     sopDocuments: createSopDocumentRepository(executor),
     sopGraphRevisions: createSopGraphRevisionRepository(executor),
+    executionBindings: createExecutionBindingRepository(executor),
   };
 }
 

@@ -71,6 +71,7 @@ packages/
   sop-graph/           # SOP Graph: non-executable business-process representation
   sop-generation/      # Free-text -> proposed SOP Graph (the only LangChain dependency)
   sop-service/         # Composes SOP generation and review with SOP persistence
+  execution-mapping/   # Execution Bindings: what a SOP step does on a real page
   policy/              # (not created yet) Domain/action allowlist checks
 
 docs/
@@ -418,8 +419,46 @@ Two workflow rules, both recorded in **ADR-017**:
 Approval still means only that the graph describes the intended process. It
 creates no Agent Version, starts no run, and touches no browser.
 
-Still not built: execution mapping, Agent IR generation, and publishing. Those
-are Phase 2.4 and later.
+## Execution Bindings and the drift check (Phase 2.4a)
+
+An approved SOP Graph says "the field labelled Password". An **Execution
+Binding** says which element that turned out to be: an ordered chain of
+locators, and a fingerprint of the element as it looked when a human confirmed
+it.
+
+Before every real `fill` or `click` that uses a binding, the runtime compares
+the live page against that fingerprint. It is deterministic — no model is
+consulted — and it **fails safe**: on a mismatch the run stops, captures a
+screenshot and a DOM snapshot, and reports what changed. The executor is never
+asked to find a substitute element, because choosing a different element than
+the one a human approved is the decision no automated part of Orbit may make.
+
+The check is invisible to an agent without bindings, so every Phase 1 run
+behaves exactly as it did before.
+
+```text
+approved binding ──> describeElement ──> compare ──┬── matches ──> act
+                                                    └── differs ──> stop + evidence
+```
+
+Locators are a closed vocabulary — `test_id`, `role_and_name`, `label`. CSS and
+XPath are not expressible, so a binding cannot carry an arbitrary DOM-walking
+expression any more than an Agent IR step can. A chain gives the runtime a
+fallback when a page drops one attribute.
+
+The role comes from the accessibility tree, not from a `role` attribute:
+measured against the demo portal, every element returned `null` for an explicit
+attribute while the computed role was correctly `button`, `textbox` or
+`definition`. Text is compared for action targets and deliberately **not** for
+read targets, whose text is the value being extracted and changes every run.
+
+See **ADR-018** for the full reasoning, including why `tagName` is absent (it
+would require `evaluate`) and why bindings are keyed by step rather than by
+revision.
+
+Still not built: the recording tool that produces bindings (2.4b), Agent IR
+generation (2.5), and publishing (2.6). Bindings today are hand-authored
+fixtures, the same way Phase 1's Agent IR was before anything generated it.
 
 ## Watchtower
 

@@ -35,23 +35,22 @@ silently.
 checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
-**Phase 2 is underway.** Tasks 1, 2 and 3 (sub-phases 2.1, 2.2 and 2.3) are complete.
-`@orbit/sop-graph` provides the non-executable graph contract, its semantic validation, and step
-reorder/dependency validation; `@orbit/db` persists documents, immutable checksummed revisions,
-provenance, and clarification answers; `@orbit/sop-generation` turns free text into a proposed
-graph behind an `LLMProvider` interface; and `@orbit/sop-service` both persists a generated draft
-and drives review — step editing, reorder, clarification answering, and the revision lifecycle.
-There is still no path from a graph to anything executable. See the Task P2-001, P2-002 and
-P2-003 reports under `docs/tasks/reports/`.
+**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3 and **2.4a** are complete. `@orbit/sop-graph`
+provides the non-executable graph contract and its validation; `@orbit/sop-generation` turns free
+text into a proposed graph; `@orbit/sop-service` persists drafts and drives review;
+`@orbit/execution-mapping` defines the Execution Binding — what a step does on a real page — and
+the runtime now verifies a binding's fingerprint before every real action, failing safe on drift.
 
-Two review-workflow rules are binding and recorded in **ADR-017**: only `draft` and
-`needs_clarification` revisions may be changed, and every clarification question must be answered
-before a revision can reach `in_review`.
+Three rules are binding and recorded in ADRs: only `draft` and `needs_clarification` revisions may
+be changed, and every clarification question must be answered before `in_review` (**ADR-017**); and
+a mismatch between an approved binding and the live page stops the run rather than substituting an
+element (**ADR-018**).
 
-**Task 4 (sub-phase 2.4, reviewed execution mapping) is next**: turning an approved SOP Graph's
-intent into something a browser could act on — URL scheme policy, reviewed domain allowlists,
-element discovery, and read-only versus side-effecting classification. None of that exists yet, and
-ADR-016 explicitly defers it there.
+**Sub-phase 2.4b is next**: the recording tool that produces bindings, its confirm screen, and the
+four advisory AI assists. It is a second Playwright surface with powers ADR-008 denies the runtime
+— script injection for element picking — so it is its own trust boundary and its own review.
+Bindings today are hand-authored fixtures. See the Task P2-001 through P2-004A reports under
+`docs/tasks/reports/`.
 
 Phase 2 direction and the remaining sub-phases are in
 `docs/tasks/phase-2-sop-graph-requirements.md`. Model output is untrusted input: anything a model

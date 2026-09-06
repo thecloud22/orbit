@@ -14,6 +14,7 @@
 export const PACKAGE_NAME = '@orbit/runtime' as const;
 
 export * from './errors';
+export * from './drift';
 export * from './evidence';
 export * from './interpolate';
 export * from './interpreter';

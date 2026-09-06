@@ -533,3 +533,69 @@ Neither question is about which transitions exist. Both are about when taking a 
 | A bypass flag for unanswerable questions | Answering dismissively already covers the case, and does it with an attributable record instead of an anonymous override |
 | Enforce the gate only by hiding the action in the UI | A hidden control is not an enforced rule; any non-UI caller would walk straight past it |
 | Hand-roll the offered-action list in the API or UI | A second copy of the transition table, free to drift from the one the repository actually enforces |
+
+## ADR-018: Bind SOP steps to elements with a fingerprint the runtime checks before every action
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+An approved SOP Graph says "the field labelled Password". Nothing in it says which element on which page that is, and ADR-016 deliberately deferred the question to sub-phase 2.4. Answering it means a human demonstrating each step once against a sandbox and Orbit recording what they picked — an **Execution Binding**, which sub-phase 2.5 compiles into Agent IR and 2.6 executes.
+
+That introduces a failure mode Phase 1 never had. Phase 1 automated one controlled portal whose markup it owned; 2.4 aims at systems that change without telling anyone. A selector can keep resolving long after the page it was recorded against has been redesigned, and the element it now finds can mean something entirely different. Clicking it would be a real action on a real system that nobody reviewed. "The locator resolved" and "the locator resolved to the thing a human approved" are different claims, and only the second is worth acting on.
+
+Three narrowing decisions from Phase 1 stood in the way, each deliberate and each commented as such: `Locator.strategy` was a single-member enum (`test_id`); `BrowserExecutor` exposed no way to read an element's properties; and the executor had no `evaluate` and no page handle.
+
+### Decision
+
+**The locator vocabulary widens to a closed set: `test_id`, `role_and_name`, `label`.** CSS and XPath remain absent. The property worth protecting was never "only one strategy" — it was that no raw selector string is representable, because a selector string is a small program for walking the DOM and once one can be expressed, "no arbitrary selectors" becomes a convention rather than a property of the type. Each of the three names an element by something a person can read on the page. A binding carries an ordered chain of them, primary first, so a page that drops one attribute is still reachable by another; a single locator has nothing to fall back to.
+
+**A binding is verified against a fingerprint before every action, deterministically.** The fingerprint records the computed ARIA role, the accessible name, the visible text, and the bounding box as they were when a human confirmed the element. Before a real `fill` or `click` the runtime compares the live page against it. No model is consulted. On a mismatch the run stops, captures evidence, and routes back to re-mapping; **the executor is never asked to find a substitute element**, because choosing a different element than the one a human approved is exactly the decision no automated part of this system may make.
+
+**The check lives in the runtime, not the executor.** One read-only capability, `describeElement`, was added to `BrowserExecutor`; the comparison, the decision, and the fail-safe live in the interpreter, and the three methods that perform real browser actions were not modified at all. Deciding "this is drift, stop the run" is a workflow judgement, which ADR-008 reserves for the runtime. The comparison itself lives in `@orbit/execution-mapping` and is unit-testable with no browser.
+
+**`tagName` is not in the fingerprint, and the role is read from the accessibility tree.** Reading a tag name, or a computed role from the DOM, requires `evaluate` — and keeping script injection out of the executor is worth more than one field. `locator.ariaSnapshot()` reports the *computed* role and accessible name through a first-class API. That distinction is practical, not theoretical: measured against the demo portal, **every** element returned `null` for an explicit `role` attribute while `ariaSnapshot` correctly reported `button`, `textbox` and `definition`. Reading the attribute alone would have left the role empty for most elements and gutted the drift signal.
+
+**Text is compared for action targets and not for read targets.** A button's text is its label, so a change to it is real drift. An extract target's text is the value being extracted — `In Progress` one run, `Closed` the next — so comparing it would manufacture drift on every extract step in every workflow. Position is recorded but never blocks: layout legitimately moves.
+
+**The wait has two phases, and only the second is bounded by a short window.**
+
+*Phase one — waiting for the element to exist* — is the first `describeElement` call, and it is given **the step's entire timeout**, the same budget `fill` or `click` would have had on their own. Slow page loads are therefore tolerated exactly as they were before this check existed. This matters more than it looks: a drift check that is *less* patient than the action it guards would fail a page that merely took a while to render, reporting it as a changed page. The check must never be the reason a slow-but-correct run fails.
+
+*Phase two — waiting for an element that is already on screen to settle* — is bounded to **two seconds**. Once the element is visible, the only thing still legitimately in flux is the gap between it rendering and its accessible name resolving, which is hydration-shaped and measured in hundreds of milliseconds. Spending the full step budget here would make every genuinely drifted step take fifteen seconds to fail, turning a fail-safe into a stall and pushing a run that should stop quickly toward its own deadline.
+
+So the two-second window bounds *post-visibility settling only*, never overall page timing. The step's own timeout still caps the total, so a step configured shorter than two seconds is never overrun.
+
+**A binding is keyed by `(document, step)`, not by revision, and carries `stepSha256`.** Sub-phase 2.3 made editing a graph routine, and keying by revision would orphan every binding whenever any unrelated step changed. The checksum of the bound step is what makes step-keying safe: when *this* step's content changes, the hash stops matching and the binding is known stale — deterministically, with nothing inferred.
+
+**A binding has its own lifecycle table, not the SOP revision one.** `draft → needs_review → approved | rejected`, plus `superseded`. The mechanism is reused exactly — a transition table, the states permitted to reach a target, the expected state in the `WHERE` clause — but `SOP_REVISION_TRANSITIONS` is typed `Record<SopRevisionState, …>`, so reusing it would make a binding's state literally *be* a revision's state, coupling two unrelated entities; and `needs_clarification` is meaningless for a binding, which is demonstrated rather than asked.
+
+**The `scope` field exists now and is unused.** Single-record navigation holds for everything Orbit can currently execute: the runtime has no iteration construct and Agent IR has no loop. But the SOP vocabulary already expresses cardinality decisions, so lists are coming, and adding the field after 2.5 and 2.6 had compiled against the schema would mean reworking it. One optional field now costs nothing; the rework would cost two sub-phases.
+
+### Consequences
+
+- An approved binding is checked on every use, so a redesigned page stops a run instead of quietly driving it into the wrong element.
+- Existing agents are unaffected. Bindings are optional throughout, and an Agent Version without them takes a path byte-for-byte identical to before — which is what `pnpm verify:phase1` asserts.
+- The executor gained exactly one read-only method. It still cannot evaluate script, still exposes no page handle, and still cannot express a raw selector.
+- **Bindings are captured against a sandbox and trusted against production.** Where the two structurally diverge, the check fails safe — correct behaviour — but produces more false drift than real drift. Sub-phase 2.6 inherits this when it surfaces failures to an operator.
+- A fingerprint is not a guarantee. A page can change in ways it does not capture — the same role, name and text on a genuinely different control. It raises the cost of an undetected substitution; it does not eliminate it.
+- **Not guaranteed:** nothing here records *who* approved a binding, and the review states are enforced in the repository rather than by database triggers, matching ADR-014's posture.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Keep `test_id` as the only strategy | A single locator has no fallback, and §4's robustness ranking would have nothing to rank |
+| Allow CSS/XPath selectors in bindings | Makes an arbitrary DOM-walking expression representable, which is the one property the closed vocabulary exists to prevent |
+| Put the drift check inside the executor's `fill`/`click` | Puts a stop-the-run policy decision in the executor, which ADR-008 reserves for the runtime, and edits the three methods that perform real actions |
+| Read the role from the `role` attribute | Measured as `null` on every element of the demo portal; would leave the role empty for most real controls |
+| Use `evaluate` to read tag name and computed role | Reintroduces script injection into the executor to gain one fingerprint field |
+| Compare text for every binding | Manufactures drift on every extract step, whose text is the value being extracted |
+| Block on bounding-box changes | Layout legitimately moves; this would fail runs for a stylesheet edit |
+| Poll for the full step timeout before declaring drift | Turns a fail-safe into a fifteen-second stall on every genuinely drifted step |
+| Bound the whole check, including the visibility wait, to two seconds | Makes the drift check less patient than the action it guards, so a page that merely rendered slowly fails as though it had changed |
+| Key bindings by revision | Sub-phase 2.3 made graph edits routine; every edit would orphan every binding |
+| Reuse `SOP_REVISION_TRANSITIONS` for bindings | Couples two unrelated entities at the type level and imports a state (`needs_clarification`) that has no meaning for a binding |
+| Defer the `scope` field until lists are supported | Exactly the schema rework the forward-compatibility requirement exists to prevent |

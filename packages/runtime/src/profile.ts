@@ -27,7 +27,7 @@ export const SUPPORTED_STEP_TYPES = [
   'fail',
 ] as const;
 
-export const SUPPORTED_LOCATOR_STRATEGIES = ['test_id'] as const;
+export const SUPPORTED_LOCATOR_STRATEGIES = ['test_id', 'role_and_name', 'label'] as const;
 export const SUPPORTED_ASSERTION_TYPES = ['locator_visible', 'locator_has_text'] as const;
 export const SUPPORTED_EXTRACT_METHODS = ['text'] as const;
 export const SUPPORTED_VALUE_TYPES = ['string'] as const;

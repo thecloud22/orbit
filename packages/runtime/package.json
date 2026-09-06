@@ -27,7 +27,8 @@
     "@orbit/artifact-service": "workspace:*",
     "@orbit/artifacts": "workspace:*",
     "@orbit/contracts": "workspace:*",
-    "@orbit/db": "workspace:*"
+    "@orbit/db": "workspace:*",
+    "@orbit/execution-mapping": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.0"

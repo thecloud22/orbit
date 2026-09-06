@@ -19,6 +19,7 @@ import type {
   BrowserExecutor,
   BrowserExecutorFactory,
   CompleteRunInput,
+  ElementDescription,
   RecordArtifactInput,
   RecordedArtifact,
   RunRecorder,
@@ -52,11 +53,27 @@ export interface FakeBrowserOptions {
   readonly failTrace?: boolean;
   /** Overrides the text a test id renders. */
   readonly text?: Readonly<Record<string, string>>;
+  /**
+   * Overrides what `describeElement` reports, so a drift test can make the page
+   * disagree with an approved fingerprint.
+   */
+  readonly describe?: Readonly<Record<string, Partial<ElementDescription>>>;
+  /**
+   * Reports the overridden description for the first N calls and the true one
+   * afterwards — a page that is still settling.
+   *
+   * Without it the override is permanent, which is real drift. With it, the
+   * difference between "the page had not finished loading" and "the page is
+   * genuinely different" is what a test can pin down.
+   */
+  readonly describeSettlesAfterCalls?: number;
 }
 
 export interface FakeBrowser extends BrowserExecutor {
   readonly calls: readonly string[];
   readonly closed: () => boolean;
+  /** Timeouts `describeElement` was called with, in order. */
+  readonly describeTimeouts: readonly number[];
 }
 
 const FOUND_REQUEST = 'SR-1001';
@@ -72,6 +89,8 @@ export function createFakeBrowser(options: FakeBrowserOptions = {}): FakeBrowser
   const calls: string[] = [];
   let closed = false;
   let sawLocatorFailure = false;
+  let describeCalls = 0;
+  const describeTimeouts: number[] = [];
   let filled = '';
   let visible = new Set<string>(['request-number-input', 'search-request-button']);
   let text: Record<string, string> = {};
@@ -96,6 +115,7 @@ export function createFakeBrowser(options: FakeBrowserOptions = {}): FakeBrowser
   return {
     calls,
     closed: () => closed,
+    describeTimeouts,
 
     async navigate(request) {
       calls.push(`navigate:${request.url}`);
@@ -167,6 +187,34 @@ export function createFakeBrowser(options: FakeBrowserOptions = {}): FakeBrowser
 
       const observed = text[request.locator.value] ?? '';
       return { matched: observed === request.expected, observed };
+    },
+
+    async describeElement(request) {
+      calls.push(`describeElement:${request.locator.value}`);
+      describeTimeouts.push(request.timeoutMs);
+
+      if (!present(request.locator)) {
+        throw notFound(request.locator, 'describe element');
+      }
+
+      describeCalls += 1;
+      const settlesAfter = options.describeSettlesAfterCalls ?? 0;
+      const override = options.describe?.[request.locator.value];
+
+      // The override stands in for whatever the page currently shows. With a
+      // settle point it applies only until then — a page mid-render — and
+      // without one it never goes away, which is real drift.
+      const applyOverride =
+        override !== undefined && (settlesAfter === 0 || describeCalls <= settlesAfter);
+
+      const base: ElementDescription = {
+        role: 'textbox',
+        accessibleName: request.locator.value,
+        text: text[request.locator.value] ?? '',
+        boundingBox: { x: 0, y: 0, width: 100, height: 20 },
+      };
+
+      return applyOverride ? { ...base, ...override } : base;
     },
 
     async readText(request) {

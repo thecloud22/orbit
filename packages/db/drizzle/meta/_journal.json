@@ -15,6 +15,13 @@
       "when": 1788658203659,
       "tag": "0001_sop_graph_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788709178718,
+      "tag": "0002_execution_bindings",
+      "breakpoints": true
     }
   ]
 }

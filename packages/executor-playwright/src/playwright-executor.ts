@@ -7,6 +7,7 @@ import type {
   BrowserExecutor,
   BrowserExecutorFactory,
   ClickRequest,
+  ElementDescription,
   FillRequest,
   LocatorRequest,
   NavigateRequest,
@@ -15,6 +16,8 @@ import type {
   WaitForTextResult,
 } from '@orbit/runtime';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+
+import { parseAriaSnapshotHeader } from '@orbit/execution-mapping';
 
 import { classifyLocatorFailure, classifyNavigationFailure } from './errors';
 import { resolveLocator } from './locator';
@@ -188,6 +191,54 @@ function createExecutor(browser: Browser, context: BrowserContext, page: Page): 
           timeoutMs: request.timeoutMs,
         });
       }
+    },
+
+    /**
+     * Describes an element as the accessibility tree sees it.
+     *
+     * Read-only, and used by the runtime's drift check before a real action —
+     * this executor makes no judgement about what the answer means.
+     *
+     * Every field comes from a first-class Playwright API. There is deliberately
+     * no `evaluate` here and no `tagName`: reading a tag name or an implicit
+     * role from the DOM requires injecting script, and `ariaSnapshot` reports
+     * the *computed* role and accessible name without it. That matters in
+     * practice, not just in principle — real controls almost never carry an
+     * explicit `role` attribute, so reading the attribute alone would leave the
+     * role empty for most elements and gut the drift signal (ADR-018).
+     */
+    async describeElement(request: LocatorRequest): Promise<ElementDescription> {
+      const locator = resolveLocator(page, request.locator);
+
+      try {
+        await locator.waitFor({ state: 'visible', timeout: request.timeoutMs });
+      } catch (error) {
+        throw classifyLocatorFailure(error, {
+          locator: request.locator,
+          action: 'describe element',
+          timeoutMs: request.timeoutMs,
+        });
+      }
+
+      // Only the first line of the snapshot describes the target itself; the
+      // rest is its subtree, which for a container includes values that change
+      // every run.
+      const snapshot = await locator.ariaSnapshot({ depth: 0 });
+      const { role, accessibleName } = parseAriaSnapshotHeader(snapshot);
+
+      let text: string | null;
+      try {
+        text = (await locator.innerText()).trim();
+      } catch {
+        text = null;
+      }
+
+      return {
+        role,
+        accessibleName,
+        text,
+        boundingBox: await locator.boundingBox(),
+      };
     },
 
     async captureScreenshot(): Promise<Uint8Array> {

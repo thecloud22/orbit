@@ -27,11 +27,12 @@ import type {
  * A narrow browser capability interface.
  *
  * Every method that touches the page takes the Agent IR `Locator` type, whose
- * `strategy` is a single-member enum, so a raw selector string cannot be
- * expressed here. There is deliberately no `evaluate`, no script injection, no
- * exposed page or browser handle, and no generic "perform this action" method:
- * the set of things Orbit can do to a browser is this list and nothing else, and
- * widening it is an interface change that shows up in review.
+ * `strategy` is a closed three-member enum naming an element by its test id,
+ * its accessible role and name, or its label — so a raw CSS or XPath selector
+ * cannot be expressed here. There is deliberately no `evaluate`, no script
+ * injection, no exposed page or browser handle, and no generic "perform this
+ * action" method: the set of things Orbit can do to a browser is this list and
+ * nothing else, and widening it is an interface change that shows up in review.
  */
 export interface BrowserExecutor {
   navigate(request: NavigateRequest): Promise<NavigateResult>;
@@ -44,6 +45,15 @@ export interface BrowserExecutor {
   /** Waits for a locator's trimmed text to equal `expected`, reporting what it observed. */
   waitForText(request: TextRequest): Promise<WaitForTextResult>;
   readText(request: LocatorRequest): Promise<string>;
+  /**
+   * Describes an element as the accessibility tree sees it.
+   *
+   * Read-only, and the only capability sub-phase 2.4 added. It exists so the
+   * runtime can compare a page against the fingerprint a human approved before
+   * a real action; the executor reports, and the runtime decides what the
+   * report means.
+   */
+  describeElement(request: LocatorRequest): Promise<ElementDescription>;
   captureScreenshot(): Promise<Uint8Array>;
   /** The serialized DOM of the current page. */
   captureDom(): Promise<string>;
@@ -75,6 +85,26 @@ export type ClickRequest = LocatorRequest;
 
 export interface TextRequest extends LocatorRequest {
   readonly expected: string;
+}
+
+/**
+ * What an element looks like right now.
+ *
+ * Mirrors `ElementFingerprint` in @orbit/execution-mapping, which is what it is
+ * compared against. `tagName` is absent on purpose: reading it needs `evaluate`,
+ * and keeping script injection out of the executor is worth more than the field
+ * (ADR-018).
+ */
+export interface ElementDescription {
+  readonly role: string | null;
+  readonly accessibleName: string | null;
+  readonly text: string | null;
+  readonly boundingBox: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  } | null;
 }
 
 export interface WaitForTextResult {

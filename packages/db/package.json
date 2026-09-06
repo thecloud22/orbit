@@ -24,6 +24,7 @@
   "dependencies": {
     "@orbit/agent-ir": "workspace:*",
     "@orbit/contracts": "workspace:*",
+    "@orbit/execution-mapping": "workspace:*",
     "@orbit/sop-graph": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.23.0",

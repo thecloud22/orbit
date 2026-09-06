@@ -20,6 +20,7 @@ import {
 } from '@orbit/contracts';
 
 import { RuntimeError, asRuntimeError, describeCause } from './errors';
+import { verifyBinding, type ExecutionBindingResolver } from './drift';
 import { captureEvidence, failureEvidence, successEvidence } from './evidence';
 import { resolveValue, type ResolutionScope } from './interpolate';
 import { silentLogger, type RuntimeLogger } from './logger';
@@ -55,6 +56,13 @@ export interface ExecuteAgentVersionInput {
   readonly store: RunStore;
   readonly browser: BrowserExecutorFactory;
   readonly logger?: RuntimeLogger;
+  /**
+   * Approved Execution Bindings, when the agent has any.
+   *
+   * Absent for every Phase 1 agent, in which case no drift check runs and
+   * execution is byte-for-byte what it was before sub-phase 2.4.
+   */
+  readonly bindings?: ExecutionBindingResolver;
 }
 
 export interface ExecutedStepSummary {
@@ -94,7 +102,9 @@ interface StepResult {
 }
 
 function describeLocator(locator: Locator): string {
-  return `${locator.strategy}=${locator.value}`;
+  return locator.name === undefined
+    ? `${locator.strategy}=${locator.value}`
+    : `${locator.strategy}=${locator.value} "${locator.name}"`;
 }
 
 export async function executeAgentVersion(
@@ -147,6 +157,7 @@ export async function executeAgentVersion(
         executor,
         recorder,
         logger,
+        bindings: input.bindings,
         artifacts,
         steps,
       });
@@ -206,6 +217,7 @@ interface InterpretInput {
   readonly logger: RuntimeLogger;
   readonly artifacts: RecordedArtifact[];
   readonly steps: ExecutedStepSummary[];
+  readonly bindings: ExecutionBindingResolver | undefined;
 }
 
 async function interpretSteps(context: InterpretInput): Promise<Outcome> {
@@ -351,6 +363,18 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
 
     case 'browser.fill': {
       const value = resolveValue(step.value, 'value', scope, step.id);
+
+      // Checked before the action, never after: the point is to not type into
+      // the wrong field, not to discover afterwards that we did.
+      await verifyBinding({
+        executor,
+        bindings: context.bindings,
+        locator: step.locator,
+        agentStepId: step.id,
+        timeoutMs,
+        logger: context.logger,
+      });
+
       await executor.fill({ locator: step.locator, value, timeoutMs });
 
       // The resolved value is deliberately absent from the payload: the event
@@ -373,6 +397,15 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
     }
 
     case 'browser.click': {
+      await verifyBinding({
+        executor,
+        bindings: context.bindings,
+        locator: step.locator,
+        agentStepId: step.id,
+        timeoutMs,
+        logger: context.logger,
+      });
+
       await executor.click({ locator: step.locator, timeoutMs });
 
       await recorder.appendEvent({
