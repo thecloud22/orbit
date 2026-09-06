@@ -95,13 +95,30 @@ alternative to a local server, but no check depends on it.
 
 ## Local setup
 
+From a clean checkout:
+
 ```bash
-cp .env.example .env
 pnpm install
+cp .env.example .env
 pnpm db:migrate          # creates the Orbit schema in orbit_dev
 pnpm db:seed             # seeds Find Service Request 0.1.0 (idempotent)
-pnpm dev                 # runs all apps in parallel
+pnpm dev                 # starts Watchtower, the API, and the demo portal
 ```
+
+Then open **Watchtower at http://localhost:3000**, enter `SR-1001`, and press **Start run**.
+
+One-time, for the browser tests and the runtime:
+
+```bash
+pnpm --filter @orbit/demo-portal exec playwright install chromium
+```
+
+The database itself needs a one-time role and two databases; see
+[Local database](#local-database) below.
+
+**[docs/demo/phase-1-demo.md](./docs/demo/phase-1-demo.md) is the full Phase 1 demo guide** —
+the successful run, the business not-found result, the controlled technical failure, where to find
+every piece of evidence, how to stop everything, and the test-safety rules.
 
 Local services:
 
@@ -351,16 +368,19 @@ screenshots and offers HTML snapshots and traces as downloads.
 
 ## Validation commands
 
-```bash
-pnpm typecheck      # tsc --noEmit across every workspace
-pnpm lint           # ESLint, including architecture boundary rules
-pnpm format:check   # Prettier
-pnpm test           # Vitest unit tests; needs no database
-pnpm test:db        # Vitest database integration tests against TEST_DATABASE_URL
-pnpm test:runtime   # real Chromium + demo portal + TEST_DATABASE_URL
-pnpm test:e2e:watchtower  # the whole stack: browser -> Watchtower -> API -> runtime
-pnpm verify         # typecheck, lint, format:check, test, test:db
-```
+| Command | What it proves | Needs |
+|---|---|---|
+| `pnpm typecheck` | Types across every workspace | nothing |
+| `pnpm lint` | Correctness plus the architecture boundary rules | nothing |
+| `pnpm format:check` | Formatting | nothing |
+| `pnpm test` | Unit and contract behaviour | nothing but a checkout |
+| `pnpm test:db` | Migrations, repositories, ordering, artifact links, API over real persistence | PostgreSQL |
+| `pnpm test:runtime` | Agent IR executed by real Chromium against the demo portal | + Chromium |
+| `pnpm test:e2e:watchtower` | The whole stack: browser → Watchtower → API → runtime → portal | + the stack |
+| `pnpm test:e2e` | The demo portal's own behaviour (Task 2) | + Chromium |
+| `pnpm check:teardown` | No Orbit process or test port survived a run | nothing |
+| `pnpm verify` | typecheck, lint, format:check, test, test:db | PostgreSQL |
+| **`pnpm verify:phase1`** | **Everything above, in order — the Phase 1 acceptance gate** | all of it |
 
 `pnpm test` deliberately requires nothing but a checkout. The other suites are
 separate Vitest projects because each needs more: `vitest.db.config.ts` needs a
@@ -375,11 +395,15 @@ one project would pull the seeded Agent Version out from under a live server. Ru
 them as separate commands, not concurrently.
 
 Each suite starts the servers it needs when nothing is listening and reuses what
-is already running, stopping only what it started. The end-to-end stack uses its
-own ports — API `3102`, Watchtower `3010` — so it never collides with `pnpm dev`,
-and points its API at `orbit_test` and a disposable artifact root, never at
-`data/artifacts`. None of these is part of `pnpm verify`, for the same reason
-`pnpm test:e2e` is not.
+is already running, stopping only what it started — and teardown waits until the
+port is actually free, not merely until the signal was sent. The end-to-end stack
+uses its own ports — API `3102`, Watchtower `3010` — so it never collides with
+`pnpm dev`, and points its API at `orbit_test` and a disposable artifact root,
+never at `data/artifacts`.
+
+`pnpm verify` stops at `test:db` so it stays runnable without a browser.
+`pnpm verify:phase1` is the full gate and ends with `pnpm check:teardown`, which
+fails if any Orbit service process or test port survived the run.
 
 ### Browser tests
 

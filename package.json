@@ -26,7 +26,9 @@
     "db:seed": "pnpm --filter @orbit/db seed",
     "agent:run": "pnpm --filter @orbit/browser-worker agent:run",
     "test:runtime": "vitest run --config vitest.runtime.config.ts",
-    "test:e2e:watchtower": "vitest run --config vitest.e2e.config.ts"
+    "test:e2e:watchtower": "vitest run --config vitest.e2e.config.ts",
+    "check:teardown": "node scripts/check-teardown.mjs",
+    "verify:phase1": "pnpm verify && pnpm test:runtime && pnpm test:e2e:watchtower && pnpm test:e2e && pnpm check:teardown"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

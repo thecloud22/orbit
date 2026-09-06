@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { E2E_API_URL, E2E_WATCHTOWER_URL } from '@orbit/api/testing/stack-ports';
 import { chromium, type Browser, type Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -45,6 +47,67 @@ describe('Watchtower end to end', () => {
       .toBe(true);
 
     return (await label.textContent()) ?? '';
+  }
+
+  /**
+   * One successful run, started through the API and shared by the read-only
+   * safety checks below. Those assert properties of a finished run rather than
+   * of the act of starting one, so paying for a browser run each is waste.
+   */
+  let sharedRun: { runId: string; detail: RunDetailBody } | undefined;
+
+  interface ArtifactBody {
+    readonly id: string;
+    readonly kind: string;
+    readonly sha256: string;
+    readonly sizeBytes: number;
+    readonly url: string;
+  }
+
+  interface RunDetailBody {
+    readonly id: string;
+    readonly status: string;
+    readonly artifacts: readonly ArtifactBody[];
+  }
+
+  async function succeededRun(): Promise<{ runId: string; detail: RunDetailBody }> {
+    if (sharedRun !== undefined) {
+      return sharedRun;
+    }
+
+    const versions = (await (await fetch(`${E2E_API_URL}/v1/agent-versions`)).json()) as {
+      data: { id: string; name: string }[];
+    };
+    const seeded = versions.data.find((version) => !version.name.includes('broken locator'));
+
+    const created = (await (
+      await fetch(`${E2E_API_URL}/v1/agent-versions/${seeded!.id}/runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ inputs: { requestNumber: 'SR-1001' } }),
+      })
+    ).json()) as { data: { runId: string } };
+
+    const runId = created.data.runId;
+
+    await expect
+      .poll(
+        async () => {
+          const summary = (await (
+            await fetch(`${E2E_API_URL}/v1/runs/${runId}/summary`)
+          ).json()) as { data: { status: string } };
+          return summary.data.status;
+        },
+        { timeout: 90_000, interval: 500 },
+      )
+      .toBe('succeeded');
+
+    const detail = (await (await fetch(`${E2E_API_URL}/v1/runs/${runId}`)).json()) as {
+      data: RunDetailBody;
+    };
+
+    sharedRun = { runId, detail: detail.data };
+    return sharedRun;
   }
 
   async function startRun(page: Page, requestNumber: string): Promise<void> {
@@ -221,5 +284,108 @@ describe('Watchtower end to end', () => {
     expect(steps.some((step) => step.includes('complete_found'))).toBe(false);
 
     await page.close();
+  });
+
+  describe('artifact access safety', () => {
+    it('refuses an artifact requested under a different run', async () => {
+      const { detail } = await succeededRun();
+
+      const otherRun = (await (await fetch(`${E2E_API_URL}/v1/agent-versions`)).json()) as {
+        data: { id: string; name: string }[];
+      };
+      const seeded = otherRun.data.find((version) => !version.name.includes('broken locator'));
+
+      const second = (await (
+        await fetch(`${E2E_API_URL}/v1/agent-versions/${seeded!.id}/runs`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ inputs: { requestNumber: 'SR-9999' } }),
+        })
+      ).json()) as { data: { runId: string } };
+
+      const borrowed = detail.artifacts[0]!;
+      const response = await fetch(
+        `${E2E_API_URL}/v1/runs/${second.data.runId}/artifacts/${borrowed.id}`,
+      );
+
+      expect(response.status).toBe(404);
+      const body = await response.text();
+      expect(body).not.toContain('/Users');
+      expect(body).not.toContain('data/artifacts');
+    });
+
+    it('returns the same 404 for an artifact that does not exist', async () => {
+      const { runId } = await succeededRun();
+
+      // Well-formed but never issued.
+      const response = await fetch(
+        `${E2E_API_URL}/v1/runs/${runId}/artifacts/art_00000000000000000000000000`,
+      );
+
+      expect(response.status).toBe(404);
+      expect((await response.json()).error.message).toBe('No such artifact for this run.');
+    });
+
+    it('never exposes a storage key or filesystem path in an API response', async () => {
+      const { runId } = await succeededRun();
+
+      for (const path of [`/v1/runs/${runId}`, `/v1/runs/${runId}/events`, '/v1/agent-versions']) {
+        const body = await (await fetch(`${E2E_API_URL}${path}`)).text();
+
+        expect(body, path).not.toContain('storageKey');
+        expect(body, path).not.toContain('/Users');
+        expect(body, path).not.toContain('data/artifacts');
+        expect(body, path).not.toContain('/steps/rstep_');
+      }
+    });
+
+    it('never renders a storage key or filesystem path in Watchtower', async () => {
+      const { runId } = await succeededRun();
+      const page = await open(`/?runId=${runId}`);
+      await page.getByTestId('evidence-list').waitFor({ state: 'visible', timeout: 60_000 });
+
+      // Orbit's own rendering, not the whole document: Vite's dev server injects
+      // absolute source paths of its own into <head>, which says nothing about
+      // what Watchtower publishes. Everything the application renders is here.
+      const rendered = await page.locator('#root').innerHTML();
+
+      expect(rendered).not.toContain('storageKey');
+      expect(rendered).not.toContain('data/artifacts');
+      expect(rendered).not.toContain('/Users');
+      expect(rendered).not.toContain('/steps/rstep_');
+
+      // These two are Orbit-specific strings that no build tool would inject, so
+      // they are also checked against the entire document.
+      const document = await page.content();
+      expect(document).not.toContain('storageKey');
+      expect(document).not.toContain('data/artifacts');
+
+      await page.close();
+    });
+  });
+
+  describe('artifact integrity', () => {
+    it('serves bytes that match the digest recorded for the run', async () => {
+      const { runId, detail } = await succeededRun();
+
+      expect(detail.artifacts.length).toBeGreaterThan(0);
+
+      for (const artifact of detail.artifacts) {
+        const response = await fetch(`${E2E_API_URL}/v1/runs/${runId}/artifacts/${artifact.id}`);
+        expect(response.status).toBe(200);
+
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        const digest = createHash('sha256').update(bytes).digest('hex');
+
+        // The bytes actually served match both the digest the database recorded
+        // and the one the response advertises. The server-side verification that
+        // *refuses* altered bytes is asserted in apps/api/src/api.db.test.ts,
+        // which can tamper with the stored file; this proves the retained
+        // retrieval path is the verified one.
+        expect(digest).toBe(artifact.sha256);
+        expect(response.headers.get('x-orbit-sha256')).toBe(artifact.sha256);
+        expect(bytes.byteLength).toBe(artifact.sizeBytes);
+      }
+    });
   });
 });

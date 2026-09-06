@@ -29,33 +29,48 @@ silently.
 
 ## Current state
 
-Tasks 7 and 8 (run API and Watchtower) are complete: `apps/api` exposes the Phase 1
-HTTP surface — agent versions, run start, run detail, ordered events, run summary,
-and run-scoped artifact retrieval — and `apps/web` is the Watchtower console that
-starts a run, polls persisted state, and opens the evidence. Runs execute in the
-API process through the `RunDispatcher` seam (ADR-011); there is no queue.
-See `docs/tasks/reports/TASK-007-008-run-api-watchtower-report.md` for the routes,
-the evidence access model, the local process model, and known limitations.
+**Phase 1 is complete.** All nine tasks are done, and the proof loop runs from a clean checkout in
+one documented command:
 
-Task 9 (end-to-end proof, documentation, and hardening) is next. Note two open
-items it should pick up: the Phase 1 error taxonomy has no `NOT_FOUND` code, so
-404s are reported as `VALIDATION_ERROR`; and nothing server-side prevents a
-duplicate run dispatch.
+```text
+Watchtower manual trigger -> typed dynamic input -> version-pinned Agent IR
+  -> deterministic Playwright execution -> events and artifacts -> Watchtower evidence
+```
 
-Task 6 (browser runtime) remains the authority on Agent IR execution: `@orbit/runtime`
-interprets Agent IR over the `BrowserExecutor` and `RunStore` ports,
-`@orbit/executor-playwright` implements the first, and `@orbit/runtime/persistence`
-the second. `prepareExecution` is the single validation gate the API and the
-browser-worker CLI both use.
+- `docs/demo/phase-1-demo.md` is the demonstration procedure: setup, the `SR-1001` success, the
+  `SR-9999` business not-found result, the controlled technical failure, where every piece of
+  evidence lives, how to stop everything, and the test-safety rules.
+- `pnpm verify:phase1` is the acceptance gate: type checking, linting, formatting, unit, database,
+  runtime-browser, Watchtower end-to-end, and demo portal suites, ending with `pnpm check:teardown`,
+  which fails if any Orbit process or test port survived. 551 tests, about 80 seconds.
+- `docs/tasks/reports/TASK-009-end-to-end-demo-report.md` is the final acceptance record: the
+  scenario expectations, the gate results, the defects fixed, the acceptance checklist, and the
+  limitations deferred beyond Phase 1.
 
-Task 5 (local artifact storage) provides the storage interface and its local filesystem
-adapter; `@orbit/artifact-service` composes byte storage with the Task 4 repositories in
-the required order. See ADR-015 for the storage-key grammar, containment model, and
-orphaned-bytes policy.
+Orbit Phase 1 is a **local proof loop, not production software**: no authentication, no queue, no
+recovery, no retention, and one agent against one controlled local portal. The report's limitations
+section is the authoritative list.
 
-Task 4 (PostgreSQL schema, migrations, and repositories) remains the authority on
-persistence; see `docs/tasks/reports/TASK-004-postgres-persistence-report.md` for its
-limitations.
+### Where the pieces live
+
+| Concern | Owner |
+|---|---|
+| Persistence, migrations, repositories | `@orbit/db` (Task 4) |
+| Artifact bytes and their containment | `@orbit/artifacts`, `@orbit/artifact-service` (Task 5, ADR-015) |
+| Agent IR interpretation | `@orbit/runtime` over the `BrowserExecutor` and `RunStore` ports (Task 6) |
+| Browser actions | `@orbit/executor-playwright` (Task 6) |
+| HTTP surface and run dispatch | `apps/api` (Tasks 7–8) |
+| Trigger and evidence console | `apps/web` (Tasks 7–8) |
+
+`prepareExecution` in `@orbit/runtime` is the single validation gate the API and the browser-worker
+CLI both use.
+
+### Before starting Phase 2
+
+Read the Task 9 report's limitations section first. The open items carried out of Phase 1 are:
+`NOT_FOUND` missing from the error taxonomy; no server-side duplicate-dispatch suppression; no
+recovery for runs orphaned by a killed API process; no retention or orphan reconciliation; and
+database-level enforcement of immutability and append-only still deferred (ADR-014).
 
 ## Historical task reading
 

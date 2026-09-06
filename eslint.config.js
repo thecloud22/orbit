@@ -58,6 +58,16 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
 
+  // Repository maintenance scripts are plain Node ESM, so TypeScript is not
+  // resolving their identifiers. The globals they use are declared explicitly
+  // rather than disabling the rule wholesale.
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly' },
+    },
+  },
+
   {
     files: ['**/*.{ts,tsx}'],
     rules: {
