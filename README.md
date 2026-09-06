@@ -69,6 +69,8 @@ packages/
   artifact-service/    # Composes artifact bytes with artifact metadata
   db/                  # Drizzle schema, migrations, repositories
   sop-graph/           # SOP Graph: non-executable business-process representation
+  sop-generation/      # Free-text -> proposed SOP Graph (the only LangChain dependency)
+  sop-service/         # Composes SOP generation with SOP persistence
   policy/              # (not created yet) Domain/action allowlist checks
 
 docs/
@@ -338,8 +340,56 @@ Lifecycle (`draft` → `needs_clarification` → `in_review` → `approved`/`rej
 → `superseded`) belongs to the revision; a document's status is derived from its
 newest non-superseded revision.
 
-Nothing generates a graph yet. Free-text SOP understanding is Phase 2.2; see
-`docs/tasks/phase-2-sop-graph-requirements.md`.
+## SOP drafting from free text (Phase 2.2)
+
+`@orbit/sop-generation` turns a plain-language description into a proposed graph,
+and `@orbit/sop-service` persists it. Watchtower has a textarea; submitting it
+calls `POST /v1/sop-drafts`.
+
+```text
+source text
+  -> model, bound to sopGraphSchema minus schemaVersion
+  -> code adds SOP_GRAPH_SCHEMA_VERSION
+  -> parseSopGraphDocument (schema + all 22 graph rules)
+  -> invalid? one repair, carrying the real validation issues back to the model
+  -> valid?   persist document + first revision in one transaction
+```
+
+Model output is untrusted input. It reaches the database only through the
+validator built in Phase 2.1, and **nothing is persisted unless it is valid** —
+a draft that fails after one repair returns its issues and writes no row.
+
+Three outcomes are kept apart: a draft, a graph that failed validation, and a
+provider that could not be reached. The API reports them as `201`, `422` with the
+issues in `details`, and `500`.
+
+This task legitimately calls the network — to the configured model provider, from
+one file, `packages/sop-generation/src/anthropic-provider.ts`. It never contacts a
+URL that appears *inside* a graph: `urlHint` and `systemHint` stay untrusted draft
+references, and a test replaces global `fetch` with a spy to prove it.
+
+### Configuration
+
+Set `ANTHROPIC_API_KEY` in `.env` (see `.env.example`). Without it the API still
+starts and every other route works; the draft route reports that generation is
+unavailable. `ORBIT_LLM_MODEL` overrides the default, `claude-sonnet-5`.
+
+### The deterministic fake provider
+
+Every automated test uses a scripted fake provider and makes no network call. The
+end-to-end stack needs an API that generates content without a model, and it gets
+one from a **separate test-only entry point**, `apps/api/src/testing/e2e-server.ts`,
+which passes the fake to the same `startApi` the shipped entry point calls.
+
+There is deliberately no environment switch in `apps/api/src/index.ts` selecting a
+provider — that would be a live path to a test double in a real deployment. Three
+guards hold the line: the fake is behind `@orbit/sop-generation/testing` so
+production code has no import path to it; a test walks the module graph from
+`index.ts` and asserts no module at any depth reaches that subpath; and the
+test-only entry point refuses to start against any database but `orbit_test`.
+
+Still not built: the review UI, the step editor, reordering controls, the
+clarification-answer workflow, and approval. Those are Phase 2.3.
 
 ## Watchtower
 
@@ -377,6 +427,7 @@ baked into the bundle. Set `ORBIT_API_URL` to point the proxy elsewhere.
 | `GET /v1/runs/:runId/events` | Ordered events; `?afterSequence=` for just the new ones |
 | `GET /v1/runs/:runId/summary` | Status poll without the timelines |
 | `GET /v1/runs/:runId/artifacts/:artifactId` | Controlled evidence bytes |
+| `POST /v1/sop-drafts` | Generate a draft SOP Graph from `{ sourceText }`, or a new revision from `{ documentId }`; `201` |
 
 Every failure is the structured error envelope from `docs/contracts/api.md`.
 

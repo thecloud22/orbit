@@ -58,6 +58,43 @@ const noExecutionInSopGraph = [
 ];
 
 /**
+ * SOP generation is not persistence and not an application. It may reach the
+ * model provider it is configured with, and nothing else.
+ */
+const noPersistenceOrApplicationsInSopGeneration = [
+  {
+    group: ['@orbit/db', '@orbit/db/*'],
+    message:
+      'SOP generation must not depend on persistence. Composition belongs to @orbit/sop-service.',
+  },
+  {
+    group: ['@orbit/api', '@orbit/web', '@orbit/browser-worker', '@orbit/demo-portal'],
+    message:
+      'SOP generation must not depend on an application; applications depend on it. See CLAUDE.md > Architecture rules.',
+  },
+  {
+    group: ['net', 'http', 'https', 'dns', 'node:net', 'node:http', 'node:https', 'node:dns'],
+    message:
+      'Reach the model provider through its client library. A URL inside a graph is an untrusted draft reference and is never contacted.',
+  },
+];
+
+/**
+ * A deterministic test double must not be reachable from production code.
+ *
+ * The fake model provider lives behind a `/testing` subpath so there is no
+ * import path to it from a shipped entry point; this rule is the mechanical
+ * enforcement of that, and a transitive source scan proves it independently.
+ */
+const noTestDoublesInProductionCode = [
+  {
+    group: ['@orbit/sop-generation/testing', '@orbit/sop-graph/testing', '@orbit/db/testing'],
+    message:
+      'Test doubles and destructive test helpers must not be reachable from production code. See apps/api/src/testing/e2e-server.ts.',
+  },
+];
+
+/**
  * Domain packages never touch the filesystem: parsing functions take text, not
  * paths, so callers own reading bytes. Tests are exempt — reading the seeded
  * fixture from disk is exactly what they are for — but they keep every
@@ -155,6 +192,136 @@ export default tseslint.config(
         'error',
         { patterns: [...noFrameworksInDomainPackages, ...noExecutionInSopGraph] },
       ],
+    },
+  },
+
+  // SOP generation reaches the network — to the configured model provider, and
+  // only from `anthropic-provider.ts`. What must still hold is that it never
+  // touches a URL that came out of a graph, and that it stays clear of
+  // persistence: composing generation with the database is @orbit/sop-service's
+  // job, exactly as @orbit/artifact-service composes bytes with metadata.
+  {
+    files: ['packages/sop-generation/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...noFrameworksInDomainPackages,
+            ...noFilesystemInDomainPackages,
+            ...noPersistenceOrApplicationsInSopGeneration,
+          ],
+        },
+      ],
+    },
+  },
+
+  // Its tests may read the source tree — the network-boundary scan has to open
+  // every file to prove what is not in it. Only the filesystem rule is lifted.
+  {
+    files: ['packages/sop-generation/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...noFrameworksInDomainPackages,
+            ...noPersistenceOrApplicationsInSopGeneration,
+          ],
+        },
+      ],
+    },
+  },
+
+  // The composition root is permitted to import both @orbit/sop-generation and
+  // @orbit/db — that is its purpose — but it stays out of the applications, and
+  // it must never reach the deterministic fake provider.
+  {
+    files: ['packages/sop-service/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['react', 'react-dom', 'react/*', 'react-dom/*'],
+              message:
+                'The SOP service must not depend on React. See CLAUDE.md > Architecture rules.',
+            },
+            {
+              group: ['fastify', '@fastify/*'],
+              message:
+                'The SOP service must not depend on Fastify. See CLAUDE.md > Architecture rules.',
+            },
+            {
+              group: ['playwright', 'playwright-core', '@playwright/*', '@playwright/test'],
+              message:
+                'The SOP service must not depend on Playwright. See CLAUDE.md > Architecture rules.',
+            },
+            {
+              group: ['@orbit/api', '@orbit/web', '@orbit/browser-worker', '@orbit/demo-portal'],
+              message:
+                'The SOP service must not depend on an application; applications depend on it. See CLAUDE.md > Architecture rules.',
+            },
+            ...noTestDoublesInProductionCode,
+          ],
+        },
+      ],
+    },
+  },
+
+  // Its tests are exactly what the fake provider and the database harness are
+  // for. Only the test-double rule is lifted; every boundary that keeps the SOP
+  // service out of the applications still applies.
+  {
+    files: ['packages/sop-service/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['react', 'react-dom', 'react/*', 'react-dom/*'],
+              message:
+                'The SOP service must not depend on React. See CLAUDE.md > Architecture rules.',
+            },
+            {
+              group: ['fastify', '@fastify/*'],
+              message:
+                'The SOP service must not depend on Fastify. See CLAUDE.md > Architecture rules.',
+            },
+            {
+              group: ['playwright', 'playwright-core', '@playwright/*', '@playwright/test'],
+              message:
+                'The SOP service must not depend on Playwright. See CLAUDE.md > Architecture rules.',
+            },
+            {
+              group: ['@orbit/api', '@orbit/web', '@orbit/browser-worker', '@orbit/demo-portal'],
+              message:
+                'The SOP service must not depend on an application; applications depend on it. See CLAUDE.md > Architecture rules.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // The deterministic fake provider must not be reachable from the API's
+  // production code. The shipped entry point selects the real provider and has
+  // no switch that could choose otherwise; the end-to-end stack uses a separate
+  // entry point under `src/testing/`.
+  {
+    files: ['apps/api/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: noTestDoublesInProductionCode }],
+    },
+  },
+
+  // Test code and the test-only entry point are exactly what the fake is for.
+  {
+    files: ['apps/api/src/testing/**/*.ts', 'apps/api/src/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': 'off',
     },
   },
 

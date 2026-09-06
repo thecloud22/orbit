@@ -1,0 +1,87 @@
+import type { LLMProvider, ProviderDescriptor, SopGraphProposalRequest } from '../provider';
+import { SopProviderError } from '../provider';
+
+/**
+ * A provider that makes no network call and does exactly what a test says.
+ *
+ * It lives behind `@orbit/sop-generation/testing` so production code has no
+ * import path to it at all — the same reason `@orbit/db/testing` keeps the
+ * destructive reset helpers out of the package root.
+ *
+ * Every request it receives is recorded, because the interesting assertion in
+ * this package is not only what came back but what was *asked*: a repair must
+ * carry the real validation issues from the failed attempt, and the only way to
+ * prove that is to look at the second request.
+ */
+
+export type FakeProviderResponse =
+  | { readonly kind: 'respond'; readonly raw: unknown }
+  | { readonly kind: 'throw'; readonly message: string };
+
+export function respondWith(raw: unknown): FakeProviderResponse {
+  return { kind: 'respond', raw };
+}
+
+export function failWith(message: string): FakeProviderResponse {
+  return { kind: 'throw', message };
+}
+
+export interface FakeSopProvider extends LLMProvider {
+  /** Every request, in order. A repair is `requests[1]`. */
+  readonly requests: readonly SopGraphProposalRequest[];
+  readonly callCount: number;
+}
+
+export interface FakeSopProviderOptions {
+  /**
+   * Decides each response from the request and how many have come before, so
+   * one mechanism covers both an ordered script and a provider that reacts to
+   * its input.
+   */
+  readonly respond: (request: SopGraphProposalRequest, callIndex: number) => FakeProviderResponse;
+  readonly descriptor?: ProviderDescriptor;
+}
+
+/** Turns an ordered list into a `respond` function; extra calls fail loudly. */
+export function respondInOrder(
+  responses: readonly FakeProviderResponse[],
+): (request: SopGraphProposalRequest, callIndex: number) => FakeProviderResponse {
+  return (_request, callIndex) => {
+    const response = responses[callIndex];
+
+    if (response === undefined) {
+      throw new Error(
+        `The fake provider was called ${callIndex + 1} times but only ${responses.length} response(s) were scripted.`,
+      );
+    }
+
+    return response;
+  };
+}
+
+export function createFakeSopProvider(options: FakeSopProviderOptions): FakeSopProvider {
+  const requests: SopGraphProposalRequest[] = [];
+
+  return {
+    descriptor: options.descriptor ?? { provider: 'fake', model: 'fake-model' },
+
+    get requests() {
+      return requests;
+    },
+
+    get callCount() {
+      return requests.length;
+    },
+
+    generateSopGraphProposal(request: SopGraphProposalRequest): Promise<unknown> {
+      const callIndex = requests.length;
+      requests.push(request);
+
+      const response = options.respond(request, callIndex);
+
+      return response.kind === 'throw'
+        ? Promise.reject(new SopProviderError(response.message, { provider: 'fake' }))
+        : Promise.resolve(response.raw);
+    },
+  };
+}

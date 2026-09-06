@@ -139,3 +139,77 @@ export function redactPayload(payload: Record<string, unknown>): Record<string, 
 export function artifactUrl(runId: string, artifactId: string): string {
   return `/v1/runs/${runId}/artifacts/${artifactId}`;
 }
+
+/**
+ * A generated SOP draft, as Watchtower sees it.
+ *
+ * Sub-phase 2.2 provides a minimal input surface, not the review UI: this is
+ * enough to show what came back, and deliberately not enough to edit it. There
+ * is no step editor, no reorder control, and no JSON editor behind these types.
+ *
+ * Like every other view here it is plain data — no database row, no storage key,
+ * no filesystem path, and no provider credential ever reaches it.
+ */
+export interface SopDraftStepView {
+  readonly id: string;
+  readonly kind: string;
+  /** One line naming the step the way a reviewer sees it. */
+  readonly summary: string;
+}
+
+export interface SopDraftInputView {
+  readonly id: string;
+  readonly label: string;
+  readonly type: string;
+  readonly required: boolean;
+}
+
+export interface SopDraftAssumptionView {
+  readonly id: string;
+  readonly statement: string;
+  readonly rationale: string | null;
+}
+
+export interface SopDraftQuestionView {
+  readonly id: string;
+  readonly question: string;
+  readonly aboutStepId: string | null;
+}
+
+export interface SopDraftRiskView {
+  readonly id: string;
+  readonly statement: string;
+  readonly severity: string;
+}
+
+/** Which model produced a draft. Never an API key, never a prompt body. */
+export interface SopDraftProvenanceView {
+  readonly kind: string;
+  readonly provider: string | null;
+  readonly model: string | null;
+  readonly promptVersion: string | null;
+  readonly generatedAt: string | null;
+}
+
+export interface SopDraftView {
+  readonly documentId: string;
+  readonly revisionId: string;
+  readonly revisionNumber: number;
+  readonly state: string;
+  readonly title: string;
+  readonly description: string | null;
+  readonly steps: readonly SopDraftStepView[];
+  readonly inputs: readonly SopDraftInputView[];
+  readonly assumptions: readonly SopDraftAssumptionView[];
+  readonly clarificationQuestions: readonly SopDraftQuestionView[];
+  readonly risks: readonly SopDraftRiskView[];
+  readonly provenance: SopDraftProvenanceView;
+  /**
+   * Always false, and stated rather than implied.
+   *
+   * The requirements document requires the review surface to say plainly that a
+   * draft cannot start browser automation. Sending it as a field means the UI
+   * renders a fact from the server rather than a hard-coded reassurance.
+   */
+  readonly executable: false;
+}

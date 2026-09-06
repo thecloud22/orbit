@@ -35,18 +35,23 @@ silently.
 checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
-**Phase 2 is underway.** Task 1 (sub-phase 2.1, SOP Graph foundation) is complete:
-`@orbit/sop-graph` provides the non-executable graph contract, its semantic validation, and step
-reorder/dependency validation; `@orbit/db` persists documents, immutable checksummed revisions,
-provenance, and clarification answers. There is no LLM, no UI, and no path from a graph to
-anything executable. See `docs/tasks/reports/TASK-P2-001-sop-graph-foundation-report.md`.
+**Phase 2 is underway.** Task 1 (sub-phase 2.1, SOP Graph foundation) and Task 2 (sub-phase
+2.2, free-text understanding) are complete. `@orbit/sop-graph` provides the non-executable graph
+contract, its semantic validation, and step reorder/dependency validation; `@orbit/db` persists
+documents, immutable checksummed revisions, provenance, and clarification answers;
+`@orbit/sop-generation` turns free text into a proposed graph behind an `LLMProvider` interface,
+and `@orbit/sop-service` persists a valid one. There is still no review UI and no path from a
+graph to anything executable. See `docs/tasks/reports/TASK-P2-001-sop-graph-foundation-report.md`
+and `docs/tasks/reports/TASK-P2-002-free-text-understanding-report.md`.
+
+**Task 3 (sub-phase 2.3, review and editing) is next**: the plain-language review UI, the
+step-specific form editor, accessible reordering controls that call the reorder validation Task 1
+already built, an optional advanced JSON editor, and the clarification-answer workflow.
 
 Phase 2 direction and the remaining sub-phases are in
-`docs/tasks/phase-2-sop-graph-requirements.md`. **Task 2 (sub-phase 2.2, free-text understanding)
-is next**: an LLM provider abstraction with a deterministic fake for tests, proposed-graph
-generation, and assumption/clarification generation. It must feed generated output through
-`parseSopGraphDocument` before persisting anything — model output is untrusted input, and the
-validator already exists precisely so that 2.2 does not have to invent one.
+`docs/tasks/phase-2-sop-graph-requirements.md`. Model output is untrusted input: anything a model
+produces goes through `parseSopGraphDocument` before it is persisted, and Task 3 inherits the same
+rule for every user edit.
 
 ### Where the pieces live
 

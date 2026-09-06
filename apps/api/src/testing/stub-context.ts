@@ -10,6 +10,8 @@ import type {
   SopGraphRevisionRepository,
 } from '@orbit/db';
 
+import type { SopDraftService } from '@orbit/sop-service';
+
 import type { ApiContext } from '../context';
 import type { RunDispatcher } from '../dispatch';
 
@@ -51,6 +53,7 @@ export interface StubContextOptions {
   readonly sopGraphRevisions?: Partial<SopGraphRevisionRepository>;
   readonly artifactService?: Partial<ArtifactService>;
   readonly dispatcher?: Partial<RunDispatcher>;
+  readonly sopDraftService?: Partial<SopDraftService>;
 }
 
 export function createStubContext(options: StubContextOptions = {}): ApiContext {
@@ -62,13 +65,15 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
       runSteps: stubbed('runSteps', options.runSteps ?? {}),
       runEvents: stubbed('runEvents', options.runEvents ?? {}),
       artifacts: stubbed('artifacts', options.artifacts ?? {}),
-      // Present so the context satisfies OrbitRepositories. No Phase 1 API route
-      // touches SOP data, so any call here is a test reaching somewhere it
-      // should not and fails loudly with the method name.
+      // Present so the context satisfies OrbitRepositories. No route reaches SOP
+      // persistence directly — the draft route goes through `sopDraftService`
+      // below — so any call here is a test reaching somewhere it should not, and
+      // it fails loudly with the method name.
       sopDocuments: stubbed('sopDocuments', options.sopDocuments ?? {}),
       sopGraphRevisions: stubbed('sopGraphRevisions', options.sopGraphRevisions ?? {}),
     },
     artifactService: stubbed('artifactService', options.artifactService ?? {}),
     dispatcher: stubbed('dispatcher', options.dispatcher ?? {}),
+    sopDraftService: stubbed('sopDraftService', options.sopDraftService ?? {}),
   };
 }

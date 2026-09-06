@@ -62,7 +62,10 @@ export default async function setup(): Promise<() => Promise<void>> {
   const api = startManagedProcess({
     name: 'api',
     command: 'pnpm',
-    args: ['--filter', '@orbit/api', 'start'],
+    // The test-only entry point, not the shipped one: it calls the same
+    // `startApi` with a deterministic model provider substituted, and refuses to
+    // run against anything but `orbit_test`.
+    args: ['--filter', '@orbit/api', 'start:e2e'],
     cwd: REPOSITORY_ROOT,
     env: {
       DATABASE_URL: databaseUrl,

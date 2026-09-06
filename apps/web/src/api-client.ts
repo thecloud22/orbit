@@ -3,6 +3,7 @@ import type {
   CreateRunResultView,
   DataEnvelope,
   RunDetailView,
+  SopDraftView,
 } from '@orbit/api/views';
 import type { ErrorDetail, OrbitError } from '@orbit/contracts';
 
@@ -110,4 +111,25 @@ export async function fetchArtifact(url: string): Promise<Blob> {
   }
 
   return response.blob();
+}
+
+/**
+ * Submits free-form SOP text for generation.
+ *
+ * A 422 carries the validation issues the generated graph failed on, in the
+ * error envelope's `details`, so the caller can show a reviewer why a draft was
+ * refused rather than only that it was.
+ */
+export async function createSopDraft(sourceText: string): Promise<SopDraftView> {
+  const response = await fetch('/v1/sop-drafts', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ sourceText }),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+
+  return ((await response.json()) as DataEnvelope<SopDraftView>).data;
 }

@@ -1,5 +1,6 @@
 import type { ArtifactService } from '@orbit/artifact-service';
 import type { OrbitRepositories } from '@orbit/db';
+import type { SopDraftService } from '@orbit/sop-service';
 
 import type { RunDispatcher } from './dispatch';
 
@@ -15,4 +16,12 @@ export interface ApiContext {
   readonly repositories: OrbitRepositories;
   readonly artifactService: ArtifactService;
   readonly dispatcher: RunDispatcher;
+  /**
+   * SOP draft generation.
+   *
+   * An interface like every other member, which is the whole reason the
+   * end-to-end stack can run against a deterministic fake provider without the
+   * shipped entry point knowing that one exists.
+   */
+  readonly sopDraftService: SopDraftService;
 }

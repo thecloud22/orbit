@@ -4,10 +4,16 @@ import { join } from 'node:path';
 import { createLocalFilesystemArtifactStorage, type ArtifactStorage } from '@orbit/artifacts';
 import { createTestArtifactRoot, removeTestArtifactRoot } from '@orbit/artifacts/testing';
 import { createArtifactService } from '@orbit/artifact-service';
-import { newArtifactId, type AgentVersionId, type RunId } from '@orbit/contracts';
+import { newArtifactId, newSopDocumentId, type AgentVersionId, type RunId } from '@orbit/contracts';
 import { createRepositories } from '@orbit/db';
 import { seedTestAgentVersion, useTestDatabase } from '@orbit/db/testing';
 import { createFakeBrowser, createFakeBrowserFactory } from '@orbit/runtime/testing';
+import {
+  createFakeSopProvider,
+  respondWith,
+  validSopGraphProposal,
+} from '@orbit/sop-generation/testing';
+import { createSopDraftService } from '@orbit/sop-service';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -46,6 +52,12 @@ describe('Orbit API over real persistence', () => {
           logger: { debug: () => undefined, info: () => undefined, warn: () => undefined },
           browser: createFakeBrowserFactory(() => Promise.resolve(createFakeBrowser())),
         }),
+        // A deterministic provider, so the draft route is exercised over real
+        // persistence with no network call and no model.
+        sopDraftService: createSopDraftService({
+          database: getDatabase().db,
+          provider: createFakeSopProvider({ respond: () => respondWith(validSopGraphProposal()) }),
+        }),
       },
     });
 
@@ -57,18 +69,18 @@ describe('Orbit API over real persistence', () => {
     await removeTestArtifactRoot(artifactRoot);
   });
 
-  /** Starts a run through the API and waits for it to reach a terminal state. */
-  async function runToCompletion(requestNumber: string): Promise<RunId> {
-    const response = await app.inject({
-      method: 'POST',
-      url: `/v1/agent-versions/${agentVersionId}/runs`,
-      payload: { inputs: { requestNumber } },
-    });
-
-    expect(response.statusCode).toBe(202);
-    const runId = response.json().data.runId as RunId;
-
+  /**
+   * Waits for a dispatched run to finish writing.
+   *
+   * Execution continues after the 202 (ADR-011), so a test that starts a run and
+   * returns leaves a writer alive in this process. The next test's `TRUNCATE`
+   * then deadlocks against it — the truncate wants an exclusive lock on tables
+   * the live run holds row locks on. Every test that starts a run must therefore
+   * wait for it, whether or not the test cares about the result.
+   */
+  async function waitForTerminal(runId: RunId): Promise<RunId> {
     const repositories = createRepositories(getDatabase().db);
+
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const run = await repositories.runs.findById(runId);
       if (run !== null && (run.status === 'succeeded' || run.status === 'failed')) {
@@ -78,6 +90,19 @@ describe('Orbit API over real persistence', () => {
     }
 
     throw new Error(`Run ${runId} did not reach a terminal state.`);
+  }
+
+  /** Starts a run through the API and waits for it to reach a terminal state. */
+  async function runToCompletion(requestNumber: string): Promise<RunId> {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-versions/${agentVersionId}/runs`,
+      payload: { inputs: { requestNumber } },
+    });
+
+    expect(response.statusCode).toBe(202);
+
+    return waitForTerminal(response.json().data.runId as RunId);
   }
 
   it('lists the seeded published agent version', async () => {
@@ -324,5 +349,79 @@ describe('Orbit API over real persistence', () => {
     expect(
       (await createRepositories(getDatabase().db).runs.listByAgentVersion(agentVersionId)).length,
     ).toBe(2);
+
+    // Both runs are left executing by the assertions above. Waiting for them is
+    // not tidiness: the next test truncates, and a truncate against a live
+    // writer in this process deadlocks.
+    await Promise.all([
+      waitForTerminal(first.json().data.runId as RunId),
+      waitForTerminal(second.json().data.runId as RunId),
+    ]);
+  });
+
+  describe('POST /v1/sop-drafts', () => {
+    const SOURCE_TEXT_MARKER = 'ORBIT-SOURCE-TEXT-MARKER-9f3a';
+    const SOURCE_TEXT = `${SOURCE_TEXT_MARKER}: sign in and review the escalation.`;
+
+    it('persists a document and its first revision, and returns neither raw row', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v1/sop-drafts',
+        payload: { sourceText: SOURCE_TEXT },
+      });
+
+      expect(response.statusCode).toBe(201);
+
+      const draft = response.json().data;
+      expect(draft.revisionNumber).toBe(1);
+      expect(draft.state).toBe('draft');
+      expect(draft.executable).toBe(false);
+      expect(draft.provenance.kind).toBe('generated');
+
+      // The rows exist, together, and the graph came back through the checksum
+      // verification the mapper performs on every read.
+      const repositories = createRepositories(getDatabase().db);
+      const document = await repositories.sopDocuments.findById(draft.documentId);
+      const revision = await repositories.sopGraphRevisions.findById(draft.revisionId);
+
+      expect(document?.sourceText).toBe(SOURCE_TEXT);
+      expect(revision?.documentId).toBe(draft.documentId);
+      expect(revision?.graph.title).toBe(draft.title);
+
+      // The source text is stored but never published back. The marker is
+      // deliberately unlike anything in the graph: an earlier version of this
+      // assertion used ordinary prose and tripped over a step summary that
+      // happened to read the same way.
+      expect(response.body).not.toContain(SOURCE_TEXT_MARKER);
+      expect(response.body).not.toContain('graphSha256');
+    });
+
+    it('creates a second revision for an existing document', async () => {
+      const first = await app.inject({
+        method: 'POST',
+        url: '/v1/sop-drafts',
+        payload: { sourceText: SOURCE_TEXT },
+      });
+
+      const second = await app.inject({
+        method: 'POST',
+        url: '/v1/sop-drafts',
+        payload: { documentId: first.json().data.documentId },
+      });
+
+      expect(second.statusCode).toBe(201);
+      expect(second.json().data.documentId).toBe(first.json().data.documentId);
+      expect(second.json().data.revisionNumber).toBe(2);
+    });
+
+    it('404s for a document that does not exist', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v1/sop-drafts',
+        payload: { documentId: newSopDocumentId() },
+      });
+
+      expect(response.statusCode).toBe(404);
+    });
   });
 });

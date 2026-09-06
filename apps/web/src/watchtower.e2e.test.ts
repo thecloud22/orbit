@@ -364,6 +364,107 @@ describe('Watchtower end to end', () => {
     });
   });
 
+  /**
+   * Sub-phase 2.2, through the whole stack.
+   *
+   * The API serving these is the same production composition every other test
+   * here uses; the one dependency substituted is the model provider, injected
+   * by `apps/api/src/testing/e2e-server.ts` rather than selected by an
+   * environment variable the shipped entry point could read.
+   */
+  describe('drafting a workflow from a description', () => {
+    async function submit(page: Page, sourceText: string) {
+      await page.getByTestId('sop-source-text').fill(sourceText);
+      await page.getByTestId('generate-draft-button').click();
+    }
+
+    it('turns a description into a reviewable draft', async () => {
+      const page = await open();
+
+      await submit(page, 'Sign in to the portal, find the request, and review the escalation.');
+
+      const draft = page.getByTestId('sop-draft');
+      await expect.poll(() => draft.count(), { timeout: 30_000 }).toBe(1);
+
+      await expect
+        .poll(async () => (await page.getByTestId('sop-draft-title').textContent()) ?? '')
+        .toContain('Service request escalation review');
+
+      // The plain-language flow, not raw JSON.
+      expect(await page.getByTestId('sop-draft-step').count()).toBeGreaterThan(5);
+      expect(await page.getByTestId('sop-draft-question').count()).toBeGreaterThan(0);
+
+      const notice = (await page.getByTestId('sop-draft-not-executable').textContent()) ?? '';
+      expect(notice).toContain('not executable');
+      expect(notice).toContain('cannot start browser automation');
+
+      const body = (await page.locator('body').textContent()) ?? '';
+      expect(body).not.toContain('"schemaVersion"');
+      expect(body).not.toContain('storageKey');
+
+      await page.close();
+    });
+
+    it('shows why a draft was rejected, and saves nothing', async () => {
+      const page = await open();
+
+      // The marker the deterministic provider answers with an invalid graph on
+      // both attempts, so the repair loop is exhausted.
+      await submit(page, 'INVALID_DRAFT — a description the model cannot turn into a valid graph.');
+
+      const failure = page.getByTestId('sop-draft-failure');
+      await expect.poll(() => failure.count(), { timeout: 30_000 }).toBe(1);
+
+      expect(await page.getByTestId('sop-draft-failure-title').textContent()).toContain('rejected');
+      expect((await failure.textContent()) ?? '').toContain('Nothing was saved.');
+
+      const issues = (await page.getByTestId('sop-draft-issues').textContent()) ?? '';
+      expect(issues).toContain('UNKNOWN_ENTRY_STEP');
+
+      // No draft is shown alongside the failure.
+      expect(await page.getByTestId('sop-draft').count()).toBe(0);
+
+      await page.close();
+    });
+
+    it('distinguishes a provider failure from a rejected draft', async () => {
+      const page = await open();
+
+      await submit(page, 'PROVIDER_FAILURE — simulate the model being unreachable.');
+
+      const failure = page.getByTestId('sop-draft-failure');
+      await expect.poll(() => failure.count(), { timeout: 30_000 }).toBe(1);
+
+      const text = (await failure.textContent()) ?? '';
+      expect(text).toContain('could not be generated');
+      expect(text).not.toContain('rejected');
+
+      await page.close();
+    });
+
+    it('exposes no editor, no reorder control, and no approval', async () => {
+      const page = await open();
+
+      await submit(page, 'Sign in to the portal, find the request, and review the escalation.');
+      await expect.poll(() => page.getByTestId('sop-draft').count(), { timeout: 30_000 }).toBe(1);
+
+      // Sub-phase 2.3, and shipping half of one now would set an expectation
+      // this phase cannot meet.
+      for (const testId of [
+        'sop-step-editor',
+        'sop-step-move-up',
+        'sop-step-move-down',
+        'sop-json-editor',
+        'sop-approve-button',
+        'sop-reject-button',
+      ]) {
+        expect(await page.getByTestId(testId).count()).toBe(0);
+      }
+
+      await page.close();
+    });
+  });
+
   describe('artifact integrity', () => {
     it('serves bytes that match the digest recorded for the run', async () => {
       const { runId, detail } = await succeededRun();

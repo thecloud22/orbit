@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 
-import type { AgentVersionView } from '@orbit/api/views';
+import type { AgentVersionView, SopDraftView } from '@orbit/api/views';
 
-import { ApiRequestError, listAgentVersions } from './api-client';
+import { ApiRequestError, createSopDraft, listAgentVersions } from './api-client';
 import { APP_INFO } from './app-info';
 import { EvidenceList } from './EvidenceList';
 import { RunStatusPanel } from './RunStatusPanel';
 import { RunTimeline } from './RunTimeline';
+import { describeSopDraftFailure, type SopDraftFailure } from './sop-draft-view-model';
+import { SopDraftForm } from './SopDraftForm';
+import { SopDraftPanel } from './SopDraftPanel';
 import { StartRunForm } from './StartRunForm';
 import { useRun } from './useRun';
 
@@ -21,7 +24,33 @@ export function App() {
   const [agentVersion, setAgentVersion] = useState<AgentVersionView | null>(null);
   const [catalogError, setCatalogError] = useState<ApiRequestError | null>(null);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
+  const [draft, setDraft] = useState<SopDraftView | null>(null);
+  const [draftFailure, setDraftFailure] = useState<SopDraftFailure | null>(null);
+  const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const run = useRun();
+
+  async function generateDraft(sourceText: string) {
+    setIsGeneratingDraft(true);
+    setDraftFailure(null);
+
+    try {
+      setDraft(await createSopDraft(sourceText));
+    } catch (caught) {
+      // A draft that failed is replaced by the failure, not shown beside it:
+      // leaving the previous draft on screen next to an error invites reading
+      // the old one as the result of the new request.
+      setDraft(null);
+      setDraftFailure(
+        describeSopDraftFailure(
+          caught instanceof ApiRequestError
+            ? caught
+            : new ApiRequestError({ status: 0, message: 'The API could not be reached.' }),
+        ),
+      );
+    } finally {
+      setIsGeneratingDraft(false);
+    }
+  }
 
   /**
    * A run can be reopened by id: `?runId=run_...`. That is the whole of run
@@ -132,6 +161,24 @@ export function App() {
           Starting the run…
         </p>
       )}
+
+      <section className="rounded border border-slate-200 p-4">
+        <h2 className="text-sm font-semibold text-slate-900">
+          Draft a workflow from a description
+        </h2>
+        <p className="mt-1 text-xs text-slate-600">
+          Sub-phase 2.2: Orbit reads what you write and proposes a structured draft. Reviewing and
+          editing it arrives in the next sub-phase.
+        </p>
+        <div className="mt-3">
+          <SopDraftForm
+            isGenerating={isGeneratingDraft}
+            onGenerate={(sourceText) => void generateDraft(sourceText)}
+          />
+        </div>
+      </section>
+
+      <SopDraftPanel draft={draft} failure={draftFailure} />
     </main>
   );
 }

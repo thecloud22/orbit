@@ -1,4 +1,12 @@
-import type { AgentVersionSummary, AgentVersionRecord, RunRecord, RunStepRecord } from '@orbit/db';
+import type {
+  AgentVersionSummary,
+  AgentVersionRecord,
+  RunRecord,
+  RunStepRecord,
+  SopDocumentRecord,
+  SopGraphRevisionRecord,
+} from '@orbit/db';
+import { describeStep } from '@orbit/sop-graph';
 import type { ArtifactLink, ArtifactMetadata, EventEnvelope } from '@orbit/contracts';
 
 import {
@@ -10,6 +18,7 @@ import {
   type RunEventView,
   type RunStepView,
   type RunSummaryView,
+  type SopDraftView,
 } from './views';
 
 /**
@@ -113,5 +122,55 @@ export function toRunDetailView(input: {
     steps: input.steps.map(toRunStepView),
     events: input.events.map(toRunEventView),
     artifacts: input.artifacts.map(({ artifact, links }) => toArtifactView(artifact, links)),
+  };
+}
+
+export function toSopDraftView(input: {
+  readonly document: SopDocumentRecord;
+  readonly revision: SopGraphRevisionRecord;
+}): SopDraftView {
+  const { graph } = input.revision;
+
+  return {
+    documentId: input.document.id,
+    revisionId: input.revision.id,
+    revisionNumber: input.revision.revisionNumber,
+    state: input.revision.state,
+    title: graph.title,
+    description: graph.description ?? null,
+    steps: graph.steps.map((step) => ({
+      id: step.id,
+      kind: step.kind,
+      summary: describeStep(step),
+    })),
+    inputs: graph.inputs.map((declared) => ({
+      id: declared.id,
+      label: declared.label,
+      type: declared.type,
+      required: declared.required,
+    })),
+    assumptions: graph.assumptions.map((assumption) => ({
+      id: assumption.id,
+      statement: assumption.statement,
+      rationale: assumption.rationale ?? null,
+    })),
+    clarificationQuestions: graph.clarificationQuestions.map((question) => ({
+      id: question.id,
+      question: question.question,
+      aboutStepId: question.aboutStepId ?? null,
+    })),
+    risks: graph.risks.map((risk) => ({
+      id: risk.id,
+      statement: risk.statement,
+      severity: risk.severity,
+    })),
+    provenance: {
+      kind: input.revision.provenance.kind,
+      provider: input.revision.provenance.provider ?? null,
+      model: input.revision.provenance.model ?? null,
+      promptVersion: input.revision.provenance.promptVersion ?? null,
+      generatedAt: input.revision.provenance.generatedAt ?? null,
+    },
+    executable: false,
   };
 }
