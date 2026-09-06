@@ -10,7 +10,7 @@ import type {
   SopGraphRevisionRepository,
 } from '@orbit/db';
 
-import type { SopDraftService } from '@orbit/sop-service';
+import type { SopDraftService, SopRevisionService } from '@orbit/sop-service';
 
 import type { ApiContext } from '../context';
 import type { RunDispatcher } from '../dispatch';
@@ -54,6 +54,7 @@ export interface StubContextOptions {
   readonly artifactService?: Partial<ArtifactService>;
   readonly dispatcher?: Partial<RunDispatcher>;
   readonly sopDraftService?: Partial<SopDraftService>;
+  readonly sopRevisionService?: Partial<SopRevisionService>;
 }
 
 export function createStubContext(options: StubContextOptions = {}): ApiContext {
@@ -75,5 +76,6 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
     artifactService: stubbed('artifactService', options.artifactService ?? {}),
     dispatcher: stubbed('dispatcher', options.dispatcher ?? {}),
     sopDraftService: stubbed('sopDraftService', options.sopDraftService ?? {}),
+    sopRevisionService: stubbed('sopRevisionService', options.sopRevisionService ?? {}),
   };
 }

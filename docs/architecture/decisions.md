@@ -485,3 +485,51 @@ The redundancy is deliberate and each layer covers a different failure. The depe
 | Shredding the graph into step and branch tables | Forks the contract owned by `@orbit/sop-graph` and makes every contract change a migration |
 | Lifecycle state stored on the document as well | Two sources of truth for one fact, immediately requiring rules for what happens when they differ |
 | Lifecycle on the document only | `approved` and `superseded` are statements about a specific revision; a document-level column cannot express which one |
+
+## ADR-017: Hold SOP review-workflow rules in the service layer, not in the revision state machine
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+Sub-phase 2.3 lets a person review a generated SOP Graph: read it, edit steps, reorder them, answer the clarification questions the model raised, and move the revision through `draft → needs_clarification → in_review → approved/rejected`. Building that surfaced two questions the existing machinery does not answer, and cannot.
+
+`SOP_REVISION_TRANSITIONS` (ADR-016) says which state changes are structurally possible. It permits *any* state to be superseded, because a new revision always replaces whatever came before it regardless of how far that one got. That is correct as a statement about the shape of the history — and it means nothing structural prevents an edit to an `approved` revision, which would supersede it and silently drop the document's derived status back to `draft`. An approval would quietly stop referring to anything.
+
+Separately, the requirements document requires Orbit to raise clarification questions "instead of silently inventing missing business or browser details". Nothing so far stops a reviewer from approving a revision while those questions sit unanswered, which reintroduces exactly the failure the questions exist to prevent — one step later, and with a human signature on it.
+
+Neither question is about which transitions exist. Both are about when taking a legal transition is appropriate.
+
+### Decision
+
+**Edits, reorders, and clarification answers are accepted only from `draft` and `needs_clarification`.** A reviewer looking at an `in_review` revision who spots a problem moves it back with `request_clarification` first, which is precisely what the existing `in_review → needs_clarification` edge is for. An `approved` or `rejected` revision cannot be edited at all: those states are statements about a specific reviewed artifact, and rewriting the artifact would make the statement refer to something nobody reviewed.
+
+**A revision cannot reach `in_review` while any of its clarification questions is unanswered.** The escape hatch is answering, not bypassing: "not applicable" and "decide before execution mapping" are valid answers, because they are recorded, attributable human judgements rather than silent skips. There is deliberately no bypass flag — a flag would make the rule advisory, and an advisory version of this rule is the same as not having it.
+
+**Both rules live in `@orbit/sop-service`, and `SOP_REVISION_TRANSITIONS` is unchanged.** The state machine stays a statement of what is structurally possible; the service layer holds what the product currently permits. Keeping them apart matters because they change for different reasons and on different timescales: the set of legal edges is a persistence contract that migrations and repositories depend on, while "must every question be answered first?" is a product judgement that later sub-phases may well revisit.
+
+**The gate is enforced at the transition, not only reflected in the offered actions.** `availableActionsFor` withholds `submit_for_review` while questions remain, and `transition` refuses it independently. Hiding a control is a courtesy to the person using the UI; it is never what makes a rule hold.
+
+**Offered actions are derived from the transition table rather than listed.** `availableActionsFor` filters `SOP_REVISION_ACTIONS` by `SOP_REVISION_TRANSITIONS[state]`, so the actions a caller is offered cannot drift from the ones the repository will accept. `superseded` is absent from the action vocabulary entirely: it is a consequence of editing, never something a person chooses.
+
+### Consequences
+
+- An approval keeps referring to the exact revision that was approved, because no path exists to edit one.
+- A reviewer who wants to change an `in_review` revision must take a visible step back through `request_clarification`, which leaves the state history showing that it happened.
+- Ambiguity the model flagged cannot reach `approved` unaddressed, so sub-phase 2.4's execution mapping inherits answered questions rather than open ones.
+- The rules are enforced in one place and tested against real persistence, but they are **not** database constraints. A direct SQL writer, or a future service that forgets to call this one, can still violate them — the same posture ADR-014 takes for Agent Version immutability, and acceptable for the same reason: one service owns these writes today.
+- Answering is write-once per revision, per the `unique(revision_id, question_id)` constraint. A changed mind is a new revision, which keeps "what did the reviewer say when they saw *this* graph?" answerable.
+- **Not guaranteed:** nothing here decides what an approved SOP Graph may *become*. Turning one into an Agent Version is sub-phase 2.5 and later, under separate approval, and approval in this phase still means only that the graph describes the intended process.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Add the rules to `SOP_REVISION_TRANSITIONS` | Conflates "which edges exist" with "when is taking one appropriate"; a product judgement would become a persistence contract that migrations depend on |
+| Allow editing any revision, deriving status afresh | An edit to an approved revision silently un-approves the document, and the approval stops referring to anything a person read |
+| Warn about unanswered questions but allow submission | Makes the rule advisory, which is indistinguishable from not having it; flagged ambiguity reaches `approved` and then execution mapping |
+| A bypass flag for unanswerable questions | Answering dismissively already covers the case, and does it with an attributable record instead of an anonymous override |
+| Enforce the gate only by hiding the action in the UI | A hidden control is not an enforced rule; any non-UI caller would walk straight past it |
+| Hand-roll the offered-action list in the API or UI | A second copy of the transition table, free to drift from the one the repository actually enforces |

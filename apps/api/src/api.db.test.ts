@@ -13,7 +13,7 @@ import {
   respondWith,
   validSopGraphProposal,
 } from '@orbit/sop-generation/testing';
-import { createSopDraftService } from '@orbit/sop-service';
+import { createSopDraftService, createSopRevisionService } from '@orbit/sop-service';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -58,6 +58,7 @@ describe('Orbit API over real persistence', () => {
           database: getDatabase().db,
           provider: createFakeSopProvider({ respond: () => respondWith(validSopGraphProposal()) }),
         }),
+        sopRevisionService: createSopRevisionService({ database: getDatabase().db }),
       },
     });
 
@@ -84,12 +85,40 @@ describe('Orbit API over real persistence', () => {
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const run = await repositories.runs.findById(runId);
       if (run !== null && (run.status === 'succeeded' || run.status === 'failed')) {
-        return runId;
+        return waitForQuiescence(runId);
       }
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
 
     throw new Error(`Run ${runId} did not reach a terminal state.`);
+  }
+
+  /**
+   * Waits until the run has stopped writing, which is not the same moment as
+   * reaching a terminal status.
+   *
+   * Trailing events are appended after the run row is marked terminal, so a
+   * test that resumes on status alone can still have rows land underneath it —
+   * two reads of the event log straddling one append disagree about its length,
+   * and the next test's TRUNCATE races a live writer. Quiescence is the
+   * property these tests actually depend on, so it is the one waited for.
+   */
+  async function waitForQuiescence(runId: RunId): Promise<RunId> {
+    const repositories = createRepositories(getDatabase().db);
+    let previous = -1;
+
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const count = (await repositories.runEvents.listByRun(runId)).length;
+
+      if (count === previous) {
+        return runId;
+      }
+
+      previous = count;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+
+    throw new Error(`Run ${runId} never stopped writing events.`);
   }
 
   /** Starts a run through the API and waits for it to reach a terminal state. */

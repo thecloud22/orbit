@@ -3,7 +3,9 @@ import type {
   CreateRunResultView,
   DataEnvelope,
   RunDetailView,
+  SopDocumentSummaryView,
   SopDraftView,
+  SopReviewView,
 } from '@orbit/api/views';
 import type { ErrorDetail, OrbitError } from '@orbit/contracts';
 
@@ -132,4 +134,68 @@ export async function createSopDraft(sourceText: string): Promise<SopDraftView> 
   }
 
   return ((await response.json()) as DataEnvelope<SopDraftView>).data;
+}
+
+export async function getSopReview(documentId: string): Promise<SopReviewView> {
+  return getJson<SopReviewView>(`/v1/sop-documents/${documentId}`);
+}
+
+export async function listSopDocuments(): Promise<readonly SopDocumentSummaryView[]> {
+  return getJson<readonly SopDocumentSummaryView[]>('/v1/sop-documents');
+}
+
+async function send<T>(url: string, method: 'POST' | 'PATCH', body: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method,
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+
+  return ((await response.json()) as DataEnvelope<T>).data;
+}
+
+/** Saving an edit never changes the revision being edited; it creates the next one. */
+export async function editSopStep(
+  revisionId: string,
+  stepId: string,
+  step: Record<string, unknown>,
+  note?: string,
+): Promise<{ revisionId: string; revisionNumber: number }> {
+  return send(`/v1/sop-revisions/${revisionId}/steps/${stepId}`, 'PATCH', {
+    step,
+    ...(note === undefined ? {} : { note }),
+  });
+}
+
+export async function reorderSopStep(
+  revisionId: string,
+  stepId: string,
+  direction: 'up' | 'down',
+): Promise<{ revisionId: string; revisionNumber: number }> {
+  return send(`/v1/sop-revisions/${revisionId}/reorder`, 'POST', {
+    move: { stepId, direction },
+  });
+}
+
+export async function answerSopQuestion(
+  revisionId: string,
+  questionId: string,
+  answer: string,
+): Promise<{ questionId: string }> {
+  return send(`/v1/sop-revisions/${revisionId}/answers`, 'POST', { questionId, answer });
+}
+
+export async function transitionSopRevision(
+  revisionId: string,
+  action: string,
+  note?: string,
+): Promise<{ revisionId: string; state: string }> {
+  return send(`/v1/sop-revisions/${revisionId}/transitions`, 'POST', {
+    action,
+    ...(note === undefined ? {} : { note }),
+  });
 }

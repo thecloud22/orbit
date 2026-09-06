@@ -70,7 +70,7 @@ packages/
   db/                  # Drizzle schema, migrations, repositories
   sop-graph/           # SOP Graph: non-executable business-process representation
   sop-generation/      # Free-text -> proposed SOP Graph (the only LangChain dependency)
-  sop-service/         # Composes SOP generation with SOP persistence
+  sop-service/         # Composes SOP generation and review with SOP persistence
   policy/              # (not created yet) Domain/action allowlist checks
 
 docs/
@@ -388,8 +388,38 @@ production code has no import path to it; a test walks the module graph from
 `index.ts` and asserts no module at any depth reaches that subpath; and the
 test-only entry point refuses to start against any database but `orbit_test`.
 
-Still not built: the review UI, the step editor, reordering controls, the
-clarification-answer workflow, and approval. Those are Phase 2.3.
+## Reviewing and approving a draft (Phase 2.3)
+
+A generated draft is reviewed at `?documentId=…` in Watchtower: the workflow in
+plain language, a structured form editor per step kind, move-up/move-down
+reordering, the model's clarification questions, and the review lifecycle.
+
+Nothing here re-implements Phase 2.1. The plain-language summaries come from
+`describeStep`, reorder legality from `validateReorder`, the rejection sentence
+from `explainReorderFailure`, and the legal lifecycle actions are derived from
+`SOP_REVISION_TRANSITIONS` — computed on the server so the UI has no second copy
+to drift from.
+
+**An edit never changes the revision being edited.** It creates the next one,
+with `provenance.kind: 'edited'`, superseding its parent in the same transaction,
+so the revision chain stays the edit history. A reorder is an edit and takes the
+same path. An edit that would make the workflow invalid is rejected with the real
+validation issues and nothing is written.
+
+Two workflow rules, both recorded in **ADR-017**:
+
+- **Only `draft` and `needs_clarification` revisions can be changed.** A reviewer
+  who spots a problem in an `in_review` revision sends it back for clarification
+  first, so an approved revision always stays exactly what was approved.
+- **Every clarification question must be answered before a revision can be
+  reviewed.** The escape hatch is answering — "not applicable" is a recorded,
+  attributable judgement — not a bypass flag.
+
+Approval still means only that the graph describes the intended process. It
+creates no Agent Version, starts no run, and touches no browser.
+
+Still not built: execution mapping, Agent IR generation, and publishing. Those
+are Phase 2.4 and later.
 
 ## Watchtower
 
@@ -428,6 +458,13 @@ baked into the bundle. Set `ORBIT_API_URL` to point the proxy elsewhere.
 | `GET /v1/runs/:runId/summary` | Status poll without the timelines |
 | `GET /v1/runs/:runId/artifacts/:artifactId` | Controlled evidence bytes |
 | `POST /v1/sop-drafts` | Generate a draft SOP Graph from `{ sourceText }`, or a new revision from `{ documentId }`; `201` |
+| `GET /v1/sop-documents` | SOP documents with their derived status |
+| `GET /v1/sop-documents/:documentId` | The current revision, rendered for review |
+| `GET /v1/sop-revisions/:revisionId` | One revision, for history |
+| `PATCH /v1/sop-revisions/:id/steps/:stepId` | Edit a step; creates the superseding revision |
+| `POST /v1/sop-revisions/:id/reorder` | Move a step; creates the superseding revision |
+| `POST /v1/sop-revisions/:id/answers` | Answer a clarification question |
+| `POST /v1/sop-revisions/:id/transitions` | Lifecycle action, legal set derived from the transition table |
 
 Every failure is the structured error envelope from `docs/contracts/api.md`.
 

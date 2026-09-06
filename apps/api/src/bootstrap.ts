@@ -2,7 +2,7 @@ import { createLocalFilesystemArtifactStorage } from '@orbit/artifacts';
 import { createArtifactService } from '@orbit/artifact-service';
 import { createDatabase, createRepositories } from '@orbit/db';
 import type { LLMProvider } from '@orbit/sop-generation';
-import { createSopDraftService } from '@orbit/sop-service';
+import { createSopDraftService, createSopRevisionService } from '@orbit/sop-service';
 import type { FastifyInstance } from 'fastify';
 
 import type { ApiContext } from './context';
@@ -51,6 +51,7 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
         database: handle.db,
         provider: options.sopProvider,
       }),
+      sopRevisionService: createSopRevisionService({ database: handle.db }),
       dispatcher: createInProcessRunDispatcher({
         database: handle.db,
         storage,

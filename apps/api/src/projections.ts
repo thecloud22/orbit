@@ -6,7 +6,7 @@ import type {
   SopDocumentRecord,
   SopGraphRevisionRecord,
 } from '@orbit/db';
-import { describeStep } from '@orbit/sop-graph';
+import { describeStep, describeStepById, describeVariable, producedBy } from '@orbit/sop-graph';
 import type { ArtifactLink, ArtifactMetadata, EventEnvelope } from '@orbit/contracts';
 
 import {
@@ -18,7 +18,11 @@ import {
   type RunEventView,
   type RunStepView,
   type RunSummaryView,
+  type SopClarificationView,
+  type SopDocumentSummaryView,
   type SopDraftView,
+  type SopReviewStepView,
+  type SopReviewView,
 } from './views';
 
 /**
@@ -172,5 +176,118 @@ export function toSopDraftView(input: {
       generatedAt: input.revision.provenance.generatedAt ?? null,
     },
     executable: false,
+  };
+}
+
+/**
+ * A revision projected for review.
+ *
+ * `summary` comes from `describeStep` and nowhere else — the brief's "no second
+ * renderer" is enforced by there being exactly one call site for it, here.
+ * `step` carries the stored step unchanged so the editor can round-trip it;
+ * that is the whole graph document, which is public to a reviewer by
+ * definition, and still contains no storage key, path, or database row.
+ */
+export function toSopReviewView(review: {
+  readonly document: SopDocumentRecord;
+  readonly revision: SopGraphRevisionRecord;
+  readonly clarifications: readonly {
+    readonly questionId: string;
+    readonly question: string;
+    readonly aboutStepId: string | null;
+    readonly options: readonly string[] | null;
+    readonly answer: string | null;
+    readonly answeredAt: Date | null;
+  }[];
+  readonly unansweredQuestionIds: readonly string[];
+  readonly availableActions: readonly string[];
+  readonly editable: boolean;
+}): SopReviewView {
+  const { graph } = review.revision;
+  const lastIndex = graph.steps.length - 1;
+
+  const steps: readonly SopReviewStepView[] = graph.steps.map((step, index) => ({
+    id: step.id,
+    kind: step.kind,
+    summary: describeStep(step),
+    position: index + 1,
+    // Computed here because `validateReorder` throws rather than explaining a
+    // move past either end of the list; the control is simply not offered.
+    canMoveUp: review.editable && index > 0,
+    canMoveDown: review.editable && index < lastIndex,
+    // `describeVariable` turns `assignedTeam` into `Assigned Team`, so the
+    // review view names values the way the person who wrote the SOP does.
+    produces: producedBy(step).map(describeVariable),
+    step: step as unknown as Record<string, unknown>,
+  }));
+
+  const clarifications: readonly SopClarificationView[] = review.clarifications.map((entry) => ({
+    questionId: entry.questionId,
+    question: entry.question,
+    aboutStepId: entry.aboutStepId,
+    aboutStepSummary:
+      entry.aboutStepId === null ? null : describeStepById(graph, entry.aboutStepId),
+    options: entry.options,
+    answer: entry.answer,
+    answeredAt: entry.answeredAt === null ? null : entry.answeredAt.toISOString(),
+  }));
+
+  return {
+    documentId: review.document.id,
+    documentTitle: review.document.title,
+    revisionId: review.revision.id,
+    revisionNumber: review.revision.revisionNumber,
+    state: review.revision.state,
+    parentRevisionId: review.revision.parentRevisionId,
+    title: graph.title,
+    description: graph.description ?? null,
+    steps,
+    inputs: graph.inputs.map((declared) => ({
+      id: declared.id,
+      label: declared.label,
+      type: declared.type,
+      required: declared.required,
+    })),
+    assumptions: graph.assumptions.map((assumption) => ({
+      id: assumption.id,
+      statement: assumption.statement,
+      rationale: assumption.rationale ?? null,
+    })),
+    clarifications,
+    unansweredQuestionIds: review.unansweredQuestionIds,
+    risks: graph.risks.map((risk) => ({
+      id: risk.id,
+      statement: risk.statement,
+      severity: risk.severity,
+    })),
+    provenance: {
+      kind: review.revision.provenance.kind,
+      provider: review.revision.provenance.provider ?? null,
+      model: review.revision.provenance.model ?? null,
+      promptVersion: review.revision.provenance.promptVersion ?? null,
+      generatedAt: review.revision.provenance.generatedAt ?? null,
+    },
+    availableActions: review.availableActions,
+    editable: review.editable,
+    reviewNote: review.revision.reviewNote,
+    reviewedAt:
+      review.revision.reviewedAt === null ? null : review.revision.reviewedAt.toISOString(),
+    executable: false,
+  };
+}
+
+export function toSopDocumentSummaryView(summary: {
+  readonly id: SopDocumentRecord['id'];
+  readonly title: string;
+  readonly status: string | null;
+  readonly revisionCount: number;
+  readonly createdAt: Date;
+}): SopDocumentSummaryView {
+  return {
+    documentId: summary.id,
+    title: summary.title,
+    status: summary.status,
+    revisionCount: summary.revisionCount,
+    createdAt: summary.createdAt.toISOString(),
   };
 }

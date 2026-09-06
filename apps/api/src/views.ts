@@ -213,3 +213,68 @@ export interface SopDraftView {
    */
   readonly executable: false;
 }
+
+/**
+ * A revision under review (sub-phase 2.3).
+ *
+ * Richer than `SopDraftView`, which only had to show what a model had just
+ * produced. This one has to support editing, so every step carries its
+ * structured fields as well as its plain-language summary — and the summary is
+ * produced by `describeStep` on the server, so the UI has no renderer of its own
+ * to drift from it.
+ */
+export interface SopReviewStepView {
+  readonly id: string;
+  readonly kind: string;
+  /** `describeStep`, computed once on the server. */
+  readonly summary: string;
+  readonly position: number;
+  readonly canMoveUp: boolean;
+  readonly canMoveDown: boolean;
+  /** Variables this step makes available, in reviewer-facing form. */
+  readonly produces: readonly string[];
+  /** The step exactly as stored, so the editor round-trips it without loss. */
+  readonly step: Record<string, unknown>;
+}
+
+export interface SopClarificationView {
+  readonly questionId: string;
+  readonly question: string;
+  readonly aboutStepId: string | null;
+  readonly aboutStepSummary: string | null;
+  readonly options: readonly string[] | null;
+  readonly answer: string | null;
+  readonly answeredAt: string | null;
+}
+
+export interface SopReviewView {
+  readonly documentId: string;
+  readonly documentTitle: string;
+  readonly revisionId: string;
+  readonly revisionNumber: number;
+  readonly state: string;
+  readonly parentRevisionId: string | null;
+  readonly title: string;
+  readonly description: string | null;
+  readonly steps: readonly SopReviewStepView[];
+  readonly inputs: readonly SopDraftInputView[];
+  readonly assumptions: readonly SopDraftAssumptionView[];
+  readonly clarifications: readonly SopClarificationView[];
+  readonly unansweredQuestionIds: readonly string[];
+  readonly risks: readonly SopDraftRiskView[];
+  readonly provenance: SopDraftProvenanceView;
+  /** Derived from SOP_REVISION_TRANSITIONS on the server; never a UI list. */
+  readonly availableActions: readonly string[];
+  readonly editable: boolean;
+  readonly reviewNote: string | null;
+  readonly reviewedAt: string | null;
+  readonly executable: false;
+}
+
+export interface SopDocumentSummaryView {
+  readonly documentId: string;
+  readonly title: string;
+  readonly status: string | null;
+  readonly revisionCount: number;
+  readonly createdAt: string;
+}

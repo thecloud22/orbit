@@ -465,6 +465,179 @@ describe('Watchtower end to end', () => {
     });
   });
 
+  /**
+   * Sub-phase 2.3, through the whole stack.
+   *
+   * One continuous review: generate a draft, read it, correct a step, try a
+   * move that is not allowed, answer what the model asked, and approve. Every
+   * write creates a new revision, so the page reloads between steps and the
+   * assertions are against what the server actually stored.
+   */
+  describe('reviewing and approving a draft', () => {
+    async function openReview(page: Page) {
+      await page
+        .getByTestId('sop-source-text')
+        .fill('Sign in to the portal and review escalations.');
+      await page.getByTestId('generate-draft-button').click();
+      await expect.poll(() => page.getByTestId('sop-draft').count(), { timeout: 30_000 }).toBe(1);
+
+      await page.getByTestId('open-draft-review').click();
+      await expect.poll(() => page.getByTestId('sop-review').count(), { timeout: 30_000 }).toBe(1);
+    }
+
+    it('renders the workflow in plain language with no raw JSON', async () => {
+      const page = await open();
+      await openReview(page);
+
+      const summaries = await page.getByTestId('sop-review-step-summary').allTextContents();
+      expect(summaries.length).toBeGreaterThan(5);
+      expect(summaries).toContain('Open the service request portal sign-in page');
+
+      const notice = (await page.getByTestId('sop-review-not-executable').textContent()) ?? '';
+      expect(notice).toContain('cannot start browser automation');
+
+      const body = (await page.locator('body').textContent()) ?? '';
+      expect(body).not.toContain('"schemaVersion"');
+      expect(body).not.toContain('graphSha256');
+
+      await page.close();
+    });
+
+    it('cannot move the first step up, because that move has no explanation to give', async () => {
+      const page = await open();
+      await openReview(page);
+
+      // validateReorder throws rather than explaining an out-of-range move, so
+      // the control is not offered at all.
+      const first = page.getByTestId('sop-step-move-up-open_portal');
+      expect(await first.isDisabled()).toBe(true);
+
+      await page.close();
+    });
+
+    it('refuses a dependency-breaking move with one sentence, and saves nothing', async () => {
+      const page = await open();
+      await openReview(page);
+
+      const before = (await page.getByTestId('sop-review-state').textContent()) ?? '';
+
+      // One move, chosen because it is deterministic: "Is the request closed?"
+      // reads Status, which the extract step immediately above it produces.
+      await page.getByTestId('sop-step-move-up-check_closed').click();
+
+      const failure = page.getByTestId('sop-review-failure');
+      await expect.poll(() => failure.count(), { timeout: 15_000 }).toBe(1);
+
+      const message = (await page.getByTestId('sop-review-failure-message').textContent()) ?? '';
+      expect(message).toBe(
+        'Cannot move "Is the request closed?" before "Extract request details" because the moved ' +
+          'step uses Status, which is produced later in the workflow.',
+      );
+
+      // The refused move left the revision exactly where it was.
+      expect((await page.getByTestId('sop-review-state').textContent()) ?? '').toBe(before);
+
+      await page.close();
+    });
+
+    it('explains a move that escapes the decision guarding a step', async () => {
+      const page = await open();
+      await openReview(page);
+
+      // The other explanation class: reachability cannot see this one, because
+      // after the move the step is still reachable — just from places the
+      // decision never ran.
+      await page.getByTestId('sop-step-move-up-open_advanced_search').click();
+
+      await expect
+        .poll(() => page.getByTestId('sop-review-failure').count(), { timeout: 15_000 })
+        .toBe(1);
+
+      const message = (await page.getByTestId('sop-review-failure-message').textContent()) ?? '';
+      expect(message).toContain('is only reachable on one branch of that decision');
+      expect(message).toContain('paths where that decision has not been made');
+
+      await page.close();
+    });
+
+    it('saves a step edit as a new revision', async () => {
+      const page = await open();
+      await openReview(page);
+
+      expect((await page.getByTestId('sop-review-state').textContent()) ?? '').toContain(
+        'Revision 1',
+      );
+
+      await page.getByTestId('sop-step-edit-open_portal').click();
+      await page.getByTestId('field-purpose').fill('Open the corrected portal sign-in page');
+      await page.getByTestId('sop-edit-note').fill('The purpose was wrong.');
+      await page.getByTestId('sop-step-save').click();
+
+      await expect
+        .poll(async () => (await page.getByTestId('sop-review-state').textContent()) ?? '', {
+          timeout: 20_000,
+        })
+        .toContain('Revision 2');
+
+      const summaries = await page.getByTestId('sop-review-step-summary').allTextContents();
+      expect(summaries).toContain('Open the corrected portal sign-in page');
+
+      await page.close();
+    });
+
+    it('will not submit for review until every question is answered, then approves', async () => {
+      const page = await open();
+      await openReview(page);
+
+      // Blocked, and the page says why rather than just omitting a button.
+      expect(await page.getByTestId('sop-action-submit_for_review').count()).toBe(0);
+      const blocked = (await page.getByTestId('sop-submit-blocked').textContent()) ?? '';
+      expect(blocked).toContain('clarification question');
+
+      const questions = await page.getByTestId('sop-clarification').count();
+      expect(questions).toBeGreaterThan(0);
+
+      for (let index = 0; index < questions; index += 1) {
+        const input = page.getByTestId(/^sop-answer-input-/).first();
+        if ((await input.count()) === 0) {
+          break;
+        }
+        await input.fill('Confirmed with the service desk lead.');
+        await page
+          .getByTestId(/^sop-answer-save-/)
+          .first()
+          .click();
+        await page.waitForTimeout(400);
+      }
+
+      await expect
+        .poll(() => page.getByTestId('sop-action-submit_for_review').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      await page.getByTestId('sop-action-submit_for_review').click();
+      await expect
+        .poll(async () => (await page.getByTestId('sop-review-state').textContent()) ?? '', {
+          timeout: 20_000,
+        })
+        .toContain('In review');
+
+      // Editing is closed while a revision is under review.
+      expect(await page.getByTestId('sop-step-edit-open_portal').count()).toBe(0);
+
+      await page.getByTestId('sop-action-approve').click();
+      await expect
+        .poll(async () => (await page.getByTestId('sop-review-state').textContent()) ?? '', {
+          timeout: 20_000,
+        })
+        .toContain('Approved');
+
+      // Approval is the end of this phase: nothing here publishes or runs.
+      expect(await page.getByTestId('sop-action-approve').count()).toBe(0);
+
+      await page.close();
+    });
+  });
+
   describe('artifact integrity', () => {
     it('serves bytes that match the digest recorded for the run', async () => {
       const { runId, detail } = await succeededRun();

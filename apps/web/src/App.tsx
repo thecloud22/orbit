@@ -10,6 +10,7 @@ import { RunTimeline } from './RunTimeline';
 import { describeSopDraftFailure, type SopDraftFailure } from './sop-draft-view-model';
 import { SopDraftForm } from './SopDraftForm';
 import { SopDraftPanel } from './SopDraftPanel';
+import { SopReviewPage } from './SopReviewPage';
 import { StartRunForm } from './StartRunForm';
 import { useRun } from './useRun';
 
@@ -27,7 +28,29 @@ export function App() {
   const [draft, setDraft] = useState<SopDraftView | null>(null);
   const [draftFailure, setDraftFailure] = useState<SopDraftFailure | null>(null);
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
+  const [reviewingDocumentId, setReviewingDocumentId] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get('documentId'),
+  );
   const run = useRun();
+
+  /**
+   * Opening a draft for review is a URL, matching how a run is reopened by id.
+   * Watchtower has no router, and one query parameter is enough for the two
+   * things it can show.
+   */
+  function openReview(documentId: string) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('documentId', documentId);
+    window.history.pushState({}, '', url);
+    setReviewingDocumentId(documentId);
+  }
+
+  function closeReview() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('documentId');
+    window.history.pushState({}, '', url);
+    setReviewingDocumentId(null);
+  }
 
   async function generateDraft(sourceText: string) {
     setIsGeneratingDraft(true);
@@ -97,6 +120,26 @@ export function App() {
       cancelled = true;
     };
   }, []);
+
+  if (reviewingDocumentId !== null) {
+    return (
+      <main className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
+        <header>
+          <h1 className="text-2xl font-semibold text-slate-900">{APP_INFO.title}</h1>
+          <button
+            className="mt-2 text-sm text-slate-600 underline"
+            data-testid="close-review"
+            onClick={closeReview}
+            type="button"
+          >
+            ← Back to Watchtower
+          </button>
+        </header>
+
+        <SopReviewPage documentId={reviewingDocumentId} />
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
@@ -177,6 +220,19 @@ export function App() {
           />
         </div>
       </section>
+
+      {draft !== null && (
+        <div>
+          <button
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+            data-testid="open-draft-review"
+            onClick={() => openReview(draft.documentId)}
+            type="button"
+          >
+            Review and edit this draft
+          </button>
+        </div>
+      )}
 
       <SopDraftPanel draft={draft} failure={draftFailure} />
     </main>

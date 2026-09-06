@@ -1,6 +1,6 @@
 import type { ArtifactService } from '@orbit/artifact-service';
 import type { OrbitRepositories } from '@orbit/db';
-import type { SopDraftService } from '@orbit/sop-service';
+import type { SopDraftService, SopRevisionService } from '@orbit/sop-service';
 
 import type { RunDispatcher } from './dispatch';
 
@@ -24,4 +24,6 @@ export interface ApiContext {
    * shipped entry point knowing that one exists.
    */
   readonly sopDraftService: SopDraftService;
+  /** Review, editing, reorder, clarification and lifecycle (sub-phase 2.3). */
+  readonly sopRevisionService: SopRevisionService;
 }

@@ -7,6 +7,7 @@ import { registerAgentVersionRoutes } from './routes/agent-versions';
 import { registerArtifactRoutes } from './routes/artifacts';
 import { registerRunRoutes } from './routes/runs';
 import { registerSopDraftRoutes } from './routes/sop-drafts';
+import { registerSopRevisionRoutes } from './routes/sop-revisions';
 
 export interface BuildServerOptions {
   readonly context: ApiContext;
@@ -32,6 +33,7 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
   registerRunRoutes(app, options.context);
   registerArtifactRoutes(app, options.context);
   registerSopDraftRoutes(app, options.context);
+  registerSopRevisionRoutes(app, options.context);
 
   app.setNotFoundHandler((_request, reply) => {
     const error = new ApiError({
