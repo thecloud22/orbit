@@ -19,6 +19,7 @@ function capture(overrides: Record<string, unknown> = {}) {
     id: 'capture-1',
     type: 'click' as const,
     typedValue: undefined,
+    sensitive: false,
     selectors: SELECTORS,
     fingerprint: buttonFingerprint(),
     considered: [

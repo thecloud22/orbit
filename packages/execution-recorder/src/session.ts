@@ -33,9 +33,15 @@ import {
 
 export interface CapturedAction {
   readonly id: string;
-  readonly type: RawCapture['type'];
-  /** For a fill: what the human typed. Shown to verify, then discarded. */
+  readonly type: 'click' | 'fill' | 'pick';
+  /**
+   * For a fill: what the human typed. Shown to verify, then discarded.
+   *
+   * Always absent for a password field — its value never enters this process.
+   */
   readonly typedValue: string | undefined;
+  /** The field was a password input, so no value was read from it. */
+  readonly sensitive: boolean;
   readonly selectors: SelectorChain;
   readonly fingerprint: ElementFingerprint;
   readonly considered: readonly ResolvedSelector[];
@@ -43,6 +49,22 @@ export interface CapturedAction {
   readonly url: string;
   readonly capturedAt: Date;
 }
+
+/**
+ * A page change, which is part of the sequence rather than an aside.
+ *
+ * Without it a recording is a list of clicks with no record of where each one
+ * happened, and a workflow compiled from it would start mid-flow.
+ */
+export interface CapturedNavigation {
+  readonly id: string;
+  readonly type: 'navigate';
+  readonly url: string;
+  readonly capturedAt: Date;
+}
+
+/** One entry in the recording, in the order it happened. */
+export type SequenceEntry = (CapturedAction | CapturedNavigation) & { readonly order: number };
 
 export interface CaptureFailure {
   readonly id: string;
@@ -67,8 +89,15 @@ export interface RecordingSession {
   setMode(mode: CaptureMode): Promise<void>;
   navigate(url: string): Promise<void>;
   currentUrl(): string;
-  /** Everything captured so far, newest last. */
+  /**
+   * Element interactions captured so far, newest last.
+   *
+   * Navigations are excluded: a caller choosing which element a step acts on
+   * has no use for them. The whole recording, in order, is `sequence()`.
+   */
   captures(): readonly CapturedAction[];
+  /** Everything captured, navigations included, in the order it happened. */
+  sequence(): readonly SequenceEntry[];
   /** Captures that could not be turned into a usable selector. */
   failures(): readonly CaptureFailure[];
   clearCaptures(): void;
@@ -96,8 +125,11 @@ export async function openRecordingSession(options: OpenSessionOptions): Promise
   }
 
   const captures: CapturedAction[] = [];
+  const navigations: CapturedNavigation[] = [];
+  const ordering = new Map<string, number>();
   const failures: CaptureFailure[] = [];
   let sequence = 0;
+  let order = 0;
   /**
    * Which round of capturing a result belongs to.
    *
@@ -118,7 +150,7 @@ export async function openRecordingSession(options: OpenSessionOptions): Promise
     // looked up and re-derived here, so a page that lied about a role or a name
     // would change nothing.
     await context.exposeBinding(CAPTURE_BINDING, async (source, raw: unknown) => {
-      const capture = raw as RawCapture;
+      const capture = raw as RawCapture & { readonly url?: string };
 
       if (typeof capture?.token !== 'string') {
         return;
@@ -128,6 +160,32 @@ export async function openRecordingSession(options: OpenSessionOptions): Promise
       const id = `capture-${sequence}`;
       const observedGeneration = generation;
 
+      // A navigation names no element, so there is nothing to derive: it is
+      // recorded as it arrives.
+      if (capture.type === 'navigate') {
+        if (observedGeneration !== generation) {
+          return;
+        }
+
+        const entry: CapturedNavigation = {
+          id,
+          type: 'navigate',
+          url: typeof capture.url === 'string' ? capture.url : source.page.url(),
+          capturedAt: new Date(),
+        };
+
+        // Consecutive duplicates are noise: a single page load can announce
+        // itself more than once, and a workflow does not navigate twice to
+        // somewhere it already is.
+        if (navigations.at(-1)?.url !== entry.url) {
+          order += 1;
+          ordering.set(entry.id, order);
+          navigations.push(entry);
+        }
+
+        return;
+      }
+
       try {
         const derived: DerivedTarget = await deriveTarget(source.page, capture.token);
 
@@ -135,6 +193,7 @@ export async function openRecordingSession(options: OpenSessionOptions): Promise
           id,
           type: capture.type,
           typedValue: typeof capture.typedValue === 'string' ? capture.typedValue : undefined,
+          sensitive: capture.sensitive === true,
           selectors: derived.selectors,
           fingerprint: derived.fingerprint,
           considered: derived.considered,
@@ -146,6 +205,8 @@ export async function openRecordingSession(options: OpenSessionOptions): Promise
           return;
         }
 
+        order += 1;
+        ordering.set(entry.id, order);
         captures.push(entry);
         options.onCapture?.(entry);
       } catch (error) {
@@ -216,6 +277,12 @@ export async function openRecordingSession(options: OpenSessionOptions): Promise
       return captures;
     },
 
+    sequence() {
+      return [...captures, ...navigations]
+        .map((entry) => ({ ...entry, order: ordering.get(entry.id) ?? 0 }))
+        .sort((left, right) => left.order - right.order);
+    },
+
     failures() {
       return failures;
     },
@@ -225,6 +292,8 @@ export async function openRecordingSession(options: OpenSessionOptions): Promise
       // discarded, and must not reappear in the next one.
       generation += 1;
       captures.length = 0;
+      navigations.length = 0;
+      ordering.clear();
       failures.length = 0;
     },
 

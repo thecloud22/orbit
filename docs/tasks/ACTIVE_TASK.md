@@ -55,7 +55,14 @@ Binding status and staleness are reported separately: an approved binding whose 
 edited is still approved and still not safe to run, and `superseded` is never a current status
 because supersession only happens alongside a replacement.
 
-**Sub-phase 2.5 is next**: compiling approved bindings into candidate Agent IR. It consumes the
+A whole workflow can also be recorded in one sitting: `@orbit/sop-recording` turns a captured
+sequence into a linear SOP Graph with a binding per step, and `@orbit/sop-service` persists it with
+`provenance.kind: 'recorded'` and bindings driven through the lifecycle to `approved`. Passwords are
+never read from the page; the translator declares a `secret` input instead.
+
+**Sub-phase 2.4f-2 is next**: moving that session into Watchtower, which needs a headed browser in
+the API process and therefore a deliberate relaxation of ADR-019's ban on script injection in
+execution paths. **Sub-phase 2.5 follows**: compiling approved bindings into candidate Agent IR. It consumes the
 binding contract 2.4a froze and the bindings 2.4b produces, and must import `stepChecksum` from
 `@orbit/db` rather than recomputing it — there is one definition so the two cannot drift. See the
 Task P2-001 through P2-004B reports under `docs/tasks/reports/`.

@@ -34,18 +34,43 @@ function productionSourceFiles(directory: string): readonly string[] {
   return found;
 }
 
-const FORBIDDEN_TOKENS = [
-  'chromium',
+/** Packages this one must never import. Matched against parsed imports. */
+const FORBIDDEN_IMPORTS = [
   'playwright',
-  'page.',
-  'XMLHttpRequest',
-  'child_process',
+  'playwright-core',
+  '@orbit/execution-recorder',
+  '@langchain/',
+  'node:fs',
   'node:net',
   'node:http',
+  'node:https',
   'node:dns',
-  'node:fs',
-  '@langchain/',
+  'node:child_process',
 ];
+
+/**
+ * Code shapes, not words.
+ *
+ * Matched as calls rather than substrings. The first version of this scan read
+ * raw text and flagged a doc comment that happened to contain "page." while
+ * explaining that this package never touches one — a check that punishes
+ * documenting a boundary is a check that discourages documenting it.
+ */
+const FORBIDDEN_CALL_PATTERNS: readonly (readonly [string, RegExp])[] = [
+  ['a browser page call', /\bpage\s*\.\s*\w+\s*\(/],
+  ['chromium.launch', /\bchromium\s*\.\s*launch\s*\(/],
+  ['fetch', /\bfetch\s*\(/],
+  ['evaluate', /\bevaluate\s*\(/],
+  ['XMLHttpRequest', /\bnew\s+XMLHttpRequest\b/],
+];
+
+const IMPORT_PATTERN = /(?:import|export)[\s\S]*?from\s+['"]([^'"]+)['"]/g;
+
+function importsOf(contents: string): readonly string[] {
+  return [...contents.matchAll(IMPORT_PATTERN)].flatMap((match) =>
+    match[1] === undefined ? [] : [match[1]],
+  );
+}
 
 describe('the SOP service network boundary', () => {
   const files = productionSourceFiles(SOURCE_ROOT);
@@ -54,15 +79,15 @@ describe('the SOP service network boundary', () => {
     expect(files.length).toBeGreaterThan(2);
   });
 
-  it('contains no browser, filesystem, transport, or model-client surface', () => {
+  it('imports nothing that could act', () => {
     const offences: string[] = [];
 
     for (const file of files) {
-      const contents = readFileSync(file, 'utf8');
-
-      for (const token of FORBIDDEN_TOKENS) {
-        if (contents.includes(token)) {
-          offences.push(`${file.replace(SOURCE_ROOT, '')} contains "${token}"`);
+      for (const specifier of importsOf(readFileSync(file, 'utf8'))) {
+        if (
+          FORBIDDEN_IMPORTS.some((banned) => specifier === banned || specifier.startsWith(banned))
+        ) {
+          offences.push(`${file.replace(SOURCE_ROOT, '')} imports "${specifier}"`);
         }
       }
     }
@@ -72,8 +97,19 @@ describe('the SOP service network boundary', () => {
     expect(offences).toEqual([]);
   });
 
-  it('never calls fetch itself', () => {
-    const callers = files.filter((file) => /\bfetch\s*\(/.test(readFileSync(file, 'utf8')));
-    expect(callers.map((file) => file.replace(SOURCE_ROOT, ''))).toEqual([]);
+  it('contains no browser, network, or script-evaluation call', () => {
+    const offences: string[] = [];
+
+    for (const file of files) {
+      const contents = readFileSync(file, 'utf8');
+
+      for (const [label, pattern] of FORBIDDEN_CALL_PATTERNS) {
+        if (pattern.test(contents)) {
+          offences.push(`${file.replace(SOURCE_ROOT, '')} contains ${label}`);
+        }
+      }
+    }
+
+    expect(offences).toEqual([]);
   });
 });

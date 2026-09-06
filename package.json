@@ -26,6 +26,7 @@
     "db:seed": "pnpm --filter @orbit/db seed",
     "agent:run": "pnpm --filter @orbit/browser-worker agent:run",
     "record:binding": "pnpm --filter @orbit/recorder record",
+    "record:workflow": "pnpm --filter @orbit/recorder record-workflow",
     "test:runtime": "vitest run --config vitest.runtime.config.ts",
     "test:e2e:watchtower": "vitest run --config vitest.e2e.config.ts",
     "check:teardown": "node scripts/check-teardown.mjs",

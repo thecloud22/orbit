@@ -179,6 +179,12 @@ importers:
       '@orbit/sop-graph':
         specifier: workspace:*
         version: link:../../packages/sop-graph
+      '@orbit/sop-recording':
+        specifier: workspace:*
+        version: link:../../packages/sop-recording
+      '@orbit/sop-service':
+        specifier: workspace:*
+        version: link:../../packages/sop-service
     devDependencies:
       '@types/node':
         specifier: ^26.0.0
@@ -461,6 +467,22 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
+  packages/sop-recording:
+    dependencies:
+      '@orbit/execution-mapping':
+        specifier: workspace:*
+        version: link:../execution-mapping
+      '@orbit/sop-graph':
+        specifier: workspace:*
+        version: link:../sop-graph
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
   packages/sop-service:
     dependencies:
       '@orbit/contracts':
@@ -469,12 +491,18 @@ importers:
       '@orbit/db':
         specifier: workspace:*
         version: link:../db
+      '@orbit/execution-mapping':
+        specifier: workspace:*
+        version: link:../execution-mapping
       '@orbit/sop-generation':
         specifier: workspace:*
         version: link:../sop-generation
       '@orbit/sop-graph':
         specifier: workspace:*
         version: link:../sop-graph
+      '@orbit/sop-recording':
+        specifier: workspace:*
+        version: link:../sop-recording
     devDependencies:
       typescript:
         specifier: ^5.9.0

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "record": "tsx src/cli/record-binding.ts"
+    "record": "tsx src/cli/record-binding.ts",
+    "record-workflow": "tsx src/cli/record-workflow.ts"
   },
   "dependencies": {
     "@orbit/contracts": "workspace:*",
@@ -15,7 +16,9 @@
     "@orbit/execution-recorder": "workspace:*",
     "@orbit/executor-playwright": "workspace:*",
     "@orbit/runtime": "workspace:*",
-    "@orbit/sop-graph": "workspace:*"
+    "@orbit/sop-graph": "workspace:*",
+    "@orbit/sop-recording": "workspace:*",
+    "@orbit/sop-service": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",

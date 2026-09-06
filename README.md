@@ -71,7 +71,8 @@ packages/
   db/                  # Drizzle schema, migrations, repositories
   sop-graph/           # SOP Graph: non-executable business-process representation
   sop-generation/      # Free-text -> proposed SOP Graph (the only LangChain dependency)
-  sop-service/         # Composes SOP generation and review with SOP persistence
+  sop-service/         # Composes SOP generation, review and recording with persistence
+  sop-recording/       # Turns a recorded interaction into a SOP Graph + bindings
   execution-mapping/   # Execution Bindings: what a SOP step does on a real page
   execution-recorder/  # Capture engine: the only code Orbit injects into a page
   execution-assist/    # Advisory suggestions while mapping (two need no model)
@@ -517,7 +518,39 @@ Two things the panel reports separately, because they are different facts:
   superseded only when its replacement is written alongside it. Re-recordings
   show as a count instead.
 
-Still not built: Agent IR generation (2.5) and publishing (2.6).
+## Recording a whole workflow (Phase 2.4f)
+
+```bash
+pnpm record:workflow -- --title "Find a service request" --start-url http://localhost:3001/requests
+```
+
+Perform a task once in a real browser and it becomes a workflow: steps and
+their bindings together, because both describe the same interaction. Where
+`record:binding` maps one already-known step at a time, this captures a whole
+sequence and confirms once at the end — the difference between transcribing a
+workflow you wrote down and discovering one by doing it.
+
+What it produces is a **linear draft**. A single recording walks one path, so it
+cannot honestly produce a branch nobody took; decisions are added afterwards on
+the review page, the same as for any first draft. An `outcome` step is appended
+because a recording ends when the person stops, and every path must reach a
+terminal.
+
+The result is stored exactly like a free-text-generated document — same tables,
+same validation — so it appears in the Documents list and opens in the review
+page with nothing there knowing recording exists. Its provenance says
+`recorded`, distinctly from `authored` or `generated`.
+
+**Passwords are never read.** A value typed into an `input[type=password]` does
+not leave the page: the recorder reports the field without it. The translator
+then declares a `secret` input and points the step at it with
+`${inputs.password}` — which is what the graph validator requires anyway, since
+a sensitive fill holding a literal is rejected. A recorded sign-in therefore
+arrives with its secret properly declared rather than with a credential in a
+durable artifact.
+
+Still not built: recording from Watchtower without a terminal (2.4f-2), Agent IR
+generation (2.5) and publishing (2.6).
 
 ## Watchtower
 

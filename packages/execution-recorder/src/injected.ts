@@ -39,10 +39,29 @@ export type CaptureMode = 'action' | 'pick';
 
 /** What the page reports. Structured, minimal, and never trusted as-is. */
 export interface RawCapture {
+  /** Empty for a navigation, which names no element. */
   readonly token: string;
-  readonly type: 'click' | 'fill' | 'pick';
-  /** Present for `fill` only: what the human typed, for verification. */
+  readonly type: 'click' | 'fill' | 'pick' | 'navigate';
+  /** Present for `navigate` only: where the page went. */
+  readonly url?: string;
+  /**
+   * Present for `fill` only: what the human typed.
+   *
+   * Absent for a password field, and that absence is the point — see
+   * `sensitive` below.
+   */
   readonly typedValue?: string;
+  /**
+   * Set when the field was a password input.
+   *
+   * The value is never read for such a field, so there is nothing to leak
+   * downstream: what a person types into a password box does not enter this
+   * process at all. Sub-phase 2.1 made a literal secret unrepresentable in an
+   * input declaration; capturing one into a step value would have reintroduced
+   * it by another door. The step is still recorded — the field is real and the
+   * workflow needs it — with an empty value for a reviewer to bind properly.
+   */
+  readonly sensitive?: boolean;
 }
 
 /**
@@ -70,13 +89,19 @@ export function buildInjectedScript(mode: CaptureMode): string {
   let counter = 0;
   const token = () => ATTRIBUTE + '-' + (++counter) + '-' + Date.now();
 
-  const report = (element, type, typedValue) => {
+  const report = (element, type, typedValue, sensitive) => {
     if (!element || typeof element.setAttribute !== 'function') { return; }
     const value = token();
     element.setAttribute(ATTRIBUTE, value);
     const payload = { token: value, type: type };
     if (typedValue !== undefined) { payload.typedValue = typedValue; }
+    if (sensitive === true) { payload.sensitive = true; }
     if (typeof window[BINDING] === 'function') { window[BINDING](payload); }
+  };
+
+  const reportNavigation = () => {
+    if (typeof window[BINDING] !== 'function') { return; }
+    window[BINDING]({ token: '', type: 'navigate', url: String(location.href) });
   };
 
   document.addEventListener('click', (event) => {
@@ -88,14 +113,27 @@ export function buildInjectedScript(mode: CaptureMode): string {
       report(event.target, 'pick');
       return;
     }
-    report(event.target, 'click');
+    report(event.target, 'click', undefined, false);
   }, true);
 
   document.addEventListener('change', (event) => {
     if (currentMode() === 'pick') { return; }
     const target = event.target;
     if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA' && target.tagName !== 'SELECT')) { return; }
-    report(target, 'fill', typeof target.value === 'string' ? target.value : '');
+
+    // A password field's value is never read. The step is still reported so the
+    // workflow keeps the field; what was typed simply never leaves the page.
+    const isPassword = target.tagName === 'INPUT' && String(target.type).toLowerCase() === 'password';
+    if (isPassword) {
+      report(target, 'fill', undefined, true);
+      return;
+    }
+
+    report(target, 'fill', typeof target.value === 'string' ? target.value : '', false);
   }, true);
+
+  // A page change is part of the sequence: without it a recording is a list of
+  // clicks with no record of where each happened.
+  reportNavigation();
 })();`;
 }

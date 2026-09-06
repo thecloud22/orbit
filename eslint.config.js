@@ -156,6 +156,31 @@ const noRecorderInExecutionPaths = [
   },
 ];
 
+/**
+ * Translating a recording is arithmetic on captured data, not an action.
+ *
+ * It reads a sequence and returns a document. Reaching a browser, a database or
+ * a model from here would mean the translation could do something other than
+ * translate.
+ */
+const noActionFromRecordingTranslation = [
+  {
+    group: [
+      '@orbit/db',
+      '@orbit/db/*',
+      '@orbit/runtime',
+      '@orbit/runtime/*',
+      '@orbit/execution-recorder',
+      '@orbit/sop-service',
+      'playwright',
+      'playwright-core',
+      '@langchain/*',
+    ],
+    message:
+      'Translation takes captures and returns a document. Capturing belongs to @orbit/execution-recorder and persisting to @orbit/sop-service.',
+  },
+];
+
 const noActionFromAssist = [
   {
     group: [
@@ -461,6 +486,33 @@ export default tseslint.config(
     files: ['packages/execution-recorder/**/*.test.ts'],
     rules: {
       'no-restricted-imports': ['error', { patterns: noReachIntoOrbitFromRecorder }],
+    },
+  },
+
+  // A recording becomes a workflow by arithmetic, not by acting.
+  {
+    files: ['packages/sop-recording/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...noFrameworksInDomainPackages,
+            ...noFilesystemInDomainPackages,
+            ...noActionFromRecordingTranslation,
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['packages/sop-recording/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [...noFrameworksInDomainPackages, ...noActionFromRecordingTranslation] },
+      ],
     },
   },
 

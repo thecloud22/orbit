@@ -32,8 +32,15 @@ export const SOP_REVISION_STATES = [
 
 export type SopRevisionState = (typeof SOP_REVISION_STATES)[number];
 
-/** Where a revision came from. Phase 2.2 fills the generation fields. */
-export const SOP_PROVENANCE_KINDS = ['authored', 'generated', 'edited'] as const;
+/**
+ * Where a revision came from.
+ *
+ * `recorded` is its own kind rather than being folded into `authored`: a
+ * workflow someone demonstrated in a browser and one someone typed out are
+ * different artifacts with different trust, and provenance exists precisely to
+ * keep that answerable. It is a union on a JSONB column, so no migration.
+ */
+export const SOP_PROVENANCE_KINDS = ['authored', 'generated', 'edited', 'recorded'] as const;
 
 export interface SopRevisionProvenance {
   readonly kind: (typeof SOP_PROVENANCE_KINDS)[number];
@@ -44,6 +51,10 @@ export interface SopRevisionProvenance {
   readonly generatedAt?: string;
   /** For `edited`: a short note about what the human changed and why. */
   readonly note?: string;
+  /** For `recorded`: where the recording started. Never fetched. */
+  readonly recordedFromUrl?: string;
+  /** For `recorded`: how many interactions the person performed. */
+  readonly recordedActionCount?: number;
 }
 
 /**
