@@ -1,0 +1,203 @@
+import type { Locator } from '@orbit/agent-ir';
+import {
+  parseAriaSnapshotHeader,
+  type ElementFingerprint,
+  type SelectorChain,
+} from '@orbit/execution-mapping';
+import type { Locator as PlaywrightLocator, Page } from 'playwright';
+
+import { CAPTURE_ATTRIBUTE } from './injected';
+
+/**
+ * Turning a marked element into a selector chain and a fingerprint.
+ *
+ * Everything here runs in Node against Playwright's own APIs. The page reported
+ * only that *something* was interacted with; what that element is called, what
+ * role it has, and how to find it again are all derived here, where the same
+ * APIs 4a's `describeElement` uses are available.
+ *
+ * That symmetry is not incidental. A binding recorded here is compared at run
+ * time by `describeElement`, and if the two derived a fingerprint differently
+ * every binding would drift on its first real run — which would look exactly
+ * like the drift check working. `describeElement` is frozen and cannot be
+ * shared, so parity is proven by a contract test rather than assumed.
+ */
+
+/** Playwright's default test id attribute, which the demo portal exposes. */
+const TEST_ID_ATTRIBUTE = 'data-testid';
+
+/**
+ * The fingerprint, derived exactly as `describeElement` derives it.
+ *
+ * Same calls, same order, same fallbacks. `ariaSnapshot` gives the *computed*
+ * role, which matters because real controls almost never carry an explicit
+ * `role` attribute (ADR-018); only the first line describes the target, the
+ * rest being a subtree that for a container holds values changing every run.
+ */
+export async function deriveFingerprint(locator: PlaywrightLocator): Promise<ElementFingerprint> {
+  const snapshot = await locator.ariaSnapshot({ depth: 0 });
+  const { role, accessibleName } = parseAriaSnapshotHeader(snapshot);
+
+  let text: string | null;
+  try {
+    text = (await locator.innerText()).trim();
+  } catch {
+    text = null;
+  }
+
+  return { role, accessibleName, text, boundingBox: await locator.boundingBox() };
+}
+
+/**
+ * Candidate ways of naming an element, most robust first.
+ *
+ * The order is fixed and needs no judgement: a test id is put there on purpose
+ * and survives redesigns; an accessible role and name track what the control
+ * *is* to a user; a label is the weakest of the three because it moves with
+ * copy. Nothing outside 4a's closed vocabulary is ever produced — there is no
+ * branch here that could emit a CSS or XPath selector.
+ */
+async function candidateSelectors(
+  page: Page,
+  locator: PlaywrightLocator,
+): Promise<readonly Locator[]> {
+  const candidates: Locator[] = [];
+
+  const testId = await locator.getAttribute(TEST_ID_ATTRIBUTE);
+  if (testId !== null && testId.trim() !== '') {
+    candidates.push({ strategy: 'test_id', value: testId });
+  }
+
+  const { role, accessibleName } = parseAriaSnapshotHeader(
+    await locator.ariaSnapshot({ depth: 0 }),
+  );
+  if (role !== null) {
+    candidates.push(
+      accessibleName === null || accessibleName === ''
+        ? { strategy: 'role_and_name', value: role }
+        : { strategy: 'role_and_name', value: role, name: accessibleName },
+    );
+  }
+
+  // A label only names a form control, so it is offered only when one resolves.
+  if (accessibleName !== null && accessibleName !== '') {
+    const byLabel = page.getByLabel(accessibleName, { exact: true });
+    if ((await byLabel.count()) > 0) {
+      candidates.push({ strategy: 'label', value: accessibleName });
+    }
+  }
+
+  return candidates;
+}
+
+export interface ResolvedSelector {
+  readonly locator: Locator;
+  /** How many elements it matched. Only 1 is usable. */
+  readonly matchCount: number;
+  readonly isTarget: boolean;
+}
+
+/**
+ * Keeps only the candidates that actually work.
+ *
+ * A candidate is usable when it resolves to exactly one element *and* that
+ * element is the one the human picked. Both are plain locator counts and an
+ * identity check — deterministic questions with deterministic answers, so no
+ * model is consulted, and a chain is verified at capture time rather than
+ * hoped for at run time.
+ */
+export async function verifySelectors(
+  page: Page,
+  candidates: readonly Locator[],
+  token: string,
+): Promise<readonly ResolvedSelector[]> {
+  const resolved: ResolvedSelector[] = [];
+
+  for (const candidate of candidates) {
+    const playwrightLocator = toPlaywrightLocator(page, candidate);
+    const matchCount = await playwrightLocator.count();
+
+    let isTarget = false;
+    if (matchCount === 1) {
+      isTarget = (await playwrightLocator.getAttribute(CAPTURE_ATTRIBUTE)) === token;
+    }
+
+    resolved.push({ locator: candidate, matchCount, isTarget });
+  }
+
+  return resolved;
+}
+
+/**
+ * The one place an attribute selector is used, and the only one permitted.
+ *
+ * Finding the element the page just stamped needs a lookup by an attribute that
+ * is not a test id, so this is a CSS attribute selector. It is not a hole in the
+ * closed vocabulary: the token is generated by Orbit microseconds earlier, is
+ * removed immediately after, is never derived from anything a page said, and can
+ * never reach a binding — `candidateSelectors` has no branch that emits CSS. A
+ * boundary test asserts this function is the only CSS in the package.
+ */
+export function capturedElement(page: Page, token: string): PlaywrightLocator {
+  return page.locator(`[${CAPTURE_ATTRIBUTE}="${token}"]`);
+}
+
+/** The same three strategies the executor resolves, and nothing else. */
+function toPlaywrightLocator(page: Page, locator: Locator): PlaywrightLocator {
+  switch (locator.strategy) {
+    case 'test_id':
+      return page.getByTestId(locator.value);
+    case 'role_and_name': {
+      const role = locator.value as Parameters<Page['getByRole']>[0];
+      return locator.name === undefined
+        ? page.getByRole(role)
+        : page.getByRole(role, { name: locator.name, exact: true });
+    }
+    case 'label':
+      return page.getByLabel(locator.value, { exact: true });
+  }
+}
+
+export interface DerivedTarget {
+  readonly selectors: SelectorChain;
+  readonly fingerprint: ElementFingerprint;
+  /** Every candidate considered, including rejected ones, for the confirm screen. */
+  readonly considered: readonly ResolvedSelector[];
+}
+
+export class NoUsableSelectorError extends Error {
+  readonly considered: readonly ResolvedSelector[];
+
+  constructor(considered: readonly ResolvedSelector[]) {
+    super(
+      'No way of naming that element resolves to it uniquely. It may be one of several identical ' +
+        'controls, or it may have no test id, accessible name, or label to identify it by.',
+    );
+    this.name = 'NoUsableSelectorError';
+    this.considered = considered;
+  }
+}
+
+/** Derives the chain and fingerprint for the element carrying `token`. */
+export async function deriveTarget(page: Page, token: string): Promise<DerivedTarget> {
+  const locator = capturedElement(page, token);
+  const fingerprint = await deriveFingerprint(locator);
+  const considered = await verifySelectors(page, await candidateSelectors(page, locator), token);
+
+  const usable = considered.filter((entry) => entry.matchCount === 1 && entry.isTarget);
+  const [primary, ...fallbacks] = usable.map((entry) => entry.locator);
+
+  if (primary === undefined) {
+    // Refused rather than guessed. A binding whose selector reaches the wrong
+    // element is worse than no binding at all.
+    throw new NoUsableSelectorError(considered);
+  }
+
+  return {
+    // Capped at 4a's schema maximum; beyond the first few a fallback adds noise
+    // rather than resilience.
+    selectors: [primary, ...fallbacks].slice(0, 4) as SelectorChain,
+    fingerprint,
+    considered,
+  };
+}

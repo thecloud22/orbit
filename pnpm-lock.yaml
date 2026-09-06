@@ -150,6 +150,46 @@ importers:
         specifier: ^7.0.0
         version: 7.3.6(@types/node@26.4.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13)(yaml@2.9.0)
 
+  apps/recorder:
+    dependencies:
+      '@orbit/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@orbit/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@orbit/execution-assist':
+        specifier: workspace:*
+        version: link:../../packages/execution-assist
+      '@orbit/execution-mapping':
+        specifier: workspace:*
+        version: link:../../packages/execution-mapping
+      '@orbit/execution-recorder':
+        specifier: workspace:*
+        version: link:../../packages/execution-recorder
+      '@orbit/executor-playwright':
+        specifier: workspace:*
+        version: link:../../packages/executor-playwright
+      '@orbit/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@orbit/sop-graph':
+        specifier: workspace:*
+        version: link:../../packages/sop-graph
+    devDependencies:
+      '@types/node':
+        specifier: ^26.0.0
+        version: 26.4.1
+      playwright:
+        specifier: 1.62.1
+        version: 1.62.1
+      tsx:
+        specifier: ^4.0.0
+        version: 4.23.13
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
   apps/web:
     dependencies:
       '@orbit/api':
@@ -291,6 +331,28 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
+  packages/execution-assist:
+    dependencies:
+      '@langchain/anthropic':
+        specifier: ^1.5.9
+        version: 1.5.9(@langchain/core@1.2.9)
+      '@langchain/core':
+        specifier: ^1.2.9
+        version: 1.2.9
+      '@orbit/agent-ir':
+        specifier: workspace:*
+        version: link:../agent-ir
+      '@orbit/execution-mapping':
+        specifier: workspace:*
+        version: link:../execution-mapping
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
   packages/execution-mapping:
     dependencies:
       '@orbit/agent-ir':
@@ -299,6 +361,22 @@ importers:
       zod:
         specifier: ^4.5.4
         version: 4.5.4
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
+  packages/execution-recorder:
+    dependencies:
+      '@orbit/agent-ir':
+        specifier: workspace:*
+        version: link:../agent-ir
+      '@orbit/execution-mapping':
+        specifier: workspace:*
+        version: link:../execution-mapping
+      playwright:
+        specifier: 1.62.1
+        version: 1.62.1
     devDependencies:
       typescript:
         specifier: ^5.9.0

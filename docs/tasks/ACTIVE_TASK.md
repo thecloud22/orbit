@@ -35,22 +35,23 @@ silently.
 checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
-**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3 and **2.4a** are complete. `@orbit/sop-graph`
-provides the non-executable graph contract and its validation; `@orbit/sop-generation` turns free
-text into a proposed graph; `@orbit/sop-service` persists drafts and drives review;
-`@orbit/execution-mapping` defines the Execution Binding — what a step does on a real page — and
-the runtime now verifies a binding's fingerprint before every real action, failing safe on drift.
+**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a and 2.4b** are complete.
+`@orbit/sop-graph` provides the non-executable graph contract and its validation;
+`@orbit/sop-generation` turns free text into a proposed graph; `@orbit/sop-service` persists drafts
+and drives review; `@orbit/execution-mapping` defines the Execution Binding and the runtime verifies
+its fingerprint before every real action; and `@orbit/execution-recorder` plus `apps/recorder`
+produce bindings from a human's one-time demonstration against a sandbox.
 
-Three rules are binding and recorded in ADRs: only `draft` and `needs_clarification` revisions may
-be changed, and every clarification question must be answered before `in_review` (**ADR-017**); and
-a mismatch between an approved binding and the live page stops the run rather than substituting an
-element (**ADR-018**).
+Four rules are binding and recorded in ADRs: only `draft` and `needs_clarification` revisions may be
+changed, and every clarification question must be answered before `in_review` (**ADR-017**); a
+mismatch between an approved binding and the live page stops the run rather than substituting an
+element (**ADR-018**); and script injection is confined to one file, unreachable from anything that
+executes an agent, with recorder/runtime fingerprint parity proven by a contract test (**ADR-019**).
 
-**Sub-phase 2.4b is next**: the recording tool that produces bindings, its confirm screen, and the
-four advisory AI assists. It is a second Playwright surface with powers ADR-008 denies the runtime
-— script injection for element picking — so it is its own trust boundary and its own review.
-Bindings today are hand-authored fixtures. See the Task P2-001 through P2-004A reports under
-`docs/tasks/reports/`.
+**Sub-phase 2.5 is next**: compiling approved bindings into candidate Agent IR. It consumes the
+binding contract 2.4a froze and the bindings 2.4b produces, and must import `stepChecksum` from
+`@orbit/db` rather than recomputing it — there is one definition so the two cannot drift. See the
+Task P2-001 through P2-004B reports under `docs/tasks/reports/`.
 
 Phase 2 direction and the remaining sub-phases are in
 `docs/tasks/phase-2-sop-graph-requirements.md`. Model output is untrusted input: anything a model

@@ -1,0 +1,26 @@
+{
+  "name": "@orbit/recorder",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "record": "tsx src/cli/record-binding.ts"
+  },
+  "dependencies": {
+    "@orbit/contracts": "workspace:*",
+    "@orbit/db": "workspace:*",
+    "@orbit/execution-assist": "workspace:*",
+    "@orbit/execution-mapping": "workspace:*",
+    "@orbit/execution-recorder": "workspace:*",
+    "@orbit/executor-playwright": "workspace:*",
+    "@orbit/runtime": "workspace:*",
+    "@orbit/sop-graph": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "playwright": "1.62.1",
+    "tsx": "^4.0.0",
+    "typescript": "^5.9.0"
+  }
+}

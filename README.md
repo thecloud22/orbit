@@ -58,6 +58,7 @@ apps/
   web/                 # Orbit Watchtower React application
   api/                 # Orbit Fastify API
   browser-worker/      # Composition root; `pnpm agent:run` executes one run
+  recorder/            # Composition root; `pnpm record:binding` records one binding
   demo-portal/         # Controlled target portal for Phase 1
 
 packages/
@@ -72,6 +73,8 @@ packages/
   sop-generation/      # Free-text -> proposed SOP Graph (the only LangChain dependency)
   sop-service/         # Composes SOP generation and review with SOP persistence
   execution-mapping/   # Execution Bindings: what a SOP step does on a real page
+  execution-recorder/  # Capture engine: the only code Orbit injects into a page
+  execution-assist/    # Advisory suggestions while mapping (two need no model)
   policy/              # (not created yet) Domain/action allowlist checks
 
 docs/
@@ -456,9 +459,43 @@ See **ADR-018** for the full reasoning, including why `tagName` is absent (it
 would require `evaluate`) and why bindings are keyed by step rather than by
 revision.
 
-Still not built: the recording tool that produces bindings (2.4b), Agent IR
-generation (2.5), and publishing (2.6). Bindings today are hand-authored
-fixtures, the same way Phase 1's Agent IR was before anything generated it.
+## Recording a binding (Phase 2.4b)
+
+```bash
+pnpm record:binding -- --document sopdoc_...
+```
+
+A person demonstrates each step once against the sandbox and Orbit records what
+they did. The browser opens, they perform the step for real, and the terminal
+shows what was captured — the selector chain, the fingerprint, the value source
+— before anything is saved.
+
+Recording performs **real actions**, which is why it opens nothing but a local
+sandbox: the same `ALLOWED_HOSTS` the runtime enforces, not a second copy of it.
+
+A `manual_review` step is listed but cannot be recorded — it routes to a person,
+so there is nothing to automate. Selector candidates are verified at capture
+time to resolve to exactly one element and to the right one; a capture with no
+uniquely-resolving candidate is refused rather than saved.
+
+**The one script Orbit injects into a page marks an element and reports an
+event, and does nothing else.** Roles, names, selectors and verification are all
+derived in Node through first-class Playwright APIs. A test asserts that file is
+the whole of the injection surface, and the recorder is structurally unreachable
+from anything that executes an agent — enforced by lint on `@orbit/runtime`,
+`@orbit/executor-playwright`, `apps/api` and `apps/browser-worker`.
+
+**Fingerprint parity is proven, not assumed.** The recorder writes a fingerprint
+and 4a's frozen `describeElement` later checks it, so a contract test records a
+binding and asserts `compareFingerprint` matches what the runtime observes for
+the same element. Without it, a divergence would surface as every binding
+drifting on its first real run.
+
+Suggestions are advisory and never applied. Two of them — selector robustness
+and coverage — use no model at all, because ranking three known strategies and
+computing a set difference are exact questions. See **ADR-019**.
+
+Still not built: Agent IR generation (2.5) and publishing (2.6).
 
 ## Watchtower
 

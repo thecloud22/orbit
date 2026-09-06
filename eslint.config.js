@@ -121,6 +121,58 @@ const noExecutionInExecutionMapping = [
 ];
 
 /**
+ * The recorder injects script into a page, which is exactly why it is kept
+ * apart from everything that executes an agent.
+ *
+ * ADR-008 denies the runtime that capability, and a package that has it must
+ * not be reachable from one that does not. It also has no business knowing
+ * about a database, a model, or the SOP Graph: it derives a target from a page
+ * and stops there.
+ */
+const noReachIntoOrbitFromRecorder = [
+  {
+    group: ['@orbit/db', '@orbit/db/*', '@orbit/runtime', '@orbit/runtime/*'],
+    message:
+      'The recorder derives a target from a page and nothing else. Persisting one, and knowing what a run is, belong to the composition root.',
+  },
+  {
+    group: ['@orbit/sop-graph', '@orbit/sop-graph/*', '@langchain/*'],
+    message:
+      "The recorder knows nothing about the SOP Graph or a model. Deciding which step a capture belongs to is the composition root's job.",
+  },
+];
+
+/**
+ * Advice never becomes action.
+ *
+ * The assists suggest; they cannot reach the runtime whose drift check they
+ * comment on, the recorder whose captures they read, or a database.
+ */
+const noRecorderInExecutionPaths = [
+  {
+    group: ['@orbit/execution-recorder', '@orbit/execution-recorder/*'],
+    message:
+      'Script injection must stay out of anything that executes an agent. Recording is a separate tool with a separate entry point. See ADR-019.',
+  },
+];
+
+const noActionFromAssist = [
+  {
+    group: [
+      '@orbit/db',
+      '@orbit/db/*',
+      '@orbit/runtime',
+      '@orbit/runtime/*',
+      '@orbit/execution-recorder',
+      'playwright',
+      'playwright-core',
+    ],
+    message:
+      'Assists are advisory. Nothing here may reach the runtime, the recorder, or persistence.',
+  },
+];
+
+/**
  * Domain packages never touch the filesystem: parsing functions take text, not
  * paths, so callers own reading bytes. Tests are exempt — reading the seeded
  * fixture from disk is exactly what they are for — but they keep every
@@ -339,7 +391,10 @@ export default tseslint.config(
   {
     files: ['apps/api/src/**/*.ts'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: noTestDoublesInProductionCode }],
+      'no-restricted-imports': [
+        'error',
+        { patterns: [...noTestDoublesInProductionCode, ...noRecorderInExecutionPaths] },
+      ],
     },
   },
 
@@ -381,6 +436,62 @@ export default tseslint.config(
     },
   },
 
+  // The recorder is the one place Orbit injects script into a page, and this
+  // rule is what keeps that capability from spreading.
+  {
+    files: ['packages/execution-recorder/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...noFrameworksInDomainPackages.filter(
+              (pattern) => !pattern.group.includes('playwright'),
+            ),
+            ...noFilesystemInDomainPackages,
+            ...noReachIntoOrbitFromRecorder,
+          ],
+        },
+      ],
+    },
+  },
+
+  // Its boundary scan has to open every file to prove what is not in them.
+  {
+    files: ['packages/execution-recorder/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: noReachIntoOrbitFromRecorder }],
+    },
+  },
+
+  // Advice is advisory: it may read a capture and a fingerprint, and act on
+  // neither.
+  {
+    files: ['packages/execution-assist/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...noFrameworksInDomainPackages,
+            ...noFilesystemInDomainPackages,
+            ...noActionFromAssist,
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['packages/execution-assist/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [...noFrameworksInDomainPackages, ...noActionFromAssist] },
+      ],
+    },
+  },
+
   // The runtime is executor-neutral: it depends on executor interfaces, never on
   // a concrete executor implementation. The browser worker composes the two.
   {
@@ -396,6 +507,7 @@ export default tseslint.config(
               message:
                 'Runtime must depend on executor interfaces, not a concrete executor. See CLAUDE.md > Architecture rules.',
             },
+            ...noRecorderInExecutionPaths,
           ],
         },
       ],
@@ -492,6 +604,15 @@ export default tseslint.config(
           ],
         },
       ],
+    },
+  },
+
+  // The browser worker and the executor run agents. Neither may load the
+  // recorder, not directly and not through a dependency.
+  {
+    files: ['apps/browser-worker/**/*.ts', 'packages/executor-playwright/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: noRecorderInExecutionPaths }],
     },
   },
 

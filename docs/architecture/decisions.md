@@ -599,3 +599,63 @@ So the two-second window bounds *post-visibility settling only*, never overall p
 | Key bindings by revision | Sub-phase 2.3 made graph edits routine; every edit would orphan every binding |
 | Reuse `SOP_REVISION_TRANSITIONS` for bindings | Couples two unrelated entities at the type level and imports a state (`needs_clarification`) that has no meaning for a binding |
 | Defer the `scope` field until lists are supported | Exactly the schema rework the forward-compatibility requirement exists to prevent |
+
+## ADR-019: Record Execution Bindings from a terminal, with script injection confined to one file and parity proven by test
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+ADR-018 defined the Execution Binding and the runtime drift check, but nothing produced a binding: they were hand-authored fixtures. Sub-phase 2.4b is the human half — a person demonstrates a step once against a sandbox and Orbit records what they did.
+
+Capturing that demonstration requires a listener inside the page. There is no way around it: a human's click is an event in the browser, and observing it means running code where the event happens. That is precisely the capability ADR-008 denies the runtime, which was the reason 2.4 was split in two — 4a's contract and drift check are deterministic and touch shared runtime code; 4b's capture engine is a second Playwright surface with fundamentally broader powers.
+
+Three questions followed. Where does the human confirm what was captured? How much code runs inside the page? And how do two independent implementations — the recorder that writes a fingerprint and `describeElement` that later checks it — stay in agreement when one of them is frozen?
+
+### Decision
+
+**Recording is a CLI, not a Watchtower surface.** `pnpm record:binding`, in the shape `pnpm agent:run` already established. The human is already looking at two windows — the browser they are clicking in and the shell they started from — and driving a headed browser from a third would add a window without adding clarity. `describeStep` is a pure export of `@orbit/sop-graph`, so the terminal confirm screen calls the same renderer the review view uses; there is no second renderer and no projection layer in between.
+
+**The cost is real and worth stating: bindings are confirmed in a terminal while SOP graphs are reviewed in Watchtower.** Two surfaces for two halves of the same workflow is a genuine seam, and someone reviewing a graph cannot see its bindings. It is accepted because a recording session is inherently local and interactive — it drives a browser on the operator's own machine — while graph review is not, and forcing them together would have meant hosting a long-lived headed browser from the API process and inventing a session lifecycle over HTTP for it. If binding review later needs to be visible alongside graph review, the artifacts are already persisted and a read-only view can be added without moving the recorder.
+
+**The injected script marks an element and reports an event, and does nothing else.** It computes no selectors, reads no accessibility data, and makes no decisions. Everything — the role, the accessible name, the selector candidates, the verification — is derived in Node through the same first-class Playwright APIs `describeElement` uses. Anything the script derived would be a second implementation of existing logic running in the least trustworthy place available, and a page that lied about a role would change nothing: the token is looked up and the element re-derived on this side.
+
+**Two capture modes, and the difference is behavioural.** *Action* mode listens passively and lets the event through, because demonstrating a step means actually performing it. *Pick* mode intercepts the event so that choosing a value to read performs nothing — an extract step must never fire the page's own handlers just because someone pointed at a value. Mode is a variable inside the page rather than a separate script, so switching costs nothing; an earlier version re-injected and reloaded, which silently discarded whatever the human had navigated to, putting anything past a sign-in out of reach.
+
+**Selector candidates are verified, not guessed.** Each is checked to resolve to exactly one element *and* to the element the human picked — a locator count and an identity check, both deterministic, so no model is consulted. A capture with no uniquely-resolving candidate is refused rather than saved, because a binding whose selector reaches the wrong element is worse than no binding at all.
+
+**The recorder is structurally unreachable from anything that executes an agent.** `@orbit/runtime`, `@orbit/executor-playwright`, `apps/api` and `apps/browser-worker` are all forbidden from importing it, enforced by lint and verified by probing each path. The process that runs agents must not be able to load script-injection code — not directly, and not through a shared dependency.
+
+**Parity between the recorder and the runtime is proven by a contract test.** `describeElement` is frozen, so the derivation cannot be shared; two implementations must agree on the fingerprint or every binding drifts on its first real run — which would look exactly like the drift check working and would actually be the recorder being wrong. A test records a binding for an element, calls `describeElement` on that same element, and asserts `compareFingerprint` matches, for both an action target and a read target. When code cannot be shared, agreement is asserted rather than assumed.
+
+**Two of the four assists use no model.** Ranking three known selector strategies is a fixed order, and asking which steps lack a binding is a set difference; both are exact questions, and a model would make an exact answer approximate. Semantic-mismatch and drift-recovery keep a model, in one file, and every assist is advisory: none auto-applies, none blocks a save, and none can reach the drift check's pass/fail logic. A provider failure produces no advice rather than an error, because a recording must not fail for want of a suggestion.
+
+**`stepChecksum` lives in `@orbit/db`, next to `sha256Of`.** ADR-018 declared the field and validated against it, but nothing computed it. Putting the wrapper in the recorder would have moved the gap rather than closed it: sub-phase 2.5 lives in another package and cannot import a function out of a CLI app, so it would have reimplemented the rule from this document. `@orbit/db` already depends on `@orbit/sop-graph` and already owns `node:crypto`, so the definition sits where both can import it. There is one function, and it cannot drift.
+
+### Consequences
+
+- A binding can be produced by demonstration rather than hand-authored, which is what 2.5 needs to compile anything real.
+- How much Orbit code runs inside a page has a one-file answer, and a test asserts it stays that way.
+- The recorder cannot be loaded by any process that executes an agent, so the broader capability cannot leak into the narrower one by accident.
+- Recording and graph review happen in different places. Someone reviewing a graph in Watchtower cannot see its bindings, and closing that gap is a later, additive change.
+- **No authentication.** Phase 1 has none to reuse (ADR-018's discrepancy), so the recorder targets unauthenticated sandbox flows only. Anything behind a login is unreachable until session handling exists.
+- **Frames and iframes are out of scope**, so an element inside one cannot be recorded.
+- **An interactive CLI is only partly testable.** The capture engine and the decision logic are covered against a real browser and in isolation respectively; the terminal shell over them is thin precisely because it is not.
+- **Parity is proven at one moment, not enforced forever.** The contract test fails loudly if the two derivations diverge, which is the strongest guarantee available without sharing code — but it is a test, and a test can be deleted.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Record from Watchtower, with the API hosting a headed browser | Invents a session lifecycle over HTTP for something inherently local, and adds a third window without adding clarity |
+| Let the injected script compute selectors and roles | A second implementation of existing logic, running in the least trustworthy place available |
+| Re-inject and reload to switch capture mode | Silently discards the page, putting anything past a sign-in out of reach |
+| Let pick mode allow the click through | An extract step would fire the page's handlers merely because someone pointed at a value |
+| Emit a CSS selector when nothing else resolves | Makes an arbitrary DOM-walking expression representable, which the closed vocabulary exists to prevent |
+| Save a capture with no uniquely-resolving selector | A binding that reaches the wrong element is worse than no binding |
+| Put the recorder in `apps/browser-worker` | The process that executes agents would then be able to load script-injection code |
+| Route all four assists through a model | Makes two exact answers approximate, and widens the model surface for nothing |
+| Keep `stepChecksum` in the recorder app | 2.5 cannot import from a CLI app, so it would reimplement the rule from an ADR — the gap moved, not closed |
+| Trust the recorder and `describeElement` to agree | Two independent implementations of one value, with no signal when they diverge except every binding failing at once |
