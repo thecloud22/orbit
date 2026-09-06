@@ -68,7 +68,7 @@ packages/
   artifacts/           # Artifact storage interface and local filesystem adapter
   artifact-service/    # Composes artifact bytes with artifact metadata
   db/                  # Drizzle schema, migrations, repositories
-  sop-graph/           # (not created yet) Business-process representation
+  sop-graph/           # SOP Graph: non-executable business-process representation
   policy/              # (not created yet) Domain/action allowlist checks
 
 docs/
@@ -301,6 +301,45 @@ succeeded: a run is never reported as succeeded without the evidence that proves
 it. When a step fails, Orbit captures a best-effort screenshot and DOM snapshot
 with the `error_context` role, and a failure to capture them never replaces the
 failure that caused them.
+
+## SOP Graph (Phase 2)
+
+`@orbit/sop-graph` is the typed, versioned, **non-executable** description of a
+business procedure: ordered steps in a small vocabulary (`navigate`, `fill`,
+`click`, `extract`, `decision`, `outcome`, `manual_review`), typed run inputs,
+variables produced by extraction, declared outcomes, plus the assumptions,
+clarification questions and risks that surround a draft.
+
+It is the artifact a human reviews and edits. **Approving one does nothing but
+record that it describes the intended process** — it creates no Agent Version,
+starts no run, and touches no browser.
+
+That boundary is enforced four ways rather than asserted once:
+
+1. The package depends only on `@orbit/contracts` and Zod, so it has no route to
+   Playwright, the runtime, a database, the filesystem, or the network.
+2. ESLint blocks those imports, and `@orbit/agent-ir` too — ADR-002 keeps
+   business intent and the executable plan independent.
+3. A test statically scans every source file for network and browser symbols.
+4. A test replaces global `fetch` with a spy and parses, validates and reorders a
+   graph full of URLs. It is never called.
+
+A URL in a graph is an **untrusted draft reference**. It is parsed for shape and
+never fetched, probed, or resolved.
+
+See ADR-016 for why the boundary is enforced four times rather than once, and
+for the revision and lifecycle model below.
+
+Drafts, revisions and provenance are persisted by `@orbit/db`: a document holds
+the original authored text and cannot be rewritten, each revision is an immutable
+checksummed graph, and every edit is a new revision — so the revision chain is
+the edit history and an approved revision stays exactly as it was approved.
+Lifecycle (`draft` → `needs_clarification` → `in_review` → `approved`/`rejected`
+→ `superseded`) belongs to the revision; a document's status is derived from its
+newest non-superseded revision.
+
+Nothing generates a graph yet. Free-text SOP understanding is Phase 2.2; see
+`docs/tasks/phase-2-sop-graph-requirements.md`.
 
 ## Watchtower
 

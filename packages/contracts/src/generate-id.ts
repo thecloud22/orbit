@@ -7,6 +7,9 @@ import {
   requestIdSchema,
   runIdSchema,
   runStepIdSchema,
+  sopAnswerIdSchema,
+  sopDocumentIdSchema,
+  sopRevisionIdSchema,
   type AgentId,
   type AgentVersionId,
   type ArtifactId,
@@ -15,6 +18,9 @@ import {
   type RequestId,
   type RunId,
   type RunStepId,
+  type SopAnswerId,
+  type SopDocumentId,
+  type SopRevisionId,
 } from './ids';
 
 /**
@@ -147,4 +153,16 @@ export function newArtifactLinkId(): ArtifactLinkId {
 
 export function newRequestId(): RequestId {
   return requestIdSchema.parse(`req_${monotonicUlid()}`);
+}
+
+export function newSopDocumentId(): SopDocumentId {
+  return sopDocumentIdSchema.parse(`sopdoc_${monotonicUlid()}`);
+}
+
+export function newSopRevisionId(): SopRevisionId {
+  return sopRevisionIdSchema.parse(`soprev_${monotonicUlid()}`);
+}
+
+export function newSopAnswerId(): SopAnswerId {
+  return sopAnswerIdSchema.parse(`sopans_${monotonicUlid()}`);
 }

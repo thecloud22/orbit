@@ -57,6 +57,33 @@ export const requestIdSchema = z
   .brand<'RequestId'>();
 export type RequestId = z.infer<typeof requestIdSchema>;
 
+/**
+ * SOP Graph identifiers (Phase 2).
+ *
+ * An SOP document is the authoring container, a revision is one immutable
+ * version of its graph, and an answer belongs to one clarification question on
+ * one revision. They are ordinary opaque Orbit ids: the graph document itself
+ * is owned by @orbit/sop-graph, but identifiers live here with every other
+ * public id, the same split `agent_versions` already uses.
+ */
+export const sopDocumentIdSchema = z
+  .string()
+  .regex(idPattern('sopdoc'), 'must be an opaque id prefixed with "sopdoc_"')
+  .brand<'SopDocumentId'>();
+export type SopDocumentId = z.infer<typeof sopDocumentIdSchema>;
+
+export const sopRevisionIdSchema = z
+  .string()
+  .regex(idPattern('soprev'), 'must be an opaque id prefixed with "soprev_"')
+  .brand<'SopRevisionId'>();
+export type SopRevisionId = z.infer<typeof sopRevisionIdSchema>;
+
+export const sopAnswerIdSchema = z
+  .string()
+  .regex(idPattern('sopans'), 'must be an opaque id prefixed with "sopans_"')
+  .brand<'SopAnswerId'>();
+export type SopAnswerId = z.infer<typeof sopAnswerIdSchema>;
+
 export const artifactLinkIdSchema = z
   .string()
   .regex(idPattern('artl'), 'must be an opaque id prefixed with "artl_"')

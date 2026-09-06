@@ -13,43 +13,40 @@ silently.
 1. `CLAUDE.md` — engineering instructions, scope, architecture rules, coding standards.
 2. `docs/engineering/model-routing.md` — which model owns which class of work, and the delegation
    and escalation rules between them.
-3. `docs/tasks/phase-1-backlog.md` — the approved task sequence; work one approved task at a time.
-4. `docs/contracts/agent-ir.md` — the Agent IR contract.
-5. `docs/contracts/events-and-evidence.md` — the event envelope and artifact/evidence contract.
-6. `docs/contracts/api.md` — the Phase 1 HTTP API contract, including the run-scoped
+3. `docs/tasks/phase-1-backlog.md` — the completed Phase 1 task sequence.
+4. `docs/tasks/phase-2-sop-graph-requirements.md` — the Phase 2 direction and sub-phase
+   sequence; work one approved task at a time.
+5. `docs/contracts/agent-ir.md` — the Agent IR contract.
+6. `docs/contracts/events-and-evidence.md` — the event envelope and artifact/evidence contract.
+7. `docs/contracts/api.md` — the Phase 1 HTTP API contract, including the run-scoped
    artifact route and the evidence-access rules.
-7. `docs/architecture/decisions.md` — accepted ADRs; do not silently supersede one.
-8. `docs/architecture/phase-1-system-design.md` — the Phase 1 system architecture.
-9. `docs/testing/phase-1-test-strategy.md` — required test layers and coverage.
-10. `docs/sop/find-service-request.md` — the one Phase 1 business procedure.
-11. `fixtures/find-service-request.agent.yaml` — the seeded Agent IR fixture.
-12. Relevant existing source under `packages/` and `apps/` for the area being changed.
-13. The most recent report under `docs/tasks/reports/` for the last completed task, for current
+8. `docs/architecture/decisions.md` — accepted ADRs; do not silently supersede one.
+9. `docs/architecture/phase-1-system-design.md` — the Phase 1 system architecture.
+10. `docs/testing/phase-1-test-strategy.md` — required test layers and coverage.
+11. `docs/sop/find-service-request.md` — the one Phase 1 business procedure.
+12. `fixtures/find-service-request.agent.yaml` — the seeded Agent IR fixture.
+13. Relevant existing source under `packages/` and `apps/` for the area being changed.
+14. The most recent report under `docs/tasks/reports/` for the last completed task, for current
     state and known limitations.
 
 ## Current state
 
-**Phase 1 is complete.** All nine tasks are done, and the proof loop runs from a clean checkout in
-one documented command:
+**Phase 1 is complete.** All nine tasks are merged; the deterministic proof loop runs from a clean
+checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
+`docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
-```text
-Watchtower manual trigger -> typed dynamic input -> version-pinned Agent IR
-  -> deterministic Playwright execution -> events and artifacts -> Watchtower evidence
-```
+**Phase 2 is underway.** Task 1 (sub-phase 2.1, SOP Graph foundation) is complete:
+`@orbit/sop-graph` provides the non-executable graph contract, its semantic validation, and step
+reorder/dependency validation; `@orbit/db` persists documents, immutable checksummed revisions,
+provenance, and clarification answers. There is no LLM, no UI, and no path from a graph to
+anything executable. See `docs/tasks/reports/TASK-P2-001-sop-graph-foundation-report.md`.
 
-- `docs/demo/phase-1-demo.md` is the demonstration procedure: setup, the `SR-1001` success, the
-  `SR-9999` business not-found result, the controlled technical failure, where every piece of
-  evidence lives, how to stop everything, and the test-safety rules.
-- `pnpm verify:phase1` is the acceptance gate: type checking, linting, formatting, unit, database,
-  runtime-browser, Watchtower end-to-end, and demo portal suites, ending with `pnpm check:teardown`,
-  which fails if any Orbit process or test port survived. 551 tests, about 80 seconds.
-- `docs/tasks/reports/TASK-009-end-to-end-demo-report.md` is the final acceptance record: the
-  scenario expectations, the gate results, the defects fixed, the acceptance checklist, and the
-  limitations deferred beyond Phase 1.
-
-Orbit Phase 1 is a **local proof loop, not production software**: no authentication, no queue, no
-recovery, no retention, and one agent against one controlled local portal. The report's limitations
-section is the authoritative list.
+Phase 2 direction and the remaining sub-phases are in
+`docs/tasks/phase-2-sop-graph-requirements.md`. **Task 2 (sub-phase 2.2, free-text understanding)
+is next**: an LLM provider abstraction with a deterministic fake for tests, proposed-graph
+generation, and assumption/clarification generation. It must feed generated output through
+`parseSopGraphDocument` before persisting anything — model output is untrusted input, and the
+validator already exists precisely so that 2.2 does not have to invent one.
 
 ### Where the pieces live
 
@@ -61,6 +58,8 @@ section is the authoritative list.
 | Browser actions | `@orbit/executor-playwright` (Task 6) |
 | HTTP surface and run dispatch | `apps/api` (Tasks 7–8) |
 | Trigger and evidence console | `apps/web` (Tasks 7–8) |
+| SOP Graph contract, validation, reorder rules | `@orbit/sop-graph` (Phase 2 Task 1) |
+| SOP document, revision, and provenance persistence | `@orbit/db` (Phase 2 Task 1) |
 
 `prepareExecution` in `@orbit/runtime` is the single validation gate the API and the browser-worker
 CLI both use.

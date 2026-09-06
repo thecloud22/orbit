@@ -5,6 +5,11 @@ import { createArtifactRepository, type ArtifactRepository } from './artifacts';
 import { createRunEventRepository, type RunEventRepository } from './run-events';
 import { createRunStepRepository, type RunStepRepository } from './run-steps';
 import { createRunRepository, type RunRepository } from './runs';
+import { createSopDocumentRepository, type SopDocumentRepository } from './sop-documents';
+import {
+  createSopGraphRevisionRepository,
+  type SopGraphRevisionRepository,
+} from './sop-graph-revisions';
 
 export * from './agent-versions';
 export * from './agents';
@@ -12,6 +17,8 @@ export * from './artifacts';
 export * from './run-events';
 export * from './run-steps';
 export * from './runs';
+export * from './sop-documents';
+export * from './sop-graph-revisions';
 
 export interface OrbitRepositories {
   readonly agents: AgentRepository;
@@ -20,6 +27,8 @@ export interface OrbitRepositories {
   readonly runSteps: RunStepRepository;
   readonly runEvents: RunEventRepository;
   readonly artifacts: ArtifactRepository;
+  readonly sopDocuments: SopDocumentRepository;
+  readonly sopGraphRevisions: SopGraphRevisionRepository;
 }
 
 export function createRepositories(executor: Executor): OrbitRepositories {
@@ -30,6 +39,8 @@ export function createRepositories(executor: Executor): OrbitRepositories {
     runSteps: createRunStepRepository(executor),
     runEvents: createRunEventRepository(executor),
     artifacts: createArtifactRepository(executor),
+    sopDocuments: createSopDocumentRepository(executor),
+    sopGraphRevisions: createSopGraphRevisionRepository(executor),
   };
 }
 

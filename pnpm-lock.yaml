@@ -250,6 +250,9 @@ importers:
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@orbit/sop-graph':
+        specifier: workspace:*
+        version: link:../sop-graph
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
@@ -312,6 +315,16 @@ importers:
       '@orbit/db':
         specifier: workspace:*
         version: link:../db
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
+  packages/sop-graph:
+    dependencies:
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
     devDependencies:
       typescript:
         specifier: ^5.9.0

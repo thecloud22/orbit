@@ -6,6 +6,8 @@ import type {
   RunEventRepository,
   RunRepository,
   RunStepRepository,
+  SopDocumentRepository,
+  SopGraphRevisionRepository,
 } from '@orbit/db';
 
 import type { ApiContext } from '../context';
@@ -45,6 +47,8 @@ export interface StubContextOptions {
   readonly runSteps?: Partial<RunStepRepository>;
   readonly runEvents?: Partial<RunEventRepository>;
   readonly artifacts?: Partial<ArtifactRepository>;
+  readonly sopDocuments?: Partial<SopDocumentRepository>;
+  readonly sopGraphRevisions?: Partial<SopGraphRevisionRepository>;
   readonly artifactService?: Partial<ArtifactService>;
   readonly dispatcher?: Partial<RunDispatcher>;
 }
@@ -58,6 +62,11 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
       runSteps: stubbed('runSteps', options.runSteps ?? {}),
       runEvents: stubbed('runEvents', options.runEvents ?? {}),
       artifacts: stubbed('artifacts', options.artifacts ?? {}),
+      // Present so the context satisfies OrbitRepositories. No Phase 1 API route
+      // touches SOP data, so any call here is a test reaching somewhere it
+      // should not and fails loudly with the method name.
+      sopDocuments: stubbed('sopDocuments', options.sopDocuments ?? {}),
+      sopGraphRevisions: stubbed('sopGraphRevisions', options.sopGraphRevisions ?? {}),
     },
     artifactService: stubbed('artifactService', options.artifactService ?? {}),
     dispatcher: stubbed('dispatcher', options.dispatcher ?? {}),

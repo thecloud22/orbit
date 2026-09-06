@@ -30,6 +30,34 @@ const noFrameworksInDomainPackages = [
 ];
 
 /**
+ * The SOP Graph is a non-executable description of intent, so it must not be
+ * able to reach a network or any package that can execute something. Kept
+ * separate from the filesystem rule below because a *test* legitimately reads
+ * the source tree — the static safety scan is precisely a test that opens every
+ * file — while none of these bans are ever lifted.
+ */
+const noExecutionInSopGraph = [
+  {
+    group: ['net', 'http', 'https', 'dns', 'node:net', 'node:http', 'node:https', 'node:dns'],
+    message:
+      'The SOP Graph never contacts a network. A URL in a graph is an untrusted draft reference.',
+  },
+  {
+    group: [
+      '@orbit/agent-ir',
+      '@orbit/agent-ir/*',
+      '@orbit/runtime',
+      '@orbit/runtime/*',
+      '@orbit/executor-playwright',
+      '@orbit/db',
+      '@orbit/db/*',
+    ],
+    message:
+      'The SOP Graph is not executable and must not depend on Agent IR, the runtime, or persistence. See ADR-002.',
+  },
+];
+
+/**
  * Domain packages never touch the filesystem: parsing functions take text, not
  * paths, so callers own reading bytes. Tests are exempt — reading the seeded
  * fixture from disk is exactly what they are for — but they keep every
@@ -95,6 +123,38 @@ export default tseslint.config(
     files: ['packages/contracts/**/*.test.ts', 'packages/agent-ir/**/*.test.ts'],
     rules: {
       'no-restricted-imports': ['error', { patterns: noFrameworksInDomainPackages }],
+    },
+  },
+
+  // The SOP Graph is a non-executable description of intent, and this rule is
+  // the enforcement of that claim rather than a comment asserting it.
+  {
+    files: ['packages/sop-graph/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...noFrameworksInDomainPackages,
+            ...noFilesystemInDomainPackages,
+            ...noExecutionInSopGraph,
+          ],
+        },
+      ],
+    },
+  },
+
+  // SOP Graph tests may read the source tree — the static safety scan has to
+  // open every file to prove what is not in it. Every ban that constitutes the
+  // non-executable boundary still applies; only the filesystem rule is lifted,
+  // matching the carve-out the other domain packages already have.
+  {
+    files: ['packages/sop-graph/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [...noFrameworksInDomainPackages, ...noExecutionInSopGraph] },
+      ],
     },
   },
 

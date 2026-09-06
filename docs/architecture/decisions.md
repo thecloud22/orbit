@@ -430,3 +430,58 @@ Phase 1 writes evidence bytes — screenshots, DOM snapshots, Playwright traces 
 | Relying only on the database's `storage_key` uniqueness | Leaves the filesystem willing to overwrite, and surfaces the failure later than it can be detected |
 
 ---
+
+## ADR-016: Keep the SOP Graph non-executable by construction, and version it as immutable checksummed revisions
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+Phase 2 turns free-form text into a structured SOP Graph that a person reviews, edits, and approves. Everything after sub-phase 2.1 — generation from a language model, a review UI, execution mapping, candidate Agent IR — is built on the assumption that a graph is inert: reviewing one, editing one, or approving one cannot navigate to a URL, start a run, or touch a browser. That assumption is load-bearing for the rest of the phase, and it is the kind of property that decays quietly. A single convenient import in a later sub-phase would erode it without any test failing.
+
+The graph is also the record of what a human approved. Sub-phase 2.3 lets reviewers edit and answer clarification questions, which means a document changes over time while an approval has to keep referring to something specific and unchanged. Phase 1 met the same requirement for Agent Versions and answered it with immutability plus a stored checksum (ADR-005, ADR-014); the question here is whether SOP Graphs should reuse that shape or invent another.
+
+Finally, SOP Graph and Agent IR both need a restricted way for a step to name a value. Their grammars are nearly identical, which makes sharing one implementation the obvious move and, for the reason below, the wrong one.
+
+### Decision
+
+**The non-executable boundary is enforced four times, independently.** `@orbit/sop-graph` declares exactly one runtime dependency, Zod, so it has no route to Playwright, the runtime, a database, the filesystem, or the network. ESLint rejects those imports, plus `@orbit/agent-ir`, `@orbit/runtime`, `@orbit/executor-playwright` and `@orbit/db`. A test opens every non-test source file in the package and asserts that none contains `fetch(`, `XMLHttpRequest`, `chromium`, `playwright`, `page.`, `node:net`, `node:http`, `node:dns`, `child_process`, or a forbidden package import. A second test replaces global `fetch` with a spy that throws, then parses, validates and reorders a graph whose steps carry `urlHint` values, and asserts the spy was never called.
+
+The redundancy is deliberate and each layer covers a different failure. The dependency surface is the strongest guarantee but says nothing about Node built-ins, which need no dependency at all. ESLint catches those, but only for import syntax it recognises and only while the rule survives future edits. The static scan catches a dynamic import, a global, or a stray `page.` that no import rule would see, but only in this package's own source. The `fetch` spy is the only one that observes actual behaviour rather than text, and it is the one that would still fail if the other three were quietly weakened. A boundary asserted once is a comment; the point is that removing it should require four deliberate acts rather than one careless one.
+
+**A URL in a graph is an untrusted draft reference.** `urlHint` is parsed with `new URL()` for syntax and protocol only. Nothing in this task's code fetches, probes, resolves, or allowlists it. Domain policy belongs to execution mapping in sub-phase 2.4.
+
+**Revisions are immutable, checksummed, and stored whole.** A revision holds its entire validated graph as JSONB beside `graph_sha256`, a checksum over the canonical JSON, recomputed on every read — the same posture `agent_versions.ir_sha256` already takes, and adopted here for the same reason: an artifact whose meaning can drift silently cannot serve as the record of what someone approved. A revision that no longer validates, or whose bytes no longer match, raises rather than being handed back as the reviewed document. The graph is stored as one document rather than shredded into step and branch tables because it is a versioned contract owned by `@orbit/sop-graph`, always read as a unit, and decomposing it would fork the contract and make every schema change a migration.
+
+**An edit is a new revision, so the revision chain is the edit history.** The repository exposes no method that rewrites a stored graph. Creating a revision supersedes its parent in the same transaction, and `parent_revision_id` and `superseded_by_revision_id` are real self-referencing foreign keys: this chain *is* the record of what was reviewed and what replaced it, and Phase 1 already established that a pointer able to dangle is not a record.
+
+**Lifecycle state lives on the revision; document status is derived.** `approved`, `rejected` and `superseded` are statements about one specific revision, not about a document, so the column belongs there. A document's current status is computed from its newest non-superseded revision rather than stored, so the two cannot disagree and no reconciliation rule is needed. Transitions are applied with the permitted prior states in the `WHERE` clause, as `runs.markRunning` already does, so a concurrent writer cannot slip between the check and the write.
+
+**`source_text` has no update path.** "What did the user originally write?" is a question Phase 2 must always be able to answer, and it stops being answerable the moment the original can be edited in place.
+
+**The interpolation grammar is re-implemented, not shared with Agent IR.** SOP Graph accepts a literal or exactly one whole-string `${inputs.x}` / `${variables.y}` reference — nearly the same grammar `@orbit/agent-ir` uses, deliberately duplicated. ADR-002 keeps business intent and the executable plan as two independent representations, and a shared module is a shared dependency: it would put Agent IR in the SOP Graph's import graph, defeat the boundary above, and mean a change made for an execution reason silently altering what a business draft is allowed to say. The two grammars are free to diverge, and `${result.…}`, which exists only in Agent IR's extraction step, is precisely a case where they already do.
+
+### Consequences
+
+- The claim "an SOP Graph cannot execute anything" is checked by the build, by lint, by a source scan, and by observed behaviour, so a later sub-phase cannot erode it accidentally.
+- The four guards must each be maintained. The static scan's denylist is text matching and will need extending if a new execution surface appears; it is a floor, not a proof.
+- `@orbit/sop-graph` cannot read a file or a URL, so callers own reading bytes — parsing functions take text or a decoded document, never a path.
+- An approved revision stays byte-identical to what was approved, and out-of-band edits are detected on read rather than prevented on write, matching ADR-014's posture.
+- Storing the graph whole means queries about individual steps open the document. That is acceptable while a graph is reviewed as a unit; it would need revisiting if step-level querying becomes a product requirement.
+- Duplicating the interpolation grammar means a future change wanted in both places must be made twice. That cost is the point: it is what keeps a change to one representation from silently becoming a change to the other.
+- **Not guaranteed:** nothing here prevents a *future* package from importing `@orbit/sop-graph` and doing something executable with a graph. The boundary is about what the graph package can do, not about what a caller may build on top of it; sub-phase 2.6 introduces exactly such a caller, under explicit separate approval.
+- **TODO (sub-phase 2.4+):** URL scheme policy, reviewed domain allowlists, redirect handling, and read-only versus side-effecting classification, none of which exist yet.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| One guard (dependency surface alone) | Says nothing about Node built-ins, which need no dependency, and nothing about behaviour |
+| Trusting ESLint alone | Enforces import syntax only, and is one config edit away from silently permitting everything |
+| Sharing the interpolation module with `@orbit/agent-ir` | Puts the executable plan in the SOP Graph's import graph and couples business intent to execution semantics, against ADR-002 |
+| Mutable graphs with a separate edit-log table | Two records of one history that can disagree; an approval could no longer point at unchanged bytes |
+| Shredding the graph into step and branch tables | Forks the contract owned by `@orbit/sop-graph` and makes every contract change a migration |
+| Lifecycle state stored on the document as well | Two sources of truth for one fact, immediately requiring rules for what happens when they differ |
+| Lifecycle on the document only | `approved` and `superseded` are statements about a specific revision; a document-level column cannot express which one |

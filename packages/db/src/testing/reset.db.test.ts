@@ -1,4 +1,6 @@
 import { sql } from 'drizzle-orm';
+
+import { ORBIT_TABLE_NAMES } from '../schema';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createDatabase, type OrbitDatabaseHandle } from '../client';
@@ -92,7 +94,9 @@ describe('destructive reset safety', () => {
     const tables = await db.execute<{ count: string }>(
       sql`select count(*)::text as count from information_schema.tables where table_schema = 'public'`,
     );
-    expect(Number(tables.rows[0]?.count)).toBe(7);
+    // Derived from the schema rather than hard-coded, so adding a table is not
+    // a reason to edit this assertion — only dropping one should be.
+    expect(Number(tables.rows[0]?.count)).toBe(ORBIT_TABLE_NAMES.length);
 
     const migrations = await db.execute<{ count: string }>(
       sql`select count(*)::text as count from drizzle.__drizzle_migrations`,
