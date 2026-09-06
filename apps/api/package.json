@@ -16,10 +16,12 @@
     "@orbit/contracts": "workspace:*",
     "@orbit/db": "workspace:*",
     "@orbit/execution-mapping": "workspace:*",
+    "@orbit/execution-recorder": "workspace:*",
     "@orbit/executor-playwright": "workspace:*",
     "@orbit/runtime": "workspace:*",
     "@orbit/sop-generation": "workspace:*",
     "@orbit/sop-graph": "workspace:*",
+    "@orbit/sop-recording": "workspace:*",
     "@orbit/sop-service": "workspace:*",
     "fastify": "^5.0.0",
     "zod": "^4.5.4"

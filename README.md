@@ -520,6 +520,9 @@ Two things the panel reports separately, because they are different facts:
 
 ## Recording a whole workflow (Phase 2.4f)
 
+Start one from Watchtower's **Home** page — a title and a starting URL — or from
+a terminal:
+
 ```bash
 pnpm record:workflow -- --title "Find a service request" --start-url http://localhost:3001/requests
 ```
@@ -549,8 +552,31 @@ a sensitive fill holding a literal is rejected. A recorded sign-in therefore
 arrives with its secret properly declared rather than with a credential in a
 durable artifact.
 
-Still not built: recording from Watchtower without a terminal (2.4f-2), Agent IR
-generation (2.5) and publishing (2.6).
+### Recording from Watchtower (Phase 2.4f-2)
+
+**The browser opens on the machine running Orbit's API.** Someone has to see and
+click the page being recorded, so a headed browser needs a display where the API
+runs. Pointed at a remote API from a laptop, no window appears on the laptop —
+which is why the form says so before a recording starts rather than leaving it to
+be discovered.
+
+A session is started, polled and finished over `/v1/recording-sessions`, the same
+shape run dispatch uses (ADR-011) and for the same reason: a recording lasts as
+long as a person takes. The live page lists what has been recorded so far and
+**Finish** compiles it, landing on the review page for the new document.
+
+If the sequence cannot become a valid workflow, **the session stays open** and
+says so. The browser still holds the work, which is the one thing in this flow a
+person cannot repeat from memory. An idle session is closed after thirty minutes,
+and any still open when the API stops go with it.
+
+Recording targets the **local sandbox only** — the same allowlist the runtime
+enforces, checked before a browser opens. ADR-019 kept script injection out of
+every process that executes an agent; ADR-020 narrows that to one API directory
+rather than lifting it, and a test walks the module graph from the run-dispatch
+path to prove the two stay apart.
+
+Still not built: Agent IR generation (2.5) and publishing (2.6).
 
 ## Watchtower
 

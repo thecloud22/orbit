@@ -10,6 +10,11 @@ import {
 } from '@orbit/sop-generation/testing';
 
 import { startApi } from '../bootstrap';
+import {
+  createFakeRecordingSessionFactory,
+  elementCapture,
+  navigation,
+} from './fake-recording-session';
 
 /**
  * The API, started for the end-to-end tests with a deterministic model provider.
@@ -66,6 +71,42 @@ function createE2eProvider(): LLMProvider {
   });
 }
 
+/**
+ * The recorded sequence the end-to-end run replays.
+ *
+ * A real recording needs a headed browser and a person clicking in it, neither
+ * of which exists on a test runner. What the end-to-end test is actually for is
+ * the path either side of that: Watchtower starts a session, watches what has
+ * been recorded appear, finishes it, and lands on the review page for a real
+ * document built by the real translation and the real persistence. Only the
+ * browser is substituted, and it is substituted the same way the model is —
+ * behind `src/testing/`, with no import path from production code.
+ */
+function scriptRecording(): ReturnType<typeof createFakeRecordingSessionFactory> {
+  return createFakeRecordingSessionFactory({
+    onOpen: (session) => {
+      session.push(navigation('http://localhost:3001/requests', 1));
+      session.push(
+        elementCapture({
+          type: 'fill',
+          order: 2,
+          testId: 'request-number-input',
+          name: 'Request number',
+          typedValue: 'SR-1001',
+        }),
+      );
+      session.push(
+        elementCapture({
+          type: 'click',
+          order: 3,
+          testId: 'search-request-button',
+          name: 'Search',
+        }),
+      );
+    },
+  });
+}
+
 const databaseUrl = requireDatabaseUrl('DATABASE_URL');
 const databaseName = databaseNameFromUrl(databaseUrl);
 
@@ -88,6 +129,7 @@ if (artifactRoot === undefined || artifactRoot.trim() === '') {
 try {
   await startApi({
     sopProvider: createE2eProvider(),
+    recordingSessionFactory: scriptRecording(),
     databaseUrl,
     artifactRoot: artifactRoot.trim(),
     port: Number(process.env['API_PORT'] ?? 3102),

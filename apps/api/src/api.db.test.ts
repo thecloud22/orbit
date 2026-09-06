@@ -18,6 +18,8 @@ import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createInProcessRunDispatcher } from './dispatch';
+import { createRecordingSessionRegistry } from './recording/session-registry';
+import { createFakeRecordingSessionFactory } from './testing/fake-recording-session';
 import { buildServer } from './server';
 
 /**
@@ -59,6 +61,12 @@ describe('Orbit API over real persistence', () => {
           provider: createFakeSopProvider({ respond: () => respondWith(validSopGraphProposal()) }),
         }),
         sopRevisionService: createSopRevisionService({ database: getDatabase().db }),
+        // No browser: these tests never record, and a registry that could open
+        // one would be a Chromium per test file for nothing.
+        recordingSessions: createRecordingSessionRegistry({
+          database: getDatabase().db,
+          factory: createFakeRecordingSessionFactory(),
+        }),
       },
     });
 

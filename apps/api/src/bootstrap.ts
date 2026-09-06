@@ -3,9 +3,15 @@ import { createArtifactService } from '@orbit/artifact-service';
 import { createDatabase, createRepositories } from '@orbit/db';
 import type { LLMProvider } from '@orbit/sop-generation';
 import { createSopDraftService, createSopRevisionService } from '@orbit/sop-service';
+
+import {
+  createPlaywrightRecordingSessionFactory,
+  createRecordingSessionRegistry,
+} from './recording/session-registry';
 import type { FastifyInstance } from 'fastify';
 
 import type { ApiContext } from './context';
+import type { RecordingSessionFactory } from './recording/session-registry';
 import { createInProcessRunDispatcher } from './dispatch';
 import { buildServer } from './server';
 
@@ -31,6 +37,15 @@ export interface ApiBootstrapOptions {
   readonly port: number;
   readonly host: string;
   readonly logLevel?: string;
+  /**
+   * Supplied only by the end-to-end entry point, which records without a
+   * display.
+   *
+   * What is substituted is the browser and nothing else: the registry, its
+   * lifecycle, the translation and the persistence are all the real ones, so an
+   * end-to-end recording produces a genuine document.
+   */
+  readonly recordingSessionFactory?: RecordingSessionFactory;
 }
 
 export interface StartedApi {
@@ -43,6 +58,17 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
   const handle = createDatabase({ url: options.databaseUrl });
   const storage = await createLocalFilesystemArtifactStorage({ root: options.artifactRoot });
 
+  // Headed, because a person has to see and click the page they are recording.
+  // That makes recording a local-machine capability, which the UI states.
+  const recordingSessions = createRecordingSessionRegistry({
+    database: handle.db,
+    factory:
+      options.recordingSessionFactory ??
+      createPlaywrightRecordingSessionFactory({
+        headless: process.env['ORBIT_RECORDER_HEADLESS'] === 'true',
+      }),
+  });
+
   const app = buildServer({
     context: {
       repositories: createRepositories(handle.db),
@@ -52,6 +78,7 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
         provider: options.sopProvider,
       }),
       sopRevisionService: createSopRevisionService({ database: handle.db }),
+      recordingSessions,
       dispatcher: createInProcessRunDispatcher({
         database: handle.db,
         storage,
@@ -79,6 +106,9 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
     url: `http://${options.host}:${options.port}`,
     close: async () => {
       await app.close();
+      // Any browser a recording still holds goes with the process that opened
+      // it; a stranded Chromium outlives the API otherwise.
+      await recordingSessions.closeAll();
       await handle.close();
     },
   };

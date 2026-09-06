@@ -15,7 +15,8 @@
 export type View =
   | { readonly kind: 'home' }
   | { readonly kind: 'documents' }
-  | { readonly kind: 'review'; readonly documentId: string };
+  | { readonly kind: 'review'; readonly documentId: string }
+  | { readonly kind: 'recording'; readonly sessionId: string };
 
 export const DOCUMENTS_VIEW = 'documents';
 
@@ -34,6 +35,12 @@ export function viewFromSearch(search: string): View {
     return { kind: 'review', documentId };
   }
 
+  const sessionId = params.get('recordingSessionId');
+
+  if (sessionId !== null && sessionId !== '') {
+    return { kind: 'recording', sessionId };
+  }
+
   return params.get('view') === DOCUMENTS_VIEW ? { kind: 'documents' } : { kind: 'home' };
 }
 
@@ -46,6 +53,8 @@ export function searchForView(view: View): string {
       return `?view=${DOCUMENTS_VIEW}`;
     case 'review':
       return `?documentId=${encodeURIComponent(view.documentId)}`;
+    case 'recording':
+      return `?recordingSessionId=${encodeURIComponent(view.sessionId)}`;
   }
 }
 
@@ -65,7 +74,10 @@ export interface NavLink {
  */
 export function navLinks(current: View): readonly NavLink[] {
   const isCurrent = (view: View): boolean =>
-    view.kind === current.kind || (view.kind === 'documents' && current.kind === 'review');
+    view.kind === current.kind ||
+    (view.kind === 'documents' && current.kind === 'review') ||
+    // A recording starts on Home and is not a place in the app of its own.
+    (view.kind === 'home' && current.kind === 'recording');
 
   return (['home', 'documents'] as const).map((kind) => {
     const view: View = kind === 'home' ? { kind: 'home' } : { kind: 'documents' };

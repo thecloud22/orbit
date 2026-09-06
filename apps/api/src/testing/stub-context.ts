@@ -13,6 +13,8 @@ import type {
 
 import type { SopDraftService, SopRevisionService } from '@orbit/sop-service';
 
+import type { RecordingSessionRegistry } from '../recording/session-registry';
+
 import type { ApiContext } from '../context';
 import type { RunDispatcher } from '../dispatch';
 
@@ -57,6 +59,7 @@ export interface StubContextOptions {
   readonly dispatcher?: Partial<RunDispatcher>;
   readonly sopDraftService?: Partial<SopDraftService>;
   readonly sopRevisionService?: Partial<SopRevisionService>;
+  readonly recordingSessions?: Partial<RecordingSessionRegistry>;
 }
 
 export function createStubContext(options: StubContextOptions = {}): ApiContext {
@@ -80,5 +83,6 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
     dispatcher: stubbed('dispatcher', options.dispatcher ?? {}),
     sopDraftService: stubbed('sopDraftService', options.sopDraftService ?? {}),
     sopRevisionService: stubbed('sopRevisionService', options.sopRevisionService ?? {}),
+    recordingSessions: stubbed('recordingSessions', options.recordingSessions ?? {}),
   };
 }

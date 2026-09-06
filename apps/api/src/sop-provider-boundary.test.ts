@@ -173,3 +173,48 @@ describe('the fake model provider stays out of the shipped API', () => {
     expect(contents).toContain('databaseNameFromUrl');
   });
 });
+
+describe('no test double reaches production code, wherever it lives', () => {
+  /**
+   * The subpath check above only sees package specifiers. The recording fake is
+   * a local module — `./testing/fake-recording-session` — and a production file
+   * importing it relatively would pass every assertion in this file. So the
+   * directory itself is the boundary, not just the published subpaths.
+   */
+  const testingDirectory = join(SOURCE_ROOT, 'testing');
+
+  function importsTestingModule(file: string): boolean {
+    return importsOf(file).some((specifier) => {
+      const local = resolveLocal(file, specifier);
+      return local !== undefined && local.startsWith(testingDirectory);
+    });
+  }
+
+  it('cannot reach src/testing from the shipped entry point, at any depth', () => {
+    const offenders = moduleGraphFrom(join(SOURCE_ROOT, 'index.ts'))
+      .filter(importsTestingModule)
+      .map((file) => relative(SOURCE_ROOT, file));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('confines src/testing imports to tests and to src/testing itself', () => {
+    const offenders = allSourceFiles(SOURCE_ROOT)
+      .filter(importsTestingModule)
+      .map((file) => relative(SOURCE_ROOT, file))
+      .filter((file) => !file.endsWith('.test.ts') && !file.startsWith('testing/'));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('detects a violation rather than passing vacuously', () => {
+    // The guard above is only worth having if it can fail. `bootstrap.ts`
+    // legitimately imports the registry and not the fake; pointed at the fake,
+    // the same predicate must object.
+    const fake = join(SOURCE_ROOT, 'testing', 'fake-recording-session.ts');
+
+    expect(existsSync(fake)).toBe(true);
+    expect(importsTestingModule(join(SOURCE_ROOT, 'testing', 'e2e-server.ts'))).toBe(true);
+    expect(importsTestingModule(join(SOURCE_ROOT, 'bootstrap.ts'))).toBe(false);
+  });
+});

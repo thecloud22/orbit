@@ -35,7 +35,7 @@ silently.
 checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
-**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a and 2.4b** are complete.
+**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b and 2.4f** are complete.
 `@orbit/sop-graph` provides the non-executable graph contract and its validation;
 `@orbit/sop-generation` turns free text into a proposed graph; `@orbit/sop-service` persists drafts
 and drives review; `@orbit/execution-mapping` defines the Execution Binding and the runtime verifies
@@ -49,7 +49,8 @@ Four rules are binding and recorded in ADRs: only `draft` and `needs_clarificati
 changed, and every clarification question must be answered before `in_review` (**ADR-017**); a
 mismatch between an approved binding and the live page stops the run rather than substituting an
 element (**ADR-018**); and script injection is confined to one file, unreachable from anything that
-executes an agent, with recorder/runtime fingerprint parity proven by a contract test (**ADR-019**).
+executes an agent, with recorder/runtime fingerprint parity proven by a contract test (**ADR-019**), narrowed for one
+API directory by **ADR-020**.
 
 Binding status and staleness are reported separately: an approved binding whose step has since been
 edited is still approved and still not safe to run, and `superseded` is never a current status
@@ -60,12 +61,17 @@ sequence into a linear SOP Graph with a binding per step, and `@orbit/sop-servic
 `provenance.kind: 'recorded'` and bindings driven through the lifecycle to `approved`. Passwords are
 never read from the page; the translator declares a `secret` input instead.
 
-**Sub-phase 2.4f-2 is next**: moving that session into Watchtower, which needs a headed browser in
-the API process and therefore a deliberate relaxation of ADR-019's ban on script injection in
-execution paths. **Sub-phase 2.5 follows**: compiling approved bindings into candidate Agent IR. It consumes the
+A workflow can now be recorded **from Watchtower** as well as from a terminal: `/v1/recording-sessions`
+starts, polls and finishes a session in the shape run dispatch already uses, and finishing lands on
+the review page for the new document. The headed browser opens on the machine running the API, which
+the UI states plainly. **ADR-020** narrows ADR-019's ban on script injection in execution paths to a
+single API directory rather than lifting it, and a module-graph test from the run-dispatch entry
+point proves the two stay apart.
+
+**Sub-phase 2.5 is next**: compiling approved bindings into candidate Agent IR. It consumes the
 binding contract 2.4a froze and the bindings 2.4b produces, and must import `stepChecksum` from
 `@orbit/db` rather than recomputing it — there is one definition so the two cannot drift. See the
-Task P2-001 through P2-004B reports under `docs/tasks/reports/`.
+Task P2-001 through P2-004F2 reports under `docs/tasks/reports/`.
 
 Phase 2 direction and the remaining sub-phases are in
 `docs/tasks/phase-2-sop-graph-requirements.md`. Model output is untrusted input: anything a model

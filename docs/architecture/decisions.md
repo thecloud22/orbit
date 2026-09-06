@@ -659,3 +659,56 @@ Three questions followed. Where does the human confirm what was captured? How mu
 | Route all four assists through a model | Makes two exact answers approximate, and widens the model surface for nothing |
 | Keep `stepChecksum` in the recorder app | 2.5 cannot import from a CLI app, so it would reimplement the rule from an ADR — the gap moved, not closed |
 | Trust the recorder and `describeElement` to agree | Two independent implementations of one value, with no signal when they diverge except every binding failing at once |
+
+## ADR-020: Record from Watchtower over a session API, narrowing ADR-019's ban rather than lifting it
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+ADR-019 put recording in a terminal and listed "record from Watchtower, with the API hosting a headed browser" as an alternative it rejected — it invents a session lifecycle over HTTP for something inherently local, and adds a window without adding clarity. That reasoning was about recording an Execution Binding: a step-by-step task, done by whoever is already deep in a shell.
+
+Sub-phase 2.4f changed what recording is for. A recording no longer produces a binding for one step; it produces a whole SOP Graph document — someone does the task once and Orbit writes down the workflow. That is the first thing in Orbit a non-engineer would do, and it is the entry point to the review, editing and approval flow that already lives entirely in Watchtower. Reaching it through `pnpm record:workflow` puts a terminal in front of the one person the feature exists for.
+
+So the alternative ADR-019 rejected has to be revisited, and with it the ban that made it impossible: ADR-019 forbade `apps/api` from importing the recorder at all.
+
+### Decision
+
+**Recording is available from Watchtower, over a session API.** `POST /v1/recording-sessions` opens one and returns an id, `GET` reports what has been recorded so far, `POST …/finish` compiles the sequence into a document, `DELETE` throws it away. The shape is run dispatch's (ADR-011) for the same reason: a recording lasts as long as a person takes, which is far longer than an HTTP request should live. Nothing is held open across the request; the id is the handle.
+
+**ADR-019's alternative is reversed on its merits, not waved away.** Its two objections were a session lifecycle over HTTP and a third window. The first turned out to be the smaller half of the work and mirrors machinery the API already has. The second was simply wrong for this case: recording a whole workflow *starts* in Watchtower, so the browser is the second window, not the third. **The CLI remains** — ADR-019's judgement still holds for binding a single step from a shell — and neither path is the other's fallback.
+
+**The ban is narrowed to one directory, not lifted.** `apps/api/src/recording/` may import `@orbit/execution-recorder`; nothing else in the API may. ADR-019's actual concern was that the code executing an agent must not be able to load script injection, and that is preserved exactly: lint restricts the import to that directory, and a test walks the module graph from the run-dispatch entry point and asserts it reaches the recorder at no depth. A narrowed ban is worth only its proof, so the proof is the module graph rather than a comment. `apps/browser-worker` keeps its own separate ban, unchanged and unrelaxed.
+
+**The browser opens on the machine running the API, and the UI says so.** Someone has to see and click the page, so a headed browser needs a display where the API runs. That is a real constraint on where Orbit can be deployed rather than an implementation detail, and it is stated on the form before a recording starts — not discovered by waiting for a window that never appears.
+
+**Only the local sandbox may be recorded.** Recording performs real clicks and real fills in a real browser, so the target is checked against the same localhost-only allowlist the runtime enforces, before a browser opens. A remote target is refused at session creation.
+
+**A recording that cannot be compiled keeps its session open.** If the captured sequence fails validation, the session survives, the browser keeps the page, and the error says so explicitly. The alternative — close the session and report the failure — destroys work a person cannot repeat from memory, which is the one irreversible thing in the whole flow.
+
+**Sessions are reaped when idle, and closed with the process.** A recording nobody finishes holds a Chromium open indefinitely; polling counts as activity, thirty idle minutes closes it, and API shutdown closes whatever remains. A stranded browser outliving the process that opened it is a leak, not an inconvenience.
+
+**The end-to-end test substitutes the browser and nothing else.** A test runner has no display and no person to click, so the session factory is faked behind `src/testing/` — the same containment the fake model provider has, with a guard that now covers local modules under that directory as well as published `/testing` subpaths. The registry, the lifecycle, the translation, the validation and the persistence are all real, so what the test produces is a genuine document.
+
+### Consequences
+
+- Recording a workflow is reachable by the person the feature is for, in the same place the resulting document is reviewed and approved.
+- Orbit's API can no longer be deployed to a machine without a display and still record. Running a recording remotely is not possible and the UI says so rather than failing obscurely.
+- The property ADR-019 protected is intact and now has a module-graph proof it did not have before; what changed is the blast radius of the rule, not the rule.
+- Two recording entry points exist, with different jobs — a whole workflow from Watchtower, a single step's binding from the CLI. Someone could reasonably expect either to do the other's job.
+- **A recording session is process-local state.** It lives in one API process's memory, so a restart loses any session open at the time, and more than one API instance would not share them. Acceptable while the API is a single modular monolith (ADR-001); it is the first thing that breaks if that stops being true.
+- **Secrets are not detected, only password fields are.** A value typed into a non-password field is captured verbatim. Anything sensitive entered somewhere Orbit cannot recognise ends up in the recorded step, and a reviewer has to catch it. Stated as an accepted risk, unsolved.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Keep recording CLI-only, per ADR-019 | Puts a terminal in front of the non-engineer the workflow-recording feature exists for |
+| Lift ADR-019's recorder ban across `apps/api` | Trades away the property ADR-019 protected to solve a directory-shaped problem |
+| Hold the session open for the duration of one HTTP request | A recording lasts as long as a person takes; the request would be open for minutes |
+| Close the session when a recording fails to compile | Destroys work a person cannot repeat from memory — the one irreversible step in the flow |
+| Let a recording session live until the process ends | An unfinished recording holds a Chromium open indefinitely |
+| Run a real headed browser in the end-to-end test | No display on a test runner, and no person to click; the browser is the one thing that must be faked |
+| Ship the recording UI without stating where the browser opens | Someone on a laptop pointed at a remote API waits for a window that never appears |

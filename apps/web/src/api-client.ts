@@ -3,6 +3,8 @@ import type {
   CreateRunResultView,
   DataEnvelope,
   RunDetailView,
+  FinishedRecordingView,
+  RecordingSessionView,
   SopBindingsView,
   SopDocumentSummaryView,
   SopDraftView,
@@ -210,4 +212,27 @@ export async function transitionSopRevision(
  */
 export async function getSopBindings(documentId: string): Promise<SopBindingsView> {
   return getJson<SopBindingsView>(`/v1/sop-documents/${documentId}/bindings`);
+}
+
+export async function startRecording(
+  title: string,
+  startUrl: string,
+): Promise<RecordingSessionView> {
+  return send('/v1/recording-sessions', 'POST', { title, startUrl });
+}
+
+export async function getRecordingSession(sessionId: string): Promise<RecordingSessionView> {
+  return getJson<RecordingSessionView>(`/v1/recording-sessions/${sessionId}`);
+}
+
+export async function finishRecording(sessionId: string): Promise<FinishedRecordingView> {
+  return send(`/v1/recording-sessions/${sessionId}/finish`, 'POST', {});
+}
+
+export async function cancelRecording(sessionId: string): Promise<void> {
+  const response = await fetch(`/v1/recording-sessions/${sessionId}`, { method: 'DELETE' });
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
 }

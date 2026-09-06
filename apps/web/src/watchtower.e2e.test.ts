@@ -806,6 +806,93 @@ describe('Watchtower end to end', () => {
     });
   });
 
+  describe('recording a workflow', () => {
+    /**
+     * The half of recording that is not a person clicking in a browser.
+     *
+     * The stack's recording sessions are backed by a scripted fake in place of
+     * a headed Chromium — a test runner has no display, and a real recording is
+     * a human doing the task. Everything either side of the browser is real:
+     * the routes, the registry, the translation, the validation, and the
+     * document that comes out the far end.
+     */
+    it('starts from Home, shows what was recorded, and lands on a real document', async () => {
+      const page = await open('/');
+
+      await expect
+        .poll(() => page.getByTestId('record-workflow-form').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      // Nobody should have to discover where the browser opens by waiting for a
+      // window that never appears on their own laptop.
+      const notice = (await page.getByTestId('recording-local-notice').textContent()) ?? '';
+      expect(notice).toContain('machine running Orbit');
+
+      await page.getByTestId('recording-title').fill('Find a service request');
+      await page.getByTestId('recording-url').fill('http://localhost:3001/requests');
+      await page.getByTestId('start-recording-button').click();
+
+      await expect
+        .poll(() => page.getByTestId('recording-session').count(), { timeout: 30_000 })
+        .toBe(1);
+      expect(page.url()).toContain('recordingSessionId=rec_');
+
+      // The scripted sequence appears through polling, in the order it happened.
+      await expect
+        .poll(() => page.getByTestId('recording-action').count(), { timeout: 30_000 })
+        .toBe(3);
+
+      const rows = await page.getByTestId('recording-action').allTextContents();
+      expect(rows[0]).toContain('Opened');
+      expect(rows[1]).toContain('Request number');
+      expect(rows[2]).toContain('Search');
+
+      await page.getByTestId('finish-recording-button').click();
+
+      // Finishing goes straight to the review page for the document it built.
+      await expect.poll(() => page.getByTestId('sop-review').count(), { timeout: 30_000 }).toBe(1);
+
+      const documentId = new URL(page.url()).searchParams.get('documentId');
+      expect(documentId).toMatch(/^sopdoc_/);
+
+      // And it is a genuine document in the database, not a client-side view.
+      const detail = (await (
+        await fetch(`${E2E_API_URL}/v1/sop-documents/${documentId}`)
+      ).json()) as {
+        data: {
+          documentTitle: string;
+          steps: readonly unknown[];
+          provenance: { kind: string };
+          executable: false;
+        };
+      };
+
+      expect(detail.data.documentTitle).toBe('Find a service request');
+      expect(detail.data.steps.length).toBeGreaterThan(0);
+
+      // It went through the real translation, so it is marked as recorded — and
+      // it is still a SOP Graph, which never executes anything (ADR-016).
+      expect(detail.data.provenance.kind).toBe('recorded');
+      expect(detail.data.executable).toBe(false);
+
+      await page.close();
+    });
+
+    it('refuses a target outside the local sandbox before a browser opens', async () => {
+      // Recording performs real actions. The allowlist is the same rule the
+      // runtime enforces, checked here at the point a session is created.
+      const response = await fetch(`${E2E_API_URL}/v1/recording-sessions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title: 'Somewhere else', startUrl: 'https://example.com/admin' }),
+      });
+
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { error: { message: string } };
+      expect(body.error.message).toContain('local sandbox');
+    });
+  });
+
   describe('artifact integrity', () => {
     it('serves bytes that match the digest recorded for the run', async () => {
       const { runId, detail } = await succeededRun();

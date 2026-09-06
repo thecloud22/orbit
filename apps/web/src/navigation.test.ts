@@ -39,6 +39,20 @@ describe('viewFromSearch', () => {
   it('is unaffected by a run id, which belongs to the home view', () => {
     expect(viewFromSearch('?runId=run_123')).toEqual({ kind: 'home' });
   });
+
+  it('reads a recording session', () => {
+    expect(viewFromSearch('?recordingSessionId=rec_abc')).toEqual({
+      kind: 'recording',
+      sessionId: 'rec_abc',
+    });
+  });
+
+  it('still prefers an existing review link over a recording', () => {
+    expect(viewFromSearch('?recordingSessionId=rec_abc&documentId=sopdoc_1')).toEqual({
+      kind: 'review',
+      documentId: 'sopdoc_1',
+    });
+  });
 });
 
 describe('searchForView', () => {
@@ -47,6 +61,7 @@ describe('searchForView', () => {
       { kind: 'home' },
       { kind: 'documents' },
       { kind: 'review', documentId: 'sopdoc_123' },
+      { kind: 'recording', sessionId: 'rec_abc' },
     ];
 
     for (const view of views) {
@@ -68,6 +83,14 @@ describe('navLinks', () => {
     for (const view of [{ kind: 'home' }, { kind: 'documents' }] as const) {
       expect(navLinks(view).filter((link) => link.current)).toHaveLength(1);
     }
+  });
+
+  it('keeps Home current while recording, which is where a recording starts', () => {
+    const links = navLinks({ kind: 'recording', sessionId: 'rec_abc' });
+
+    // A recording is something you are doing, not a place in the app.
+    expect(links.find((link) => link.label === 'Home')?.current).toBe(true);
+    expect(links.find((link) => link.label === 'Documents')?.current).toBe(false);
   });
 
   it('keeps Documents current while reading a document', () => {

@@ -50,6 +50,9 @@ importers:
       '@orbit/execution-mapping':
         specifier: workspace:*
         version: link:../../packages/execution-mapping
+      '@orbit/execution-recorder':
+        specifier: workspace:*
+        version: link:../../packages/execution-recorder
       '@orbit/executor-playwright':
         specifier: workspace:*
         version: link:../../packages/executor-playwright
@@ -62,6 +65,9 @@ importers:
       '@orbit/sop-graph':
         specifier: workspace:*
         version: link:../../packages/sop-graph
+      '@orbit/sop-recording':
+        specifier: workspace:*
+        version: link:../../packages/sop-recording
       '@orbit/sop-service':
         specifier: workspace:*
         version: link:../../packages/sop-service

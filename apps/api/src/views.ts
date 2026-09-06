@@ -351,3 +351,33 @@ export interface SopBindingsView {
   readonly steps: readonly SopStepBindingView[];
   readonly summary: SopBindingsSummaryView;
 }
+
+/**
+ * A recording in progress, as Watchtower shows it.
+ *
+ * The browser is on the machine running the API, because a person has to see
+ * and click it — a real constraint on where Orbit can run, which is why the UI
+ * says so rather than leaving it to be discovered.
+ */
+export interface RecordedActionView {
+  readonly order: number;
+  readonly kind: string;
+  readonly description: string;
+  /** A password field was touched and its value deliberately not read. */
+  readonly sensitive: boolean;
+}
+
+export interface RecordingSessionView {
+  readonly sessionId: string;
+  readonly title: string;
+  readonly startUrl: string;
+  readonly currentUrl: string;
+  readonly startedAt: string;
+  readonly actions: readonly RecordedActionView[];
+}
+
+export interface FinishedRecordingView {
+  readonly documentId: string;
+  readonly stepCount: number;
+  readonly bindingCount: number;
+}

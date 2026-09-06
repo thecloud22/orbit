@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import type { AgentVersionView, SopDraftView } from '@orbit/api/views';
 
-import { ApiRequestError, createSopDraft, listAgentVersions } from './api-client';
+import { ApiRequestError, createSopDraft, listAgentVersions, startRecording } from './api-client';
 import { APP_INFO } from './app-info';
 import { EvidenceList } from './EvidenceList';
 import { RunStatusPanel } from './RunStatusPanel';
@@ -11,6 +11,8 @@ import { describeSopDraftFailure, type SopDraftFailure } from './sop-draft-view-
 import { SopDraftForm } from './SopDraftForm';
 import { SopDraftPanel } from './SopDraftPanel';
 import { DocumentsPage } from './DocumentsPage';
+import { RecordingSessionPage } from './RecordingSessionPage';
+import { RecordWorkflowForm } from './RecordWorkflowForm';
 import { Nav } from './Nav';
 import { searchForView, viewFromSearch, type View } from './navigation';
 import { SopReviewPage } from './SopReviewPage';
@@ -31,6 +33,8 @@ export function App() {
   const [draft, setDraft] = useState<SopDraftView | null>(null);
   const [draftFailure, setDraftFailure] = useState<SopDraftFailure | null>(null);
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
+  const [isStartingRecording, setIsStartingRecording] = useState(false);
+  const [recordingError, setRecordingError] = useState<ApiRequestError | null>(null);
   const [view, setView] = useState<View>(() => viewFromSearch(window.location.search));
   const run = useRun();
 
@@ -130,10 +134,34 @@ export function App() {
     };
   }, []);
 
+  async function beginRecording(title: string, startUrl: string) {
+    setIsStartingRecording(true);
+    setRecordingError(null);
+
+    try {
+      const session = await startRecording(title, startUrl);
+      navigate({ kind: 'recording', sessionId: session.sessionId });
+    } catch (caught) {
+      setRecordingError(
+        caught instanceof ApiRequestError
+          ? caught
+          : new ApiRequestError({ status: 0, message: 'The API could not be reached.' }),
+      );
+    } finally {
+      setIsStartingRecording(false);
+    }
+  }
+
   if (view.kind !== 'home') {
     return (
       <Shell current={view} onNavigate={navigate}>
-        {view.kind === 'review' ? (
+        {view.kind === 'recording' ? (
+          <RecordingSessionPage
+            onCancelled={() => navigate({ kind: 'home' })}
+            onFinished={navigate}
+            sessionId={view.sessionId}
+          />
+        ) : view.kind === 'review' ? (
           <>
             <button
               className="self-start text-sm text-slate-600 underline"
@@ -228,6 +256,28 @@ export function App() {
           />
         </div>
       </section>
+
+      <section className="rounded border border-slate-200 p-4">
+        <h2 className="text-sm font-semibold text-slate-900">Record a workflow</h2>
+        <p className="mt-1 text-xs text-slate-600">
+          Do the task once in a real browser and Orbit writes down what you did — the steps and the
+          elements they act on, together.
+        </p>
+        <div className="mt-3">
+          <RecordWorkflowForm
+            isStarting={isStartingRecording}
+            onStart={(title, startUrl) => void beginRecording(title, startUrl)}
+          />
+        </div>
+      </section>
+
+      {recordingError !== null && (
+        <ApiErrorNotice
+          error={recordingError}
+          testId="recording-start-error"
+          title="The recording could not be started"
+        />
+      )}
 
       {draft !== null && (
         <div>

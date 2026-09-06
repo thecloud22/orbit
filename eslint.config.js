@@ -143,10 +143,10 @@ const noReachIntoOrbitFromRecorder = [
 ];
 
 /**
- * Advice never becomes action.
+ * Script injection stays out of anything that executes an agent.
  *
- * The assists suggest; they cannot reach the runtime whose drift check they
- * comment on, the recorder whose captures they read, or a database.
+ * ADR-019's rule, narrowed in ADR-020 for the one API directory that drives a
+ * recording browser — and nowhere else.
  */
 const noRecorderInExecutionPaths = [
   {
@@ -181,6 +181,12 @@ const noActionFromRecordingTranslation = [
   },
 ];
 
+/**
+ * Advice never becomes action.
+ *
+ * The assists suggest; they cannot reach the runtime whose drift check they
+ * comment on, the recorder whose captures they read, or a database.
+ */
 const noActionFromAssist = [
   {
     group: [
@@ -420,6 +426,21 @@ export default tseslint.config(
         'error',
         { patterns: [...noTestDoublesInProductionCode, ...noRecorderInExecutionPaths] },
       ],
+    },
+  },
+
+  // One directory in the API may drive a recording browser, and only that one.
+  //
+  // ADR-019 kept script injection out of every process that executes an agent,
+  // and the API is one (ADR-011). Sub-phase 2.4f-2 needs a person to record
+  // from Watchtower, which cannot happen without the API owning that browser —
+  // so the ban is narrowed rather than lifted: `src/recording/` may import the
+  // recorder, nothing else in the API may, and a test walks the module graph
+  // from the run-dispatch path to prove the two stay apart. See ADR-020.
+  {
+    files: ['apps/api/src/recording/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: noTestDoublesInProductionCode }],
     },
   },
 
