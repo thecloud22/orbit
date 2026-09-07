@@ -910,3 +910,45 @@ A second thing fell out at the same time: `approve` and `reject` were direct pas
 | Keep `approve`/`reject` throwing, catch the specific error classes in the route | Every other write in this service returns a typed result; the route becomes the one place forced to know repository-level exception types |
 | Pre-check candidate state without also catching the repository's guard | Leaves the exact TOCTOU window `recordAnswer` was required to close in sub-phase 2.3, now reachable over HTTP from two concurrent requests |
 | Let the client compute `declaredOutcomes` from raw step JSON | Duplicates a projection the server already owns, and couples the UI to the SOP step shape rather than a stable view |
+
+## ADR-025: Collapse review, compile, and candidate approval into one publish action for a recorded workflow
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+ADR-024 closed the mechanical gap — compile and approve were reachable from Watchtower — but left the UI as three separate screens: approve the revision, compile it, approve the resulting candidate, then publish. A person who had just finished recording a workflow, watching it in real time, found that sequence read as ceremony rather than review: nothing about the four clicks asked them anything they had not already answered by performing the task with their hands. Feedback on the review page itself made the same point about its own copy — "Running this workflow" as a section heading, sitting above a multi-step technical pipeline, described what the *agent* does once published, not what the button in front of the reviewer does.
+
+A generated draft is a different case. Nothing has confirmed that a free-text description of a procedure matches what a real page actually does — that confirmation is exactly what review, compile, and candidate approval each check for in turn. Collapsing those steps for a draft would remove the only check standing between an LLM's guess and something that runs.
+
+### Decision
+
+**A recorded workflow gets one action: map what each outcome means, then publish.** `publish-recording-service.ts` composes the same four calls the manual path made — submit-for-review/approve the revision as needed, compile, approve the candidate, publish — behind a single `POST /v1/sop-documents/:id/publish-recording`. It refuses outright, with `not_recorded`, for any document whose current revision is not `provenance.kind === 'recorded'`; a drafted or AI-assisted document keeps the full manual path unchanged, with every screen ADR-024 built.
+
+**Every governance gate the manual path enforced still runs, in the same order, producing the same rows.** The fail-closed sandbox-secret check (ADR-021's precondition) still blocks a candidate that cannot be validated. The revision transition rules (ADR-017) still apply — a `rejected` or `superseded` revision still refuses rather than silently reviving. Nothing is skipped; what is removed is the requirement that a person click through states a recording already vouches for. An equivalence test compiles the same recording through both the fast path and the five manual calls and asserts the resulting Agent IR — steps and permissions — are byte-identical, so "one click" is proven to mean fewer screens, not a different outcome.
+
+**The one thing still asked of a person is preserved deliberately: what each outcome means.** `SopPublishPanel` keeps the outcome-mapping form even on the one-click path. Mapping a graph's own outcome step to `request_found` versus `request_not_found` is a business judgement ADR-023 already established the compiler cannot make; a recording proves *how* a step was performed, not what a business should call the result. This is the one place the fast path still stops and asks.
+
+**The panel now branches on provenance, not on publication-lifecycle state.** `offersOneClickPublish` is `provenanceKind === 'recorded' && stage.kind !== 'published'` — a recorded, unpublished document gets the one-click form regardless of how far its underlying revision or candidate has already gotten (useful when a person answers the outcome mapping, the request fails, and they retry). A document that is not recorded gets an honest note that its steps cannot yet be mapped to a real page, rather than a button that can only ever be refused.
+
+**The manual three-action UI (`onCompile`/`onApprove`/`onPublish(candidateId)`) is removed from `SopPublishPanel` entirely, not kept as a second code path behind a flag.** The routes and services behind it (`compileDocument`, `approveCandidate`, `publishCandidate`) are untouched and still independently tested at the API layer — a drafted document still uses `SopReviewPage`'s ordinary lifecycle actions to reach `approved`, then has no compile/approve/publish surface in Watchtower yet, same as before ADR-024 for that document kind. Only the recorded case gained a path; nothing regressed for the drafted case, and nothing lost test coverage — `publication-view-model.ts`'s dead `canApprove`/`canCompile`/`compileBlockedReason`/`describeCompileFailure`/`describeApproveFailure`/`describePublishFailure` were deleted along with their tests once nothing called them, rather than left as an unused second contract beside the one now in use.
+
+### Consequences
+
+- Recording a workflow and publishing it now takes one click past the outcome mapping, not four — the ceremony the feedback named is gone for the case that no longer needs it.
+- A drafted or AI-assisted document is unaffected: it still needs a person to review, approve, compile, and approve the candidate as separate acts, because nothing has confirmed its steps against a real page yet.
+- `SopReviewPage` no longer holds `compiling`/`compileFailure`/`approving`/`approveFailure` state; it holds `isPublishingRecording`/`publishRecordingFailure` instead, calling the one new endpoint.
+- The end-to-end test that walks a recording to a published agent now performs one action after finishing the recording instead of four, and no longer clicks through the SOP Graph's own `submit_for_review`/`approve` actions first — publishing performs that transition itself when needed.
+- **Rejecting a candidate still has no Watchtower surface**, unchanged from ADR-024 — recompiling still supersedes whatever candidate existed, which remains the practical unblock.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Keep four screens for every document, improve their copy only | Leaves the actual complaint unaddressed — a person who just performed a task is still asked to confirm a sequence they finished performing |
+| Collapse the four steps for every document, recorded or not | Removes the only check standing between an ungrounded LLM draft and something that runs; ADR-021's refusal exists because a generated graph is not yet demonstrated |
+| Add a "skip review" toggle a person can set per document | A configurable bypass of a governance gate is the pattern ADR-022 and ADR-021 both reject elsewhere for the same reason: a setting somebody can flip is not a property of the workflow |
+| Auto-answer the outcome mapping from the graph's own step text | The mapping is a business judgement, not a fact the graph already states; guessing it wrong would misreport a run's business outcome silently |
+| Keep the old three-button API surface alongside the new one, both reachable from the panel | Two contracts doing the same job invite drift, and the removed one had no caller left to justify keeping it tested |

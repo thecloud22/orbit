@@ -13,6 +13,7 @@ import type {
 } from '@orbit/db';
 
 import type {
+  PublishRecordingService,
   SopCandidateService,
   SopDraftService,
   SopPublishService,
@@ -68,6 +69,7 @@ export interface StubContextOptions {
   readonly sopRevisionService?: Partial<SopRevisionService>;
   readonly sopCandidateService?: Partial<SopCandidateService>;
   readonly sopPublishService?: Partial<SopPublishService>;
+  readonly publishRecordingService?: Partial<PublishRecordingService>;
   readonly recordingSessions?: Partial<RecordingSessionRegistry>;
 }
 
@@ -95,6 +97,10 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
     sopRevisionService: stubbed('sopRevisionService', options.sopRevisionService ?? {}),
     sopCandidateService: stubbed('sopCandidateService', options.sopCandidateService ?? {}),
     sopPublishService: stubbed('sopPublishService', options.sopPublishService ?? {}),
+    publishRecordingService: stubbed(
+      'publishRecordingService',
+      options.publishRecordingService ?? {},
+    ),
     recordingSessions: stubbed('recordingSessions', options.recordingSessions ?? {}),
   };
 }

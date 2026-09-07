@@ -116,12 +116,12 @@ describe('Watchtower end to end', () => {
   }
 
   /**
-   * The seeded agent's own card.
+   * The seeded agent's own card, on the Agents tab.
    *
-   * Home lists every published agent since sub-phase 2.6, and the end-to-end
-   * stack seeds two — the real one and a deliberately broken fixture. Scoping
-   * to a card is what keeps these tests about the agent they mean rather than
-   * about whichever one happens to sort first.
+   * The Agents tab lists every published agent since sub-phase 2.6, and the
+   * end-to-end stack seeds two — the real one and a deliberately broken
+   * fixture. Scoping to a card is what keeps these tests about the agent they
+   * mean rather than about whichever one happens to sort first.
    */
   const SEEDED_AGENT_CARD = 'agent-card-agentv_find_service_request_0_1_0';
 
@@ -129,25 +129,31 @@ describe('Watchtower end to end', () => {
     return page.getByTestId(SEEDED_AGENT_CARD);
   }
 
-  async function startRun(page: Page, requestNumber: string): Promise<void> {
+  /** Opens Agents, fills the seeded agent's field and starts it. */
+  async function startAgentRun(requestNumber: string): Promise<Page> {
+    const page = await open('/?view=agents');
     const card = seededAgent(page);
     await card.getByTestId('agent-name').waitFor({ state: 'visible' });
     await card.getByTestId('input-field-requestNumber').fill(requestNumber);
     await card.getByTestId('start-run-button').click();
+    return page;
   }
 
   it('starts SR-1001, reaches a succeeded run, and shows its output', async () => {
-    const page = await open();
+    const agents = await open('/?view=agents');
 
     await expect
-      .poll(async () => seededAgent(page).getByTestId('agent-name').textContent())
+      .poll(async () => seededAgent(agents).getByTestId('agent-name').textContent())
       .toContain('Find Service Request');
 
-    await startRun(page, 'SR-1001');
+    await agents.close();
 
-    // The button is disabled while the request is in flight, which is the UI
-    // guard against a double submission.
-    await page.getByTestId('run-status-panel').waitFor({ state: 'visible', timeout: 30_000 });
+    const page = await startAgentRun('SR-1001');
+
+    // Starting a run leaves the page it was triggered from: what it produced
+    // is inspected on a page of its own, not appended beneath the button.
+    await page.getByTestId('run-page').waitFor({ state: 'visible', timeout: 30_000 });
+    expect(page.url()).toMatch(/runId=run_/);
 
     const label = await waitForTerminal(page);
     expect(label).toContain('Succeeded');
@@ -169,8 +175,7 @@ describe('Watchtower end to end', () => {
   });
 
   it('shows the ordered step and event timeline', async () => {
-    const page = await open();
-    await startRun(page, 'SR-1001');
+    const page = await startAgentRun('SR-1001');
     await waitForTerminal(page);
 
     const steps = await page.getByTestId('step-row').allTextContents();
@@ -189,8 +194,7 @@ describe('Watchtower end to end', () => {
   });
 
   it('makes screenshot, HTML snapshot, and trace evidence accessible', async () => {
-    const page = await open();
-    await startRun(page, 'SR-1001');
+    const page = await startAgentRun('SR-1001');
     await waitForTerminal(page);
 
     const rows = await page.getByTestId('evidence-row').count();
@@ -239,8 +243,7 @@ describe('Watchtower end to end', () => {
   });
 
   it('shows a not-found request as a business outcome, not a failure', async () => {
-    const page = await open();
-    await startRun(page, 'SR-9999');
+    const page = await startAgentRun('SR-9999');
 
     const label = await waitForTerminal(page);
 
@@ -254,12 +257,14 @@ describe('Watchtower end to end', () => {
   });
 
   it('rejects an empty request number with a field-level message and starts no run', async () => {
-    const page = await open();
+    const page = await open('/?view=agents');
     const card = seededAgent(page);
     await card.getByTestId('agent-name').waitFor({ state: 'visible' });
     await card.getByTestId('input-field-requestNumber').fill('');
     await card.getByTestId('start-run-button').click();
 
+    // A run that fails before it exists has nowhere to navigate to — the
+    // error shows right here, on Agents, not on a run page never reached.
     await page.getByTestId('run-request-error').waitFor({ state: 'visible', timeout: 30_000 });
 
     expect(await page.getByTestId('run-request-error-message').textContent()).toContain('input');
@@ -764,6 +769,36 @@ describe('Watchtower end to end', () => {
       await page.close();
     });
 
+    it('opens Agents and Runs from the nav, each on its own page', async () => {
+      const page = await open();
+
+      await page.getByTestId('nav-agents').click();
+      await expect
+        .poll(() => page.getByTestId(SEEDED_AGENT_CARD).count(), { timeout: 20_000 })
+        .toBe(1);
+      expect(await page.getByTestId('nav-agents').getAttribute('aria-current')).toBe('page');
+
+      await page.getByTestId('nav-runs').click();
+      await expect.poll(() => page.getByTestId('runs-page').count(), { timeout: 20_000 }).toBe(1);
+      expect(await page.getByTestId('nav-runs').getAttribute('aria-current')).toBe('page');
+
+      await page.close();
+    });
+
+    it('opens a run from the Runs list on its own page', async () => {
+      const { runId } = await succeededRun();
+
+      const page = await open('/?view=runs');
+      await page.getByTestId(`run-row-${runId}`).waitFor({ state: 'visible', timeout: 20_000 });
+      await page.getByTestId(`run-row-${runId}`).click();
+
+      await expect.poll(() => page.getByTestId('run-page').count(), { timeout: 20_000 }).toBe(1);
+      expect(page.url()).toContain(`runId=${runId}`);
+      expect(await page.getByTestId('nav-runs').getAttribute('aria-current')).toBe('page');
+
+      await page.close();
+    });
+
     it('gives every nav link a real href, so it can be opened in a new tab', async () => {
       const page = await open();
 
@@ -914,18 +949,19 @@ describe('Watchtower end to end', () => {
     it('shows the publication state without ever claiming the document is executable', async () => {
       // The rule ADR-016 fixes and 2.6 must not erode: publishing produces a
       // separate runnable artifact, and the review page keeps saying the
-      // workflow itself is not executable.
+      // workflow itself is not executable. This fixture is authored, not
+      // recorded, so it never offers the one-click path (ADR-025) — nothing
+      // today can map its steps to a real page.
       const page = await open(`/?documentId=${E2E_BOUND_DOCUMENT_ID}`);
 
       await expect.poll(() => page.getByTestId('sop-review').count(), { timeout: 30_000 }).toBe(1);
 
       await page.getByTestId('sop-publish-panel').waitFor({ state: 'visible', timeout: 30_000 });
 
-      // Nothing has been compiled for this document, so there is no action yet.
       expect(await page.getByTestId('sop-publish-summary').textContent()).toContain(
-        'not been turned into an agent',
+        "isn't built yet",
       );
-      expect(await page.getByTestId('publish-agent-button').count()).toBe(0);
+      expect(await page.getByTestId('publish-recording-button').count()).toBe(0);
 
       // And the banner is exactly where it was.
       expect(await page.getByTestId('sop-review-not-executable').count()).toBe(1);
@@ -954,6 +990,12 @@ describe('Watchtower end to end', () => {
       // Watchtower surface at all. Without this, "Publish" existed on the
       // review page but nothing could ever reach it except a candidate created
       // by hand outside the browser.
+      //
+      // A recorded workflow now takes exactly one action to become runnable
+      // (ADR-025): a person demonstrated every step personally, which stands
+      // in for the revision approval, compile, and candidate approval a
+      // generated draft still needs done separately. Answering what each
+      // outcome means is the one judgement call still asked of a person.
       const page = await open('/');
 
       await expect
@@ -971,35 +1013,14 @@ describe('Watchtower end to end', () => {
 
       await expect.poll(() => page.getByTestId('sop-review').count(), { timeout: 30_000 }).toBe(1);
 
-      // A recording lands as a draft revision, same as any other document — it
-      // still has to pass review before it can be compiled (ADR-017).
-      await page.getByTestId('sop-action-submit_for_review').click();
-      await page.getByTestId('sop-action-approve').waitFor({ state: 'visible', timeout: 20_000 });
-      await page.getByTestId('sop-action-approve').click();
-      await expect
-        .poll(async () => (await page.getByTestId('sop-review-state').textContent()) ?? '')
-        .toContain('Approved');
-
-      // Nothing to compile a moment ago; now there is exactly one declared
-      // outcome to map, which the recorder itself appended.
+      // A recording lands as a draft revision, but the one-click path does not
+      // wait for it to be manually submitted and approved first — that
+      // transition happens as part of publishing itself.
       await page
         .getByTestId('outcome-mapping-completed')
         .waitFor({ state: 'visible', timeout: 20_000 });
       await page.getByTestId('outcome-mapping-completed').selectOption('request_found');
-      await page.getByTestId('compile-agent-button').click();
-
-      await expect
-        .poll(() => page.getByTestId('approve-candidate-button').count(), { timeout: 20_000 })
-        .toBe(1);
-      expect(await page.getByTestId('sop-publish-summary').textContent()).toContain(
-        'waiting for technical approval',
-      );
-      await page.getByTestId('approve-candidate-button').click();
-
-      await expect
-        .poll(() => page.getByTestId('publish-agent-button').count(), { timeout: 20_000 })
-        .toBe(1);
-      await page.getByTestId('publish-agent-button').click();
+      await page.getByTestId('publish-recording-button').click();
 
       await expect
         .poll(() => page.getByTestId('open-published-agent').count(), { timeout: 20_000 })
@@ -1026,10 +1047,10 @@ describe('Watchtower end to end', () => {
         detail.data.publication.agentVersionId,
       );
 
-      // The regression this pins: Home's catalog was fetched once at the
+      // The regression this pins: the agent catalog was fetched once at the
       // page's first load — before this agent existed — and App never
       // remounts as the URL changes, so a fetch keyed to mount alone would
-      // never see anything published afterwards. Clicking through to Home
+      // never see anything published afterwards. Clicking through to Agents
       // must show the new card without a page reload.
       await page.getByTestId('open-published-agent').click();
       await expect
@@ -1050,6 +1071,9 @@ describe('Watchtower end to end', () => {
       expect(await card.getByTestId('input-field-requestNumber').count()).toBe(0);
 
       await card.getByTestId('start-run-button').click();
+
+      // Starting a run leaves Agents for the run's own page.
+      await page.getByTestId('run-page').waitFor({ state: 'visible', timeout: 30_000 });
       await page.getByTestId('run-status-panel').waitFor({ state: 'visible', timeout: 30_000 });
       expect(await page.getByTestId('run-request-error').count()).toBe(0);
 

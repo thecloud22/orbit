@@ -9,6 +9,7 @@ import { registerRunRoutes } from './routes/runs';
 import { registerRecordingRoutes } from './routes/recording';
 import { registerCandidateRoutes } from './routes/candidates';
 import { registerPublishingRoutes } from './routes/publishing';
+import { registerPublishRecordingRoutes } from './routes/publish-recording';
 import { registerSopBindingRoutes } from './routes/sop-bindings';
 import { registerSopDraftRoutes } from './routes/sop-drafts';
 import { registerSopRevisionRoutes } from './routes/sop-revisions';
@@ -36,6 +37,7 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
   registerAgentVersionRoutes(app, options.context);
   registerRunRoutes(app, options.context);
   registerCandidateRoutes(app, options.context);
+  registerPublishRecordingRoutes(app, options.context);
   registerPublishingRoutes(app, options.context);
   registerArtifactRoutes(app, options.context);
   registerSopDraftRoutes(app, options.context);

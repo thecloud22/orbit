@@ -62,102 +62,32 @@ export function publicationSummary(stage: PublicationStage): string {
   }
 }
 
-export function canPublish(stage: PublicationStage): boolean {
-  return stage.kind === 'publishable';
-}
-
-export function canApprove(
-  stage: PublicationStage,
-): stage is { kind: 'awaiting_approval'; candidateId: string } {
-  return stage.kind === 'awaiting_approval';
-}
-
-/**
- * Whether compiling can be offered at all, independent of `PublicationStage`.
- *
- * `not_compiled` alone is not enough: compiling reads the workflow's own
- * *revision* state, not its publication state, and a revision only compiles
- * once a reviewer has approved it (ADR-017) — a rule enforced on the server,
- * mirrored here only so the button does not invite a request that will only
- * ever be refused.
- */
-export function canCompile(input: {
-  readonly stage: PublicationStage;
-  readonly revisionState: string;
-  readonly declaredOutcomeCount: number;
-}): boolean {
-  return (
-    input.stage.kind === 'not_compiled' &&
-    input.revisionState === 'approved' &&
-    input.declaredOutcomeCount > 0
-  );
-}
-
-/** Why compiling is not offered yet, when it isn't — for the reviewer, not a log. */
-export function compileBlockedReason(input: {
-  readonly stage: PublicationStage;
-  readonly revisionState: string;
-  readonly declaredOutcomeCount: number;
-}): string | null {
-  if (input.stage.kind !== 'not_compiled') {
-    return null;
-  }
-
-  if (input.revisionState !== 'approved') {
-    return 'Approve this workflow in review before it can be turned into an agent.';
-  }
-
-  if (input.declaredOutcomeCount === 0) {
-    return 'This workflow has no outcome step yet, so it has nothing to compile into.';
-  }
-
-  return null;
-}
-
-export type PublishFailureKind = 'not_approved' | 'already_published' | 'request_failed';
-
-export interface PublishFailure {
-  readonly kind: PublishFailureKind;
-  readonly message: string;
-  /** Set when the agent already existed, so the page can still link to it. */
-  readonly agentVersionId: string | null;
-}
-
-export function describePublishFailure(error: ApiRequestError): PublishFailure {
-  if (error.status === 409) {
-    // Already published is not a failure of intent — the thing the person
-    // wanted exists. The page links to it rather than showing an error.
-    return {
-      kind: 'already_published',
-      message: 'This workflow has already been published.',
-      agentVersionId: null,
-    };
-  }
-
-  return {
-    kind: error.status === 400 ? 'not_approved' : 'request_failed',
-    message: error.message,
-    agentVersionId: null,
-  };
-}
-
 export interface CompileFailure {
   readonly message: string;
   /** One line per refusal, when the server named them (ADR-021). Empty otherwise. */
   readonly refusals: readonly string[];
 }
 
-export function describeCompileFailure(error: ApiRequestError): CompileFailure {
+/**
+ * Whether the one-click "just record and make it runnable" path applies.
+ *
+ * Scoped to a recorded workflow that has not been published yet — the same
+ * boundary the server enforces (`publish-recording-service.ts`): a person
+ * demonstrated every action in a recording personally, which stands in for
+ * the business-judgement review a generated draft still needs for real. Once
+ * published there is nothing left to do here but link to the agent.
+ */
+export function offersOneClickPublish(input: {
+  readonly provenanceKind: string;
+  readonly stage: PublicationStage;
+}): boolean {
+  return input.provenanceKind === 'recorded' && input.stage.kind !== 'published';
+}
+
+/** One line per refusal, when the server named them (ADR-021). Empty otherwise. */
+export function describePublishRecordingFailure(error: ApiRequestError): CompileFailure {
   return {
     message: error.message,
     refusals: error.details.map((detail) => detail.message),
   };
-}
-
-export interface ApproveFailure {
-  readonly message: string;
-}
-
-export function describeApproveFailure(error: ApiRequestError): ApproveFailure {
-  return { message: error.message };
 }

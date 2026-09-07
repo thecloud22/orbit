@@ -49,7 +49,7 @@ export function SopDraftForm({ isGenerating, onGenerate }: SopDraftFormProps) {
 
       <div>
         <button
-          className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:bg-slate-400"
+          className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:bg-slate-300"
           data-testid="generate-draft-button"
           disabled={disabled}
           type="submit"

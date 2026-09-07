@@ -77,6 +77,12 @@ export interface RunSummaryView {
   readonly finishedAt: string | null;
 }
 
+/** One row in the cross-agent run list, naming the agent a `RunSummaryView` only points at by id. */
+export interface RunListItemView extends RunSummaryView {
+  readonly agentName: string;
+  readonly agentVersion: string;
+}
+
 export interface RunStepView {
   readonly id: string;
   readonly agentStepId: string;

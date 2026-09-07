@@ -24,7 +24,8 @@ export interface UseRun {
   readonly isStarting: boolean;
   readonly isRefreshing: boolean;
   readonly pollingStopped: boolean;
-  start(agentVersionId: string, inputs: Readonly<Record<string, string>>): Promise<void>;
+  /** Returns the created run's id, so the caller can navigate to its own page. */
+  start(agentVersionId: string, inputs: Readonly<Record<string, string>>): Promise<string | null>;
   /** Watches a run that already exists, so a run can be reopened by id. */
   adopt(runId: string): Promise<void>;
   refresh(): Promise<void>;
@@ -60,7 +61,7 @@ export function useRun(): UseRun {
       // The in-flight guard. It is a UI guard only: the server accepts a second
       // dispatch and creates a second run, which is a documented Phase 1 limit.
       if (isStarting) {
-        return;
+        return null;
       }
 
       setIsStarting(true);
@@ -74,12 +75,14 @@ export function useRun(): UseRun {
         const created = await startRun(agentVersionId, inputs);
         setRunId(created.runId);
         await load(created.runId);
+        return created.runId;
       } catch (caught) {
         setError(
           caught instanceof ApiRequestError
             ? caught
             : new ApiRequestError({ status: 0, message: 'The API could not be reached.' }),
         );
+        return null;
       } finally {
         setIsStarting(false);
       }

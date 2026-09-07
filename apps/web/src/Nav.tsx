@@ -23,8 +23,8 @@ export function Nav({ current, onNavigate }: NavProps) {
               aria-current={link.current ? 'page' : undefined}
               className={
                 link.current
-                  ? 'inline-block border-b-2 border-slate-900 px-3 py-3 text-sm font-medium text-slate-900'
-                  : 'inline-block border-b-2 border-transparent px-3 py-3 text-sm text-slate-600 hover:text-slate-900'
+                  ? 'inline-block border-b-2 border-indigo-600 px-3 py-3 text-sm font-medium text-indigo-700'
+                  : 'inline-block border-b-2 border-transparent px-3 py-3 text-sm text-slate-600 hover:text-indigo-600'
               }
               data-testid={`nav-${link.label.toLowerCase()}`}
               href={link.href}

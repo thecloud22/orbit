@@ -40,6 +40,8 @@ export interface FailRunInput {
 export interface RunRepository {
   create(input: CreateRunInput): Promise<RunRecord>;
   findById(id: RunId): Promise<RunRecord | null>;
+  /** Every run, newest first, regardless of which agent version it belongs to. */
+  listRecent(options?: { readonly limit?: number }): Promise<readonly RunRecord[]>;
   listByAgentVersion(
     agentVersionId: AgentVersionId,
     options?: { readonly limit?: number },
@@ -113,6 +115,13 @@ export function createRunRepository(executor: Executor): RunRepository {
     async findById(id) {
       const [row] = await executor.select().from(runs).where(eq(runs.id, id)).limit(1);
       return row === undefined ? null : toRunRecord(row);
+    },
+
+    async listRecent(options) {
+      const query = executor.select().from(runs).orderBy(desc(runs.queuedAt));
+
+      const rows = await (options?.limit === undefined ? query : query.limit(options.limit));
+      return rows.map(toRunRecord);
     },
 
     async listByAgentVersion(agentVersionId, options) {

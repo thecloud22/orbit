@@ -12,6 +12,14 @@ describe('viewFromSearch', () => {
     expect(viewFromSearch('?view=documents')).toEqual({ kind: 'documents' });
   });
 
+  it('reads the agents view', () => {
+    expect(viewFromSearch('?view=agents')).toEqual({ kind: 'agents' });
+  });
+
+  it('reads the runs view', () => {
+    expect(viewFromSearch('?view=runs')).toEqual({ kind: 'runs' });
+  });
+
   it('reads a review view from its document id', () => {
     expect(viewFromSearch('?documentId=sopdoc_123')).toEqual({
       kind: 'review',
@@ -36,13 +44,20 @@ describe('viewFromSearch', () => {
     expect(viewFromSearch('?view=nonsense')).toEqual({ kind: 'home' });
   });
 
-  it('is unaffected by a run id, which belongs to the home view', () => {
-    expect(viewFromSearch('?runId=run_123')).toEqual({ kind: 'home' });
+  it('reads a run by id, a Phase 1 link shared before this navigation existed', () => {
+    expect(viewFromSearch('?runId=run_123')).toEqual({ kind: 'run', runId: 'run_123' });
+  });
+
+  it('prefers a document link over a run id', () => {
+    expect(viewFromSearch('?runId=run_123&documentId=sopdoc_1')).toEqual({
+      kind: 'review',
+      documentId: 'sopdoc_1',
+    });
   });
 
   it('reads the agent highlighted after a publish', () => {
-    expect(viewFromSearch('?agentVersionId=agentv_1')).toEqual({
-      kind: 'home',
+    expect(viewFromSearch('?view=agents&agentVersionId=agentv_1')).toEqual({
+      kind: 'agents',
       agentVersionId: 'agentv_1',
     });
   });
@@ -66,10 +81,13 @@ describe('searchForView', () => {
   it('round-trips every view', () => {
     const views: readonly View[] = [
       { kind: 'home' },
+      { kind: 'agents' },
+      { kind: 'agents', agentVersionId: 'agentv_1' },
+      { kind: 'runs' },
+      { kind: 'run', runId: 'run_123' },
       { kind: 'documents' },
       { kind: 'review', documentId: 'sopdoc_123' },
       { kind: 'recording', sessionId: 'rec_abc' },
-      { kind: 'home', agentVersionId: 'agentv_1' },
     ];
 
     for (const view of views) {
@@ -83,12 +101,22 @@ describe('searchForView', () => {
 });
 
 describe('navLinks', () => {
-  it('offers Home and Documents', () => {
-    expect(navLinks({ kind: 'home' }).map((link) => link.label)).toEqual(['Home', 'Workflows']);
+  it('offers Home, Agents, Runs and Workflows', () => {
+    expect(navLinks({ kind: 'home' }).map((link) => link.label)).toEqual([
+      'Home',
+      'Agents',
+      'Runs',
+      'Workflows',
+    ]);
   });
 
   it('marks exactly one link current', () => {
-    for (const view of [{ kind: 'home' }, { kind: 'documents' }] as const) {
+    for (const view of [
+      { kind: 'home' },
+      { kind: 'agents' },
+      { kind: 'runs' },
+      { kind: 'documents' },
+    ] as const) {
       expect(navLinks(view).filter((link) => link.current)).toHaveLength(1);
     }
   });
@@ -101,12 +129,19 @@ describe('navLinks', () => {
     expect(links.find((link) => link.label === 'Workflows')?.current).toBe(false);
   });
 
-  it('keeps Documents current while reading a document', () => {
+  it('keeps Workflows current while reading a document', () => {
     // A reader who has drilled into one document should still see where they
     // are, rather than the bar going blank.
     const links = navLinks({ kind: 'review', documentId: 'sopdoc_123' });
 
     expect(links.find((link) => link.label === 'Workflows')?.current).toBe(true);
+    expect(links.find((link) => link.label === 'Home')?.current).toBe(false);
+  });
+
+  it('keeps Runs current while reading one run', () => {
+    const links = navLinks({ kind: 'run', runId: 'run_123' });
+
+    expect(links.find((link) => link.label === 'Runs')?.current).toBe(true);
     expect(links.find((link) => link.label === 'Home')?.current).toBe(false);
   });
 

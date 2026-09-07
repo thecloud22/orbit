@@ -3,7 +3,7 @@
  *
  * There is no router, and this is not a stopgap: Phase 1 established that a run
  * is reopened with `?runId=`, sub-phase 2.3 followed it with `?documentId=`,
- * and adding a routing library to formalise three views would be a dependency
+ * and adding a routing library to formalise the views would be a dependency
  * bought with nothing. What was missing was not routes but *navigation* — every
  * view already had a URL; nothing linked them.
  *
@@ -13,53 +13,82 @@
  */
 
 export type View =
-  /** `agentVersionId` highlights one published agent, e.g. the one just published. */
-  | { readonly kind: 'home'; readonly agentVersionId?: string }
+  /** Creating a workflow — Guided path via AI, or Record your own. */
+  | { readonly kind: 'home' }
+  /** Triggering a published agent. `agentVersionId` highlights one, e.g. one just published. */
+  | { readonly kind: 'agents'; readonly agentVersionId?: string }
+  /** Every run, across every agent, newest first. */
+  | { readonly kind: 'runs' }
+  /** One run's status, timeline and evidence, reopened by id. */
+  | { readonly kind: 'run'; readonly runId: string }
   | { readonly kind: 'documents' }
   | { readonly kind: 'review'; readonly documentId: string }
   | { readonly kind: 'recording'; readonly sessionId: string };
 
 export const DOCUMENTS_VIEW = 'documents';
+export const AGENTS_VIEW = 'agents';
+export const RUNS_VIEW = 'runs';
 
 /**
  * Reads the view out of a URL's query string.
  *
- * `documentId` wins over `view` so that an existing review link keeps working
- * unchanged — those were shared before this navigation existed, and a link that
- * stops resolving is worse than a redundant parameter.
+ * `documentId` wins over everything so that an existing review link keeps
+ * working unchanged — those were shared before this navigation existed, and a
+ * link that stops resolving is worse than a redundant parameter. `runId` is
+ * checked next for the same reason: Phase 1 shared bare `?runId=` links before
+ * this file existed at all.
  */
 export function viewFromSearch(search: string): View {
   const params = new URLSearchParams(search);
-  const documentId = params.get('documentId');
 
+  const documentId = params.get('documentId');
   if (documentId !== null && documentId !== '') {
     return { kind: 'review', documentId };
   }
 
-  const sessionId = params.get('recordingSessionId');
+  const runId = params.get('runId');
+  if (runId !== null && runId !== '') {
+    return { kind: 'run', runId };
+  }
 
+  const sessionId = params.get('recordingSessionId');
   if (sessionId !== null && sessionId !== '') {
     return { kind: 'recording', sessionId };
   }
 
-  if (params.get('view') === DOCUMENTS_VIEW) {
+  const view = params.get('view');
+
+  if (view === DOCUMENTS_VIEW) {
     return { kind: 'documents' };
   }
 
-  const agentVersionId = params.get('agentVersionId');
+  if (view === RUNS_VIEW) {
+    return { kind: 'runs' };
+  }
 
-  return agentVersionId === null || agentVersionId === ''
-    ? { kind: 'home' }
-    : { kind: 'home', agentVersionId };
+  if (view === AGENTS_VIEW) {
+    const agentVersionId = params.get('agentVersionId');
+    return agentVersionId === null || agentVersionId === ''
+      ? { kind: 'agents' }
+      : { kind: 'agents', agentVersionId };
+  }
+
+  return { kind: 'home' };
 }
 
 /** The URL a view lives at, relative to the current page. */
 export function searchForView(view: View): string {
   switch (view.kind) {
     case 'home':
+      return '';
+    case 'agents':
       return view.agentVersionId === undefined
-        ? ''
-        : `?agentVersionId=${encodeURIComponent(view.agentVersionId)}`;
+        ? `?view=${AGENTS_VIEW}`
+        : `?view=${AGENTS_VIEW}&agentVersionId=${encodeURIComponent(view.agentVersionId)}`;
+    case 'runs':
+      return `?view=${RUNS_VIEW}`;
+    case 'run':
+      return `?runId=${encodeURIComponent(view.runId)}`;
     case 'documents':
       return `?view=${DOCUMENTS_VIEW}`;
     case 'review':
@@ -76,31 +105,40 @@ export interface NavLink {
   readonly current: boolean;
 }
 
+const NAV_ITEMS = [
+  { kind: 'home', label: 'Home' },
+  { kind: 'agents', label: 'Agents' },
+  { kind: 'runs', label: 'Runs' },
+  // "Workflows", not "Documents": the page itself has always called this list
+  // Workflows, and the nav label disagreeing with the page it opens is exactly
+  // the kind of small inconsistency that reads as unpolished.
+  { kind: 'documents', label: 'Workflows' },
+] as const;
+
 /**
  * The navigation bar's links, and which one is current.
  *
- * A review page is reached *from* Documents, so it marks Documents current
- * rather than nothing: a reader who has drilled into one document should still
- * see where they are in the app.
+ * A drill-down page marks its parent tab current rather than nothing: reading
+ * one run or one document should still show where that sits in the app. A
+ * recording starts from Home and is not a place in the app of its own.
  */
 export function navLinks(current: View): readonly NavLink[] {
-  const isCurrent = (view: View): boolean =>
-    view.kind === current.kind ||
-    (view.kind === 'documents' && current.kind === 'review') ||
-    // A recording starts on Home and is not a place in the app of its own.
-    (view.kind === 'home' && current.kind === 'recording');
+  const isCurrent = (kind: (typeof NAV_ITEMS)[number]['kind']): boolean =>
+    kind === current.kind ||
+    (kind === 'documents' && current.kind === 'review') ||
+    (kind === 'runs' && current.kind === 'run') ||
+    (kind === 'home' && current.kind === 'recording');
 
-  return (['home', 'documents'] as const).map((kind) => {
-    const view: View = kind === 'home' ? { kind: 'home' } : { kind: 'documents' };
+  return NAV_ITEMS.map(({ kind, label }) => {
+    // Every tab's own view is just its bare kind — none of the four carries a
+    // parameter a nav link would need to supply.
+    const view = { kind } as View;
 
     return {
-      // "Workflows", not "Documents": the page itself has always called this
-      // list Workflows, and the nav label disagreeing with the page it opens
-      // is exactly the kind of small inconsistency that reads as unpolished.
-      label: kind === 'home' ? 'Home' : 'Workflows',
+      label,
       view,
       href: searchForView(view) === '' ? '/' : searchForView(view),
-      current: isCurrent(view),
+      current: isCurrent(kind),
     };
   });
 }

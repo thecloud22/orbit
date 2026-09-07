@@ -91,6 +91,18 @@ service; and an agent's identity is derived from its document rather than suppli
 the same workflow always lands under the same agent (**ADR-024**). A recorded workflow can now go
 from Home to a running, published agent using nothing but the browser.
 
+**Publishing a recorded workflow is now one action, not four.** `publish-recording-service.ts`
+composes revision approval, compile, candidate approval, and publish behind a single
+`POST /v1/sop-documents/:id/publish-recording`, refusing outright if the document was not recorded —
+a drafted or AI-assisted workflow keeps the full manual review, because nothing has yet confirmed
+its steps against a real page. The one judgement still asked of a person is mapping what each
+declared outcome means; every governance gate the manual path enforced, including the fail-closed
+sandbox-secret check, still runs in the same order and is proven byte-identical to the manual path
+by an equivalence test (**ADR-025**). Watchtower's navigation also split into dedicated Agents,
+Runs, and per-run pages — triggering a run leaves the page that started it for the run's own page —
+and the review page's old three-button publish panel was removed along with its now-dead view-model
+code.
+
 **What follows**: sub-phase 2.5's own limitations remain — the escalation-review reference workflow
 does not compile because branching is unsupported, and a workflow needing credentials compiles but
 can never be approved. Rejecting a candidate has a service and a route but no button; recompiling

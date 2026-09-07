@@ -1,6 +1,7 @@
 import type { ArtifactService } from '@orbit/artifact-service';
 import type { OrbitRepositories } from '@orbit/db';
 import type {
+  PublishRecordingService,
   SopCandidateService,
   SopDraftService,
   SopPublishService,
@@ -36,6 +37,8 @@ export interface ApiContext {
   /** Compiling an approved revision into candidate Agent IR, and approving it (sub-phase 2.5). */
   readonly sopCandidateService: SopCandidateService;
   readonly sopPublishService: SopPublishService;
+  /** Approve, compile, approve and publish a recorded workflow in one call. */
+  readonly publishRecordingService: PublishRecordingService;
   /**
    * Recording sessions the API is holding open.
    *

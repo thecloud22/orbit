@@ -4,7 +4,12 @@ import { z } from 'zod';
 
 import type { ApiContext } from '../context';
 import { badRequest, notFound } from '../errors';
-import { toRunDetailView, toRunEventView, toRunSummaryView } from '../projections';
+import {
+  toRunDetailView,
+  toRunEventView,
+  toRunListItemView,
+  toRunSummaryView,
+} from '../projections';
 
 /**
  * Read-only run access.
@@ -14,6 +19,38 @@ import { toRunDetailView, toRunEventView, toRunSummaryView } from '../projection
  * status is the run row these routes read.
  */
 export function registerRunRoutes(app: FastifyInstance, context: ApiContext): void {
+  /**
+   * Every run, across every agent, newest first.
+   *
+   * Phase 1 deliberately had no run history at all — a run was reopened by id
+   * and nothing else. A Runs page needs a starting point to reopen anything
+   * from, so this is that: read-only, and bounded, since nothing here paginates
+   * yet.
+   */
+  app.get('/v1/runs', async (request) => {
+    const query = z
+      .object({ limit: z.coerce.number().int().positive().max(200).optional() })
+      .safeParse(request.query ?? {});
+
+    if (!query.success) {
+      throw badRequest('limit must be a positive integer, at most 200.');
+    }
+
+    const runs = await context.repositories.runs.listRecent({ limit: query.data.limit ?? 50 });
+
+    // One extra read per run rather than a join, because @orbit/db keeps
+    // reads simple and this list is small at Phase 1 scale.
+    const items = await Promise.all(
+      runs.map(async (run) => {
+        const agentVersion = await context.repositories.agentVersions.findById(run.agentVersionId);
+
+        return toRunListItemView(run, agentVersion ?? { name: 'Unknown agent', version: '' });
+      }),
+    );
+
+    return { data: items };
+  });
+
   app.get('/v1/runs/:runId', async (request) => {
     const runId = parseRunId(request.params);
     const run = await loadRun(context, runId);

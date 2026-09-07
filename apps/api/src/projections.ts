@@ -25,6 +25,7 @@ import {
   type AgentVersionView,
   type CandidateActionView,
   type PublishedAgentVersionView,
+  type RunListItemView,
   type SopPublicationView,
   type ArtifactView,
   type RunDetailView,
@@ -89,6 +90,17 @@ export function toRunSummaryView(run: RunRecord): RunSummaryView {
     queuedAt: run.queuedAt.toISOString(),
     startedAt: run.startedAt?.toISOString() ?? null,
     finishedAt: run.finishedAt?.toISOString() ?? null,
+  };
+}
+
+export function toRunListItemView(
+  run: RunRecord,
+  agentVersion: Pick<AgentVersionRecord, 'name' | 'version'>,
+): RunListItemView {
+  return {
+    ...toRunSummaryView(run),
+    agentName: agentVersion.name,
+    agentVersion: agentVersion.version,
   };
 }
 

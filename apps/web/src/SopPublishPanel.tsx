@@ -2,80 +2,75 @@ import type { SopDeclaredOutcomeView, SopPublicationView } from '@orbit/api/view
 import { useState } from 'react';
 
 import {
-  canApprove,
-  canCompile,
-  canPublish,
-  compileBlockedReason,
+  offersOneClickPublish,
   publicationStage,
   publicationSummary,
-  type ApproveFailure,
   type CompileFailure,
-  type PublishFailure,
 } from './publication-view-model';
 
 const BUSINESS_OUTCOMES = ['request_found', 'request_not_found'] as const;
 
 /**
- * Compiling, approving and publishing, on the review page.
+ * Turning a workflow into a runnable agent, on the review page.
  *
- * All three read as one panel because they are one progression — but each is
- * offered only at the stage that actually permits it, and none of them ever
- * touches the "draft only" notice above: the SOP Graph stays non-executable by
- * construction after every one of them (ADR-016). Publishing produces a
- * separate artifact; compiling and approving produce a separate row on the way
- * to it.
+ * A recorded workflow gets one action: answer what each outcome means, then
+ * publish. Everything else — approving the revision, compiling it, approving
+ * the candidate — happens in one call rather than one screen each, because a
+ * person demonstrated every action personally and asking them to separately
+ * confirm a sequence they just finished performing is ceremony, not review
+ * (`publish-recording-service.ts` and ADR-024 explain the line this draws and
+ * why the fail-closed secret check still applies regardless).
+ *
+ * A workflow that was not recorded gets an honest note instead of a button:
+ * nothing today can map its steps to a real page, so offering to compile it
+ * would only ever fail. None of this ever touches the "draft only" notice
+ * above — the SOP Graph stays non-executable by construction throughout
+ * (ADR-016); publishing produces a separate artifact, not a change to this
+ * one.
  */
 export function SopPublishPanel(props: {
   readonly publication: SopPublicationView;
-  readonly revisionState: string;
+  readonly provenanceKind: string;
   readonly declaredOutcomes: readonly SopDeclaredOutcomeView[];
-  readonly isCompiling: boolean;
-  readonly isApproving: boolean;
   readonly isPublishing: boolean;
-  readonly compileFailure: CompileFailure | null;
-  readonly approveFailure: ApproveFailure | null;
-  readonly publishFailure: PublishFailure | null;
-  readonly onCompile: (outcomeMapping: Readonly<Record<string, string>>) => void;
-  readonly onApprove: (candidateId: string) => void;
-  readonly onPublish: (candidateId: string) => void;
+  readonly publishFailure: CompileFailure | null;
+  readonly onPublish: (outcomeMapping: Readonly<Record<string, string>>) => void;
   readonly onOpenAgent: (agentVersionId: string) => void;
 }): React.JSX.Element {
   const stage = publicationStage(props.publication);
   const [outcomeMapping, setOutcomeMapping] = useState<Record<string, string>>({});
 
-  const blockedReason = compileBlockedReason({
-    stage,
-    revisionState: props.revisionState,
-    declaredOutcomeCount: props.declaredOutcomes.length,
-  });
+  const oneClick = offersOneClickPublish({ provenanceKind: props.provenanceKind, stage });
+  const hasOutcomes = props.declaredOutcomes.length > 0;
+  const mappingComplete = props.declaredOutcomes.every(
+    (outcome) => outcomeMapping[outcome.name] !== undefined,
+  );
+  const showForm = oneClick && stage.kind !== 'cannot_validate';
 
-  const readyToCompile =
-    canCompile({
-      stage,
-      revisionState: props.revisionState,
-      declaredOutcomeCount: props.declaredOutcomes.length,
-    }) && props.declaredOutcomes.every((outcome) => outcomeMapping[outcome.name] !== undefined);
+  const summary =
+    stage.kind === 'published'
+      ? publicationSummary(stage)
+      : oneClick
+        ? stage.kind === 'cannot_validate'
+          ? publicationSummary(stage)
+          : 'Say what each outcome means, then publish this workflow as a runnable agent.'
+        : "This workflow needs its steps mapped to a real page before it can run, and that isn't built yet. Recording the workflow instead works today.";
 
   return (
     <section className="rounded border border-slate-200 p-4" data-testid="sop-publish-panel">
       <h3 className="text-sm font-semibold text-slate-900">Running this workflow</h3>
       <p className="mt-1 text-sm text-slate-600" data-testid="sop-publish-summary">
-        {publicationSummary(stage)}
+        {summary}
       </p>
 
-      {stage.kind === 'not_compiled' && blockedReason !== null ? (
-        <p className="mt-3 text-sm text-slate-500" data-testid="compile-blocked-reason">
-          {blockedReason}
+      {showForm && !hasOutcomes ? (
+        <p className="mt-3 text-sm text-slate-500" data-testid="publish-blocked-reason">
+          This workflow has no outcome step yet, so it has nothing to publish.
         </p>
       ) : null}
 
-      {stage.kind === 'not_compiled' && blockedReason === null ? (
+      {showForm && hasOutcomes ? (
         <div className="mt-3 flex flex-col gap-3" data-testid="outcome-mapping-form">
-          <p className="text-xs text-slate-600">
-            Say what each outcome this workflow can reach means in business terms, so the agent
-            reports it the same way a run does today.
-          </p>
-
           {props.declaredOutcomes.map((outcome) => (
             <label className="flex flex-col gap-1 text-sm text-slate-800" key={outcome.name}>
               <span>
@@ -108,45 +103,17 @@ export function SopPublishPanel(props: {
           ))}
 
           <button
-            className="w-fit rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-400"
-            data-testid="compile-agent-button"
-            disabled={props.isCompiling || !readyToCompile}
+            className="w-fit rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:bg-slate-300"
+            data-testid="publish-recording-button"
+            disabled={props.isPublishing || !mappingComplete}
             onClick={() => {
-              props.onCompile(outcomeMapping);
+              props.onPublish(outcomeMapping);
             }}
             type="button"
           >
-            {props.isCompiling ? 'Compiling…' : 'Turn into an agent'}
+            {props.isPublishing ? 'Publishing…' : 'Publish this workflow'}
           </button>
         </div>
-      ) : null}
-
-      {canApprove(stage) ? (
-        <button
-          className="mt-3 rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-400"
-          data-testid="approve-candidate-button"
-          disabled={props.isApproving}
-          onClick={() => {
-            props.onApprove(stage.candidateId);
-          }}
-          type="button"
-        >
-          {props.isApproving ? 'Approving…' : 'Approve for publishing'}
-        </button>
-      ) : null}
-
-      {canPublish(stage) && stage.kind === 'publishable' ? (
-        <button
-          className="mt-3 rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-400"
-          data-testid="publish-agent-button"
-          disabled={props.isPublishing}
-          onClick={() => {
-            props.onPublish(stage.candidateId);
-          }}
-          type="button"
-        >
-          {props.isPublishing ? 'Publishing…' : 'Publish as an agent'}
-        </button>
       ) : null}
 
       {stage.kind === 'published' ? (
@@ -162,40 +129,22 @@ export function SopPublishPanel(props: {
         </button>
       ) : null}
 
-      {props.compileFailure === null ? null : (
+      {props.publishFailure === null ? null : (
         <div
           className="mt-3 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900"
-          data-testid="compile-failure"
+          data-testid="publish-failure"
         >
-          <p>{props.compileFailure.message}</p>
-          {props.compileFailure.refusals.length > 0 ? (
+          <p data-testid="publish-failure-message">{props.publishFailure.message}</p>
+          {props.publishFailure.refusals.length > 0 ? (
             <ul className="mt-1 list-disc pl-4">
-              {props.compileFailure.refusals.map((refusal) => (
-                <li data-testid="compile-refusal" key={refusal}>
+              {props.publishFailure.refusals.map((refusal) => (
+                <li data-testid="publish-refusal" key={refusal}>
                   {refusal}
                 </li>
               ))}
             </ul>
           ) : null}
         </div>
-      )}
-
-      {props.approveFailure === null ? null : (
-        <p
-          className="mt-3 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900"
-          data-testid="approve-failure"
-        >
-          {props.approveFailure.message}
-        </p>
-      )}
-
-      {props.publishFailure === null ? null : (
-        <p
-          className="mt-3 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900"
-          data-testid="publish-failure"
-        >
-          {props.publishFailure.message}
-        </p>
       )}
     </section>
   );

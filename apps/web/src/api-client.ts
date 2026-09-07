@@ -4,6 +4,7 @@ import type {
   CreateRunResultView,
   DataEnvelope,
   RunDetailView,
+  RunListItemView,
   FinishedRecordingView,
   RecordingSessionView,
   SopBindingsView,
@@ -101,6 +102,11 @@ export async function startRun(
 
 export async function getRun(runId: string): Promise<RunDetailView> {
   return getJson<RunDetailView>(`/v1/runs/${runId}`);
+}
+
+/** Every run, newest first — the Runs page's starting point. */
+export async function listRuns(): Promise<readonly RunListItemView[]> {
+  return getJson<readonly RunListItemView[]>('/v1/runs');
 }
 
 /**
@@ -265,5 +271,20 @@ export async function publishCandidate(candidateId: string): Promise<PublishedAg
     `/v1/agent-ir-candidates/${candidateId}/publish`,
     'POST',
     {},
+  );
+}
+
+/**
+ * Publishes a recorded workflow in one call: approve, compile, approve,
+ * publish, without the separate screens each of those normally takes.
+ */
+export async function publishRecording(
+  documentId: string,
+  outcomeMapping: Readonly<Record<string, string>>,
+): Promise<PublishedAgentVersionView> {
+  return send<PublishedAgentVersionView>(
+    `/v1/sop-documents/${documentId}/publish-recording`,
+    'POST',
+    { outcomeMapping },
   );
 }

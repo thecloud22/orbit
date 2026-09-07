@@ -19,6 +19,7 @@ import type { RecordedEntry } from '@orbit/sop-recording';
 import {
   createSopCandidateService,
   createSopDraftService,
+  createPublishRecordingService,
   createSopPublishService,
   createSopRecordingService,
   createSopRevisionService,
@@ -72,6 +73,7 @@ describe('Orbit API over real persistence', () => {
         sopRevisionService: createSopRevisionService({ database: getDatabase().db }),
         sopCandidateService: createSopCandidateService({ database: getDatabase().db }),
         sopPublishService: createSopPublishService({ database: getDatabase().db }),
+        publishRecordingService: createPublishRecordingService({ database: getDatabase().db }),
         // No browser: these tests never record, and a registry that could open
         // one would be a Chromium per test file for nothing.
         recordingSessions: createRecordingSessionRegistry({

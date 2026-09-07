@@ -5,23 +5,14 @@ import type { SopBindingsView, SopReviewView } from '@orbit/api/views';
 import {
   answerSopQuestion,
   ApiRequestError,
-  approveCandidate,
-  compileDocument,
   editSopStep,
   getSopBindings,
   getSopReview,
-  publishCandidate,
+  publishRecording,
   reorderSopStep,
   transitionSopRevision,
 } from './api-client';
-import {
-  describeApproveFailure,
-  describeCompileFailure,
-  describePublishFailure,
-  type ApproveFailure,
-  type CompileFailure,
-  type PublishFailure,
-} from './publication-view-model';
+import { describePublishRecordingFailure, type CompileFailure } from './publication-view-model';
 import { SopBindingPanel } from './SopBindingPanel';
 import { SopPublishPanel } from './SopPublishPanel';
 import { SopStepEditor } from './SopStepEditor';
@@ -55,12 +46,10 @@ export function SopReviewPage({ documentId, onOpenAgent }: SopReviewPageProps) {
   const [busy, setBusy] = useState(false);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [publishing, setPublishing] = useState(false);
-  const [publishFailure, setPublishFailure] = useState<PublishFailure | null>(null);
-  const [compiling, setCompiling] = useState(false);
-  const [compileFailure, setCompileFailure] = useState<CompileFailure | null>(null);
-  const [approving, setApproving] = useState(false);
-  const [approveFailure, setApproveFailure] = useState<ApproveFailure | null>(null);
+  const [isPublishingRecording, setIsPublishingRecording] = useState(false);
+  const [publishRecordingFailure, setPublishRecordingFailure] = useState<CompileFailure | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     // Loaded alongside the review, and deliberately not fatal: binding
@@ -142,7 +131,7 @@ export function SopReviewPage({ documentId, onOpenAgent }: SopReviewPageProps) {
             <button
               className={
                 action.emphasis === 'primary'
-                  ? 'rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-400'
+                  ? 'rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:bg-slate-300'
                   : 'rounded border border-slate-300 px-3 py-1.5 text-sm disabled:text-slate-400'
               }
               data-testid={`sop-action-${action.action}`}
@@ -242,71 +231,29 @@ export function SopReviewPage({ documentId, onOpenAgent }: SopReviewPageProps) {
       </section>
 
       <SopPublishPanel
-        approveFailure={approveFailure}
-        compileFailure={compileFailure}
         declaredOutcomes={review.declaredOutcomes}
-        isApproving={approving}
-        isCompiling={compiling}
-        isPublishing={publishing}
-        onApprove={(candidateId) => {
-          setApproving(true);
-          setApproveFailure(null);
-
-          void approveCandidate(candidateId)
-            .then(() => load())
-            .catch((error: unknown) => {
-              setApproveFailure(
-                error instanceof ApiRequestError
-                  ? describeApproveFailure(error)
-                  : { message: 'The agent could not be approved.' },
-              );
-            })
-            .finally(() => {
-              setApproving(false);
-            });
-        }}
-        onCompile={(outcomeMapping) => {
-          setCompiling(true);
-          setCompileFailure(null);
-
-          void compileDocument(documentId, outcomeMapping)
-            .then(() => load())
-            .catch((error: unknown) => {
-              setCompileFailure(
-                error instanceof ApiRequestError
-                  ? describeCompileFailure(error)
-                  : { message: 'This workflow could not be compiled.', refusals: [] },
-              );
-            })
-            .finally(() => {
-              setCompiling(false);
-            });
-        }}
+        isPublishing={isPublishingRecording}
         onOpenAgent={onOpenAgent}
-        onPublish={(candidateId) => {
-          setPublishing(true);
-          setPublishFailure(null);
+        onPublish={(outcomeMapping) => {
+          setIsPublishingRecording(true);
+          setPublishRecordingFailure(null);
 
-          void publishCandidate(candidateId)
+          void publishRecording(documentId, outcomeMapping)
             .then(() => load())
             .catch((error: unknown) => {
-              setPublishFailure(
+              setPublishRecordingFailure(
                 error instanceof ApiRequestError
-                  ? describePublishFailure(error)
-                  : {
-                      kind: 'request_failed',
-                      message: 'The agent could not be published.',
-                      agentVersionId: null,
-                    },
+                  ? describePublishRecordingFailure(error)
+                  : { message: 'This workflow could not be published.', refusals: [] },
               );
             })
             .finally(() => {
-              setPublishing(false);
+              setIsPublishingRecording(false);
             });
         }}
+        provenanceKind={review.provenance.kind}
         publication={review.publication}
-        publishFailure={publishFailure}
-        revisionState={review.state}
+        publishFailure={publishRecordingFailure}
       />
 
       <SopBindingPanel bindings={bindings} steps={review.steps} />
@@ -338,7 +285,7 @@ export function SopReviewPage({ documentId, onOpenAgent }: SopReviewPageProps) {
                         value={answers[entry.questionId] ?? ''}
                       />
                       <button
-                        className="rounded bg-slate-900 px-3 py-1 text-sm text-white disabled:bg-slate-400"
+                        className="rounded bg-indigo-600 px-3 py-1 text-sm text-white hover:bg-indigo-500 disabled:bg-slate-300"
                         data-testid={`sop-answer-save-${entry.questionId}`}
                         disabled={busy || (answers[entry.questionId] ?? '').trim() === ''}
                         onClick={() =>

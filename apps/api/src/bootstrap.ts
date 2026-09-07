@@ -5,6 +5,7 @@ import type { LLMProvider } from '@orbit/sop-generation';
 import {
   createSopCandidateService,
   createSopDraftService,
+  createPublishRecordingService,
   createSopPublishService,
   createSopRevisionService,
 } from '@orbit/sop-service';
@@ -85,6 +86,7 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
       sopRevisionService: createSopRevisionService({ database: handle.db }),
       sopCandidateService: createSopCandidateService({ database: handle.db }),
       sopPublishService: createSopPublishService({ database: handle.db }),
+      publishRecordingService: createPublishRecordingService({ database: handle.db }),
       recordingSessions,
       dispatcher: createInProcessRunDispatcher({
         database: handle.db,

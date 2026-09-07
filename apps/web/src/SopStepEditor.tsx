@@ -83,7 +83,7 @@ export function SopStepEditor({ step, isSaving, onSave, onCancel }: SopStepEdito
 
       <div className="mt-3 flex gap-2">
         <button
-          className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-400"
+          className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:bg-slate-300"
           data-testid="sop-step-save"
           disabled={isSaving}
           type="submit"
