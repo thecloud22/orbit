@@ -708,13 +708,16 @@ describe('Watchtower end to end', () => {
 
       expect(rows).toContain('Not recorded');
       // A manual_review step will never have a binding; calling that a gap
-      // would report a permanent, correct state as missing work.
+      // would report a permanent, correct state as missing work. Neither will a
+      // navigate step, which compiles from the workflow's own URL — reporting
+      // that one as unrecorded made a ready workflow look unfinished.
       expect(rows).toContain('No binding needed');
       expect(rows).toContain('routes to a person');
 
+      // Counted over the steps the compiler actually requires a binding for.
       const summary = (await page.getByTestId('sop-bindings-summary').textContent()) ?? '';
       expect(summary).toContain('1 of');
-      expect(summary).toContain('approved');
+      expect(summary).toContain('ready');
 
       await page.close();
     });
@@ -1092,11 +1095,13 @@ describe('Watchtower end to end', () => {
 
       // A recording lands as a draft revision, but the one-click path does not
       // wait for it to be manually submitted and approved first — that
-      // transition happens as part of publishing itself.
+      // transition happens as part of publishing itself. Nor is anyone asked
+      // what the single outcome means: a workflow that ends exactly one way has
+      // nothing to disambiguate (ADR-028), so publishing really is one click.
       await page
-        .getByTestId('outcome-mapping-completed')
+        .getByTestId('publish-recording-button')
         .waitFor({ state: 'visible', timeout: 20_000 });
-      await page.getByTestId('outcome-mapping-completed').selectOption('request_found');
+      expect(await page.getByTestId('outcome-mapping-completed').count()).toBe(0);
       await page.getByTestId('publish-recording-button').click();
 
       await expect

@@ -121,6 +121,10 @@ function BindingRowItem({
   readonly onBind: (stepId: string) => void;
   readonly isStarting: boolean;
 }) {
+  // Open when the detail is the answer to a question the reader has: a stale
+  // binding, a rejected one, or one the server raised issues about.
+  const detailOpen = row.binding.stale || row.binding.issues.length > 0;
+
   return (
     <li
       className="rounded-md border border-slate-200 p-3 transition-colors hover:border-slate-300"
@@ -165,29 +169,45 @@ function BindingRowItem({
         </p>
       )}
 
-      {row.binding.selectors !== null && (
-        <div className="mt-2" data-testid="sop-binding-selectors">
-          <p className="text-xs font-medium text-slate-700">How the element is found, in order:</p>
-          <ol className="mt-1 list-decimal pl-5 text-xs text-slate-700">
-            {row.binding.selectors.map((selector) => (
-              <li key={`${selector.strategy}:${selector.value}:${selector.name ?? ''}`}>
-                <span className="font-mono">
-                  {selector.strategy}={selector.value}
-                  {selector.name === null ? '' : ` "${selector.name}"`}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
+      {/*
+        Folded away unless something is actually wrong with this binding.
+        Selector chains and fingerprints are how the runtime finds an element —
+        real, and worth being able to read — but they are engineering output,
+        and a person publishing a workflow that is working has no decision to
+        make from them. A stale or contested binding is the case where they
+        stop being trivia and start being the answer, so that opens by default.
+      */}
+      {(row.binding.selectors !== null || row.binding.fingerprint !== null) && (
+        <details className="mt-2" data-testid="sop-binding-locator" open={detailOpen}>
+          <summary className="cursor-pointer text-xs text-slate-500 hover:text-indigo-600">
+            How this element is found
+          </summary>
 
-      {row.binding.fingerprint !== null && (
-        <p className="mt-2 text-xs text-slate-600" data-testid="sop-binding-fingerprint">
-          Approved as: {row.binding.fingerprint.role ?? 'unknown role'}
-          {row.binding.fingerprint.accessibleName === null
-            ? ''
-            : ` "${row.binding.fingerprint.accessibleName}"`}
-        </p>
+          {row.binding.selectors !== null && (
+            <div className="mt-2" data-testid="sop-binding-selectors">
+              <p className="text-xs font-medium text-slate-700">In order:</p>
+              <ol className="mt-1 list-decimal pl-5 text-xs text-slate-700">
+                {row.binding.selectors.map((selector) => (
+                  <li key={`${selector.strategy}:${selector.value}:${selector.name ?? ''}`}>
+                    <span className="font-mono">
+                      {selector.strategy}={selector.value}
+                      {selector.name === null ? '' : ` "${selector.name}"`}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {row.binding.fingerprint !== null && (
+            <p className="mt-2 text-xs text-slate-600" data-testid="sop-binding-fingerprint">
+              Approved as: {row.binding.fingerprint.role ?? 'unknown role'}
+              {row.binding.fingerprint.accessibleName === null
+                ? ''
+                : ` "${row.binding.fingerprint.accessibleName}"`}
+            </p>
+          )}
+        </details>
       )}
 
       {row.binding.issues.length > 0 && (

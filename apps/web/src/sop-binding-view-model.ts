@@ -44,6 +44,21 @@ export function describeBindingStatus(entry: SopStepBindingView): BindingStatusD
     };
   }
 
+  // A `navigate` step compiles from the workflow's own URL and an `outcome`
+  // step touches no element, so neither is a step anyone has to demonstrate.
+  // Reporting them as "Not recorded" made a workflow that was ready to publish
+  // read as two-thirds finished and missing something.
+  if (!isBindingRequired(entry.kind)) {
+    return {
+      label: 'No binding needed',
+      tone: 'muted',
+      detail:
+        entry.kind === 'navigate'
+          ? 'This step opens a page, which the workflow already names.'
+          : 'This step acts on no element, so there is nothing to demonstrate.',
+    };
+  }
+
   if (entry.status === null) {
     return {
       label: 'Not recorded',
@@ -127,16 +142,25 @@ export function summarizeBindings(bindings: SopBindingsView | null): string | nu
     return null;
   }
 
-  const { bindable, bound, approved, stale } = bindings.summary;
+  // Counted over the steps the compiler actually requires a binding for, not
+  // over `summary.bindable`, which includes `navigate` and `outcome`. Counting
+  // those made a fully mapped workflow report itself as incomplete — the
+  // headline disagreeing with `isFullyBoundForPublish`, which has always
+  // counted only the required kinds.
+  const required = bindings.steps.filter((step) => isBindingRequired(step.kind));
 
-  if (bindable === 0) {
+  if (required.length === 0) {
     return 'No step in this workflow needs a binding.';
   }
 
-  const parts = [`${approved} of ${bindable} steps approved`];
+  const approved = required.filter((step) => step.status === 'approved' && !step.stale).length;
+  const bound = required.filter((step) => step.status !== null).length;
+  const stale = required.filter((step) => step.stale).length;
 
-  if (bound > approved) {
-    parts.push(`${bound - approved} recorded but not yet approved`);
+  const parts = [`${approved} of ${required.length} steps ready`];
+
+  if (bound > approved + stale) {
+    parts.push(`${bound - approved - stale} recorded but not yet approved`);
   }
 
   if (stale > 0) {
@@ -158,6 +182,19 @@ export function summarizeBindings(bindings: SopBindingsView | null): string | nu
 export const WATCHTOWER_BINDABLE_KINDS: readonly string[] = ['fill', 'click', 'extract'];
 
 /**
+ * Whether the compiler requires a binding for this kind of step.
+ *
+ * The one definition. Three things used to answer this separately — the
+ * headline count, the per-step status label, and the publish gate — and they
+ * disagreed: a workflow whose every required step was bound reported "6 of 9
+ * steps approved" and showed its `navigate` step as "Not recorded", while the
+ * publish button correctly considered it ready.
+ */
+export function isBindingRequired(kind: string): boolean {
+  return WATCHTOWER_BINDABLE_KINDS.includes(kind);
+}
+
+/**
  * Whether this step can be bound from here, and is worth binding.
  *
  * An approved binding whose step has since changed still offers re-binding:
@@ -165,7 +202,7 @@ export const WATCHTOWER_BINDABLE_KINDS: readonly string[] = ['fill', 'click', 'e
  * and a stale binding is the case where they differ.
  */
 export function canBindStep(row: BindingRow): boolean {
-  if (!WATCHTOWER_BINDABLE_KINDS.includes(row.kind)) {
+  if (!isBindingRequired(row.kind)) {
     return false;
   }
 
@@ -192,7 +229,7 @@ export function isFullyBoundForPublish(bindings: SopBindingsView | null): boolea
     return false;
   }
 
-  const required = bindings.steps.filter((step) => WATCHTOWER_BINDABLE_KINDS.includes(step.kind));
+  const required = bindings.steps.filter((step) => isBindingRequired(step.kind));
 
   return (
     required.length > 0 &&

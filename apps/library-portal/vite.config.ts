@@ -5,14 +5,17 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    port: 3010,
+    port: 3020,
     strictPort: true,
   },
-  // vite preview defaults to 4173; the portal must answer on 3010 in both
-  // dev and preview — pinned away from the Phase 1 demo portal at 3001 (and
-  // its neighbors) so both can run at once.
+  // vite preview defaults to 4173; the portal must answer on 3020 in both dev
+  // and preview. Pinned clear of the Phase 1 demo portal (3001) and of 3010 and
+  // 3102, which the Watchtower end-to-end stack reserves — it was on 3010, so
+  // running `pnpm dev` made `pnpm test:e2e:watchtower` unrunnable, and before
+  // the stack learned to refuse an occupied port it silently drove this portal
+  // instead of Watchtower.
   preview: {
-    port: 3010,
+    port: 3020,
     strictPort: true,
   },
 });

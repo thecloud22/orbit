@@ -4,6 +4,12 @@
  * Deliberately not the development ports: a developer running `pnpm dev` must be
  * able to run these tests without the two stacks fighting over a port, and the
  * test API must never be mistaken for the one pointed at `orbit_dev`.
+ *
+ * **3010 and 3102 are reserved. No app in this repository may listen on
+ * either.** `apps/library-portal` was added on 3010, which made
+ * `pnpm test:e2e:watchtower` unrunnable whenever `pnpm dev` was up — and worse,
+ * before the stack learned to refuse an occupied port, Vite quietly relocated
+ * and the whole suite drove the library portal while reporting itself ready.
  */
 export const E2E_API_PORT = 3102;
 export const E2E_WEB_PORT = 3010;

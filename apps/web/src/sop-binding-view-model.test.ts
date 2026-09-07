@@ -142,7 +142,23 @@ describe('summarizeBindings', () => {
 
     // The unbindable step is excluded from the denominator; counting it would
     // make full coverage unreachable.
-    expect(summary).toContain('1 of 2 steps approved');
+    expect(summary).toContain('1 of 2 steps ready');
+  });
+
+  it('counts only the kinds the compiler requires a binding for', () => {
+    // The regression: `navigate` and `outcome` steps counted toward the
+    // denominator, so a workflow whose every required step was bound reported
+    // itself as incomplete while the publish button correctly offered to
+    // publish it. The headline and the gate now answer from one predicate.
+    const summary = summarizeBindings(
+      bindings([
+        entry({ status: 'approved' }),
+        entry({ stepId: 'open', kind: 'navigate' }),
+        entry({ stepId: 'done', kind: 'outcome' }),
+      ]),
+    );
+
+    expect(summary).toContain('1 of 1 steps ready');
   });
 
   it('mentions recorded-but-unapproved separately', () => {
@@ -161,6 +177,12 @@ describe('summarizeBindings', () => {
 
   it('says so when no step needs a binding', () => {
     expect(summarizeBindings(bindings([entry({ bindable: false, kind: 'manual_review' })]))).toBe(
+      'No step in this workflow needs a binding.',
+    );
+  });
+
+  it('says so when the only steps present never need one', () => {
+    expect(summarizeBindings(bindings([entry({ stepId: 'open', kind: 'navigate' })]))).toBe(
       'No step in this workflow needs a binding.',
     );
   });
