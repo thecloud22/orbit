@@ -19,6 +19,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "pnpm --filter @orbit/demo-portal test:e2e",
+    "test:e2e:library": "pnpm --filter @orbit/library-portal test:e2e",
     "test:db": "vitest run --config vitest.db.config.ts",
     "db:migrate": "pnpm --filter @orbit/db migrate",
     "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm test:db",
