@@ -576,7 +576,41 @@ every process that executes an agent; ADR-020 narrows that to one API directory
 rather than lifting it, and a test walks the module graph from the run-dispatch
 path to prove the two stay apart.
 
-Still not built: Agent IR generation (2.5) and publishing (2.6).
+Still not built: publishing (2.6).
+
+## Compiling a candidate agent (Phase 2.5)
+
+A reviewed workflow plus its approved mappings compiles into **candidate Agent
+IR** — the typed document 2.6 later publishes as a runnable agent. Compilation
+is deterministic: no model is involved, because translating a reviewed document
+into a typed workflow is an exact operation.
+
+**The compiler refuses far more than it accepts, and every refusal names a step
+and a reason.** "Why can my workflow not run?" is the whole point of this stage,
+so refusals are collected rather than raised one at a time — somebody fixing a
+workflow wants the full list, not to rediscover the next problem after each edit.
+A workflow is refused when it branches, routes to a person, has an unmapped step,
+has a mapping recorded against a step that has since been edited, declares an
+outcome nobody mapped to a business result, reads more values than were mapped,
+or takes an input type an agent cannot carry.
+
+**Outcomes are mapped explicitly.** A SOP outcome name is business vocabulary;
+`request_found` is Agent IR's. The mapping is chosen by a person and stored with
+the candidate, so approving a candidate approves that translation too.
+
+**Approval is separate, and fails closed.** Before anything could be checked
+against a real page, the candidate is walked for steps needing a `secret` input
+Orbit cannot supply. If it needs one, the candidate is recorded as
+`cannot_validate` and **no browser is launched at all** — because the alternative
+is discovering the problem with a browser already open on a real password field.
+A candidate nobody could check cannot be approved; it can still be rejected.
+
+Candidates are derived, never authored: recompiling supersedes its predecessor in
+the same transaction, exactly as re-recording supersedes a binding.
+
+**The reference escalation-review workflow does not compile yet**, because it
+branches. That is the requirements document's own worked example, and a test
+pins the refusal rather than leaving it to prose. See **ADR-021**.
 
 ## Watchtower
 

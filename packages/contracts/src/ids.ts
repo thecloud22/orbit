@@ -98,6 +98,20 @@ export const executionBindingIdSchema = z
   .brand<'ExecutionBindingId'>();
 export type ExecutionBindingId = z.infer<typeof executionBindingIdSchema>;
 
+/**
+ * Candidate Agent IR identifier (Phase 2.5).
+ *
+ * A candidate is a proposal that a reviewed graph and its approved mappings
+ * could become a runnable agent. It is a separate entity from both — it can be
+ * rejected while they stand, and it is superseded by recompilation — so it
+ * carries its own id rather than being addressed through either.
+ */
+export const agentIrCandidateIdSchema = z
+  .string()
+  .regex(idPattern('aircand'), 'must be an opaque id prefixed with "aircand_"')
+  .brand<'AgentIrCandidateId'>();
+export type AgentIrCandidateId = z.infer<typeof agentIrCandidateIdSchema>;
+
 export const artifactLinkIdSchema = z
   .string()
   .regex(idPattern('artl'), 'must be an opaque id prefixed with "artl_"')

@@ -35,7 +35,7 @@ silently.
 checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
-**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b and 2.4f** are complete.
+**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f and 2.5** are complete.
 `@orbit/sop-graph` provides the non-executable graph contract and its validation;
 `@orbit/sop-generation` turns free text into a proposed graph; `@orbit/sop-service` persists drafts
 and drives review; `@orbit/execution-mapping` defines the Execution Binding and the runtime verifies
@@ -68,7 +68,15 @@ the UI states plainly. **ADR-020** narrows ADR-019's ban on script injection in 
 single API directory rather than lifting it, and a module-graph test from the run-dispatch entry
 point proves the two stay apart.
 
-**Sub-phase 2.5 is next**: compiling approved bindings into candidate Agent IR. It consumes the
+**Sub-phase 2.5 is complete.** `@orbit/agent-ir-compiler` turns a reviewed graph plus its approved
+bindings into candidate Agent IR, refusing anything it cannot compile completely and naming the step
+and reason for each refusal. Candidates are persisted in `agent_ir_candidates`, superseded on
+recompilation, and gated behind a separate technical approval that refuses any candidate whose
+sandbox readiness is `cannot_validate` — the fail-closed secret check, applied before a browser
+could be launched (**ADR-021**). The reference escalation-review workflow does not compile, because
+2.5 handles linear graphs only.
+
+**Sub-phase 2.6 is next**: compiling approved bindings into candidate Agent IR. It consumes the
 binding contract 2.4a froze and the bindings 2.4b produces, and must import `stepChecksum` from
 `@orbit/db` rather than recomputing it — there is one definition so the two cannot drift. See the
 Task P2-001 through P2-004F2 reports under `docs/tasks/reports/`.

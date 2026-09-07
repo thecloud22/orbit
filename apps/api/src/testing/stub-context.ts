@@ -1,5 +1,6 @@
 import type { ArtifactService } from '@orbit/artifact-service';
 import type {
+  AgentIrCandidateRepository,
   AgentRepository,
   AgentVersionRepository,
   ArtifactRepository,
@@ -53,6 +54,7 @@ export interface StubContextOptions {
   readonly runEvents?: Partial<RunEventRepository>;
   readonly artifacts?: Partial<ArtifactRepository>;
   readonly executionBindings?: Partial<ExecutionBindingRepository>;
+  readonly agentIrCandidates?: Partial<AgentIrCandidateRepository>;
   readonly sopDocuments?: Partial<SopDocumentRepository>;
   readonly sopGraphRevisions?: Partial<SopGraphRevisionRepository>;
   readonly artifactService?: Partial<ArtifactService>;
@@ -78,6 +80,7 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
       sopDocuments: stubbed('sopDocuments', options.sopDocuments ?? {}),
       sopGraphRevisions: stubbed('sopGraphRevisions', options.sopGraphRevisions ?? {}),
       executionBindings: stubbed('executionBindings', options.executionBindings ?? {}),
+      agentIrCandidates: stubbed('agentIrCandidates', options.agentIrCandidates ?? {}),
     },
     artifactService: stubbed('artifactService', options.artifactService ?? {}),
     dispatcher: stubbed('dispatcher', options.dispatcher ?? {}),

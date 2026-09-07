@@ -11,6 +11,7 @@
  */
 export const PACKAGE_NAME = '@orbit/sop-service' as const;
 
+export * from './candidate-service';
 export * from './draft-service';
 export * from './recording-service';
 export * from './revision-service';

@@ -157,6 +157,37 @@ const noRecorderInExecutionPaths = [
 ];
 
 /**
+ * Compiling is arithmetic on reviewed data, not an action.
+ *
+ * The compiler reads a graph and its mappings and returns a candidate. What it
+ * produces is the document that later becomes a runnable agent, so it is
+ * exactly where a capability must not be able to hide. `@orbit/db/checksum` is
+ * permitted and the bare package is not: that subpath carries `node:crypto`, so
+ * it supplies the one step-checksum definition (ADR-019) without supplying a
+ * database.
+ */
+const noActionFromCompilation = [
+  {
+    group: [
+      '@orbit/runtime',
+      '@orbit/runtime/*',
+      '@orbit/executor-playwright',
+      '@orbit/execution-recorder',
+      '@orbit/execution-recorder/*',
+      '@orbit/sop-service',
+      '@orbit/artifacts',
+      'playwright',
+      'playwright-core',
+      'drizzle-orm',
+      'pg',
+      '@langchain/*',
+    ],
+    message:
+      'Compilation takes a reviewed graph and its mappings and returns a candidate. Persisting belongs to @orbit/sop-service, and only @orbit/db/checksum may be imported here.',
+  },
+];
+
+/**
  * Translating a recording is arithmetic on captured data, not an action.
  *
  * It reads a sequence and returns a document. Reaching a browser, a database or
@@ -507,6 +538,50 @@ export default tseslint.config(
     files: ['packages/execution-recorder/**/*.test.ts'],
     rules: {
       'no-restricted-imports': ['error', { patterns: noReachIntoOrbitFromRecorder }],
+    },
+  },
+
+  // A candidate agent is compiled by arithmetic, not by acting.
+  //
+  // `@orbit/db` is banned by exact path rather than by glob, so the one
+  // permitted subpath stays reachable: `@orbit/db/checksum` carries
+  // `node:crypto` and supplies the single step-checksum definition (ADR-019)
+  // without supplying a database.
+  {
+    files: ['packages/agent-ir-compiler/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@orbit/db',
+              message:
+                'Import @orbit/db/checksum for the step checksum. The compiler must not reach a database.',
+            },
+          ],
+          patterns: [
+            ...noFrameworksInDomainPackages,
+            ...noFilesystemInDomainPackages,
+            ...noActionFromCompilation,
+          ],
+        },
+      ],
+    },
+  },
+
+  // The boundary test reads files, so it is exempt from the filesystem ban that
+  // exists to keep the compiler itself from touching a disk.
+  {
+    files: ['packages/agent-ir-compiler/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [{ name: '@orbit/db', message: 'Import @orbit/db/checksum instead.' }],
+          patterns: [...noFrameworksInDomainPackages, ...noActionFromCompilation],
+        },
+      ],
     },
   },
 

@@ -712,3 +712,61 @@ So the alternative ADR-019 rejected has to be revisited, and with it the ban tha
 | Let a recording session live until the process ends | An unfinished recording holds a Chromium open indefinitely |
 | Run a real headed browser in the end-to-end test | No display on a test runner, and no person to click; the browser is the one thing that must be faked |
 | Ship the recording UI without stating where the browser opens | Someone on a laptop pointed at a remote API waits for a window that never appears |
+
+## ADR-021: Compile candidate Agent IR by refusing everything not fully understood, and gate approval on a fail-closed sandbox check
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+ADR-016 kept the SOP Graph non-executable and ADR-018 defined the Execution Binding, but nothing turned either into something a runtime could execute. Sub-phase 2.5 compiles a reviewed graph plus its approved bindings into candidate Agent IR — the document 2.6 later publishes as a runnable Agent Version.
+
+Reading the two contracts against each other surfaced gaps that no amount of careful compiling closes, because they are differences in what the two representations can express. A SOP outcome name is any identifier; Agent IR's `complete.outcome` is a closed Phase 1 enum of two values. Agent IR branches with `browser.expect_one_of`, which needs one locator per alternative; a SOP `decision` step's binding carries one element. A SOP `extract` step declares many fields; `execution_bindings` holds one current binding per step. `manual_review` has no executable form at all. And Agent IR has one value type, `string`, so four of the SOP input types cannot be carried.
+
+A compiler facing gaps like these has two options: emit something approximate, or refuse. The first is worse than it sounds — a candidate that silently does less than the document says is a workflow whose approval means something different from what the approver read.
+
+### Decision
+
+**The compiler refuses far more than it accepts, and every refusal names a step and a reason.** "Why can my workflow not run?" is the entire product surface of this sub-phase, so "compilation failed" is not an answer. Refusals are collected rather than thrown one at a time: somebody fixing a recorded workflow wants the whole list, not to rediscover the next problem after every edit.
+
+**Branching is refused, not approximated.** 2.5 compiles linear graphs only. The alternative was widening the frozen binding schema to carry a target per branch, which is a contract change made to serve a compiler. A recorded workflow is linear by construction (ADR-019), so this compiles everything recording can produce. **The cost is explicit: the reference escalation-review workflow — the requirements document's own worked example — does not compile, and a test asserts that refusal rather than leaving it to prose.**
+
+**Outcome mapping is carried on the candidate, not on the graph.** A SOP outcome name is business vocabulary; `request_found` is Agent IR's. Putting the mapping on the SOP document would push an execution concern into a business artifact, which ADR-002 exists to prevent; widening the Phase 1 enum would change a contract for one workflow's convenience. So the mapping is part of the compilation record — chosen by a person, stored with the candidate, and part of what approving that candidate approves.
+
+**The compiler's own output is untrusted input.** It goes through the real `parseAgentIrDocument` before being returned, exactly as a model's output goes through `parseSopGraphDocument`. Code that produces a document is not thereby entitled to assume the document is valid.
+
+**Sandbox validation is a precondition, not a guard.** A recorded sign-in compiles to a fill whose value is `${inputs.password}`, and Phase 1 has no runtime secret resolution. The readiness check walks the candidate *before anything launches a browser* and, if any step needs a secret, reports `cannot_validate` and launches nothing. A per-step guard would mean discovering the problem with a browser already open on a real credential field — the exact moment when typing a placeholder into it looks like a reasonable repair. There is no path on which a password field is reached with nothing to give it, because no field is reached.
+
+**`cannot_validate` is a distinct state from a failure.** A workflow nobody could check was never tried, and recording that as a failure would suggest something was attempted and did not work — untrue in the one place where precision matters most, the record of what a person approved.
+
+**Approval requires readiness, and the check lives in the repository.** A candidate that could not be checked cannot be approved. That rule sits at the persistence layer rather than in a service because it is the only thing between a compiled proposal and something 2.6 will publish, and a guard that can be bypassed by calling a different function is not a guard. Rejection has no such precondition: refusing something unverifiable is exactly what a reviewer should be able to do.
+
+**The compiler is pure, and imports the one checksum definition structurally.** `@orbit/db/checksum` is a subpath carrying `node:crypto` and a type import, so importing it yields a hash function rather than a database — which is what ADR-019's "there is one function, and both import it" actually promised. Lint bans `@orbit/db` by exact path so the subpath stays reachable, and the ban was probed to confirm it fires. The host allowlist could not be handled the same way, since its one definition lives in `@orbit/runtime`, which a pure compiler must not import; it is passed in, supplied from exactly one place, and that place re-exports rather than redeclares it.
+
+**A candidate is derived, never authored.** Its first state is `compiled`, not `draft`. Nobody writes one and nobody edits one: recompiling produces a new candidate that supersedes its predecessor in the same transaction, exactly as a re-recording supersedes a binding and an edit supersedes a revision.
+
+### Consequences
+
+- A reviewed workflow can become a typed, validated candidate agent, which is what 2.6 needs to publish anything.
+- Every reason a workflow cannot yet run is a named refusal against a named step, rather than a failure a person has to interpret.
+- **The escalation-review reference workflow does not compile.** Branch support is a later task, and the requirements document's worked example is the thing waiting on it.
+- **A workflow needing credentials can be compiled but never approved.** That is the intended shape — the work is not lost, and it cannot proceed — but it is a dead end until credential handling exists.
+- **Four SOP input types cannot be carried.** `number`, `boolean`, `enum` and `date` are refused, because Agent IR declares one value type.
+- **Sandbox validation assesses readiness; it does not yet execute the candidate.** Actually running a candidate against a sandbox is a run, which this task excludes. The design and the fail-closed gate are here; the execution is 2.6's.
+- A new opaque id prefix, `aircand_`, and a new table were added. `@orbit/contracts` was otherwise untouched.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Widen the binding schema so a decision can carry a target per branch | Changes a frozen contract to serve a compiler, before anything can produce such a binding |
+| Widen `terminalBusinessOutcomeSchema` to accept any SOP outcome name | Changes a Phase 1 contract for one workflow's convenience, and removes the only thing forcing a person to say what an outcome means |
+| Put the outcome mapping on the SOP document | Pushes an execution concern into a business artifact, which ADR-002 exists to prevent |
+| Compile a multi-field extract using the one binding it has | Silently drops declared fields, so approving the candidate approves less than the document says |
+| Trust the compiler's own output as valid Agent IR | Code that produces a document is not thereby entitled to assume it is valid |
+| Check for unresolvable secrets per step, during validation | Discovers the problem with a browser already open on a real credential field |
+| Record "could not validate" as a validation failure | Suggests something was attempted; nothing was |
+| Let a service own the approval precondition | A guard reachable around by calling another function is not a guard |
+| Inject the step checksum as a function argument | Leaves one definition guaranteed only by convention, which is what ADR-019 set out to avoid |

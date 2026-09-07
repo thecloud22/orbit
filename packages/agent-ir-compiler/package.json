@@ -1,5 +1,5 @@
 {
-  "name": "@orbit/sop-service",
+  "name": "@orbit/agent-ir-compiler",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -15,16 +15,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@orbit/agent-ir-compiler": "workspace:*",
+    "@orbit/agent-ir": "workspace:*",
     "@orbit/contracts": "workspace:*",
     "@orbit/db": "workspace:*",
     "@orbit/execution-mapping": "workspace:*",
-    "@orbit/runtime": "workspace:*",
-    "@orbit/sop-generation": "workspace:*",
     "@orbit/sop-graph": "workspace:*",
-    "@orbit/sop-recording": "workspace:*"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "@orbit/sop-recording": "workspace:*"
   }
 }

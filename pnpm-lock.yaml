@@ -264,6 +264,34 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
+  packages/agent-ir-compiler:
+    dependencies:
+      '@orbit/agent-ir':
+        specifier: workspace:*
+        version: link:../agent-ir
+      '@orbit/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@orbit/db':
+        specifier: workspace:*
+        version: link:../db
+      '@orbit/execution-mapping':
+        specifier: workspace:*
+        version: link:../execution-mapping
+      '@orbit/sop-graph':
+        specifier: workspace:*
+        version: link:../sop-graph
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
+    devDependencies:
+      '@orbit/sop-recording':
+        specifier: workspace:*
+        version: link:../sop-recording
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
   packages/artifact-service:
     dependencies:
       '@orbit/artifacts':
@@ -491,6 +519,9 @@ importers:
 
   packages/sop-service:
     dependencies:
+      '@orbit/agent-ir-compiler':
+        specifier: workspace:*
+        version: link:../agent-ir-compiler
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -500,6 +531,9 @@ importers:
       '@orbit/execution-mapping':
         specifier: workspace:*
         version: link:../execution-mapping
+      '@orbit/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@orbit/sop-generation':
         specifier: workspace:*
         version: link:../sop-generation

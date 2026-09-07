@@ -1,3 +1,4 @@
+export * from './agent-ir-candidate';
 export * from './agent';
 export * from './agent-version';
 export * from './artifact';

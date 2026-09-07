@@ -1,4 +1,6 @@
 import {
+  agentIrCandidateIdSchema,
+  type AgentIrCandidateId,
   agentIdSchema,
   agentVersionIdSchema,
   artifactIdSchema,
@@ -171,4 +173,8 @@ export function newSopAnswerId(): SopAnswerId {
 
 export function newExecutionBindingId(): ExecutionBindingId {
   return executionBindingIdSchema.parse(`execbind_${monotonicUlid()}`);
+}
+
+export function newAgentIrCandidateId(): AgentIrCandidateId {
+  return agentIrCandidateIdSchema.parse(`aircand_${monotonicUlid()}`);
 }

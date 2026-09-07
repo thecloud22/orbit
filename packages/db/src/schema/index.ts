@@ -14,8 +14,10 @@
  * upward across the immutability boundary, so removing an agent or a version
  * that has runs fails rather than orphaning evidence.
  */
+export * from './agent-ir-candidates';
 export * from './agent-versions';
 export * from './agents';
+export * from './execution-bindings';
 export * from './artifact-links';
 export * from './artifacts';
 export * from './run-events';
@@ -27,6 +29,9 @@ export * from './sop-graph-revisions';
 
 /** Truncation order for the test reset: children before parents. */
 export const ORBIT_TABLE_NAMES = [
+  // Before revisions: a candidate references one with `restrict`, so truncating
+  // revisions first would fail rather than cascade.
+  'agent_ir_candidates',
   'execution_bindings',
   'sop_clarification_answers',
   'sop_graph_revisions',
@@ -39,4 +44,3 @@ export const ORBIT_TABLE_NAMES = [
   'agent_versions',
   'agents',
 ] as const;
-export * from './execution-bindings';
