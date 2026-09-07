@@ -5,6 +5,8 @@ import type { SopBindingsView, SopReviewView } from '@orbit/api/views';
 import {
   answerSopQuestion,
   ApiRequestError,
+  approveCandidate,
+  compileDocument,
   editSopStep,
   getSopBindings,
   getSopReview,
@@ -12,7 +14,14 @@ import {
   reorderSopStep,
   transitionSopRevision,
 } from './api-client';
-import { describePublishFailure, type PublishFailure } from './publication-view-model';
+import {
+  describeApproveFailure,
+  describeCompileFailure,
+  describePublishFailure,
+  type ApproveFailure,
+  type CompileFailure,
+  type PublishFailure,
+} from './publication-view-model';
 import { SopBindingPanel } from './SopBindingPanel';
 import { SopPublishPanel } from './SopPublishPanel';
 import { SopStepEditor } from './SopStepEditor';
@@ -48,6 +57,10 @@ export function SopReviewPage({ documentId, onOpenAgent }: SopReviewPageProps) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [publishing, setPublishing] = useState(false);
   const [publishFailure, setPublishFailure] = useState<PublishFailure | null>(null);
+  const [compiling, setCompiling] = useState(false);
+  const [compileFailure, setCompileFailure] = useState<CompileFailure | null>(null);
+  const [approving, setApproving] = useState(false);
+  const [approveFailure, setApproveFailure] = useState<ApproveFailure | null>(null);
 
   const load = useCallback(async () => {
     // Loaded alongside the review, and deliberately not fatal: binding
@@ -229,8 +242,46 @@ export function SopReviewPage({ documentId, onOpenAgent }: SopReviewPageProps) {
       </section>
 
       <SopPublishPanel
-        failure={publishFailure}
+        approveFailure={approveFailure}
+        compileFailure={compileFailure}
+        declaredOutcomes={review.declaredOutcomes}
+        isApproving={approving}
+        isCompiling={compiling}
         isPublishing={publishing}
+        onApprove={(candidateId) => {
+          setApproving(true);
+          setApproveFailure(null);
+
+          void approveCandidate(candidateId)
+            .then(() => load())
+            .catch((error: unknown) => {
+              setApproveFailure(
+                error instanceof ApiRequestError
+                  ? describeApproveFailure(error)
+                  : { message: 'The agent could not be approved.' },
+              );
+            })
+            .finally(() => {
+              setApproving(false);
+            });
+        }}
+        onCompile={(outcomeMapping) => {
+          setCompiling(true);
+          setCompileFailure(null);
+
+          void compileDocument(documentId, outcomeMapping)
+            .then(() => load())
+            .catch((error: unknown) => {
+              setCompileFailure(
+                error instanceof ApiRequestError
+                  ? describeCompileFailure(error)
+                  : { message: 'This workflow could not be compiled.', refusals: [] },
+              );
+            })
+            .finally(() => {
+              setCompiling(false);
+            });
+        }}
         onOpenAgent={onOpenAgent}
         onPublish={(candidateId) => {
           setPublishing(true);
@@ -254,6 +305,8 @@ export function SopReviewPage({ documentId, onOpenAgent }: SopReviewPageProps) {
             });
         }}
         publication={review.publication}
+        publishFailure={publishFailure}
+        revisionState={review.state}
       />
 
       <SopBindingPanel bindings={bindings} steps={review.steps} />

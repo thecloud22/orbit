@@ -1,3 +1,4 @@
+import type { SopRevisionId } from '@orbit/contracts';
 import { createRepositories, seedFindServiceRequest, type OrbitDatabase } from '@orbit/db';
 import { useTestDatabase } from '@orbit/db/testing';
 import type { SelectorChain } from '@orbit/execution-mapping';
@@ -8,6 +9,7 @@ import {
   createSopCandidateService,
   createSopPublishService,
   createSopRecordingService,
+  createSopRevisionService,
 } from '@orbit/sop-service';
 import { describe, expect, it } from 'vitest';
 
@@ -37,6 +39,16 @@ function recordingAt(host: string): readonly RecordedEntry[] {
   ];
 }
 
+/** Moves a revision through its real lifecycle to `approved`, same as a reviewer would. */
+async function approveRevision(database: OrbitDatabase, revisionId: SopRevisionId): Promise<void> {
+  const revisions = createSopRevisionService({ database });
+  const submitted = await revisions.transition({ revisionId, action: 'submit_for_review' });
+  if (!submitted.ok) throw new Error(`could not submit for review: ${JSON.stringify(submitted)}`);
+
+  const approved = await revisions.transition({ revisionId, action: 'approve' });
+  if (!approved.ok) throw new Error(`could not approve the revision: ${JSON.stringify(approved)}`);
+}
+
 describe('publishing produces something the existing runtime will execute', () => {
   const getDatabase = useTestDatabase();
 
@@ -47,17 +59,17 @@ describe('publishing produces something the existing runtime will execute', () =
       sequence: recordingAt(host),
     });
     if (!recorded.ok) throw new Error('the fixture recording should persist');
+    await approveRevision(database, recorded.revision.id);
 
     const candidates = createSopCandidateService({ database });
     const compiled = await candidates.compileDocument({
       documentId: recorded.document.id,
       outcomeMapping: { completed: 'request_found' },
-      agentId: 'agent_published_workflow',
-      version: '0.0.1',
     });
     if (!compiled.ok) throw new Error(`expected a candidate: ${JSON.stringify(compiled)}`);
 
-    await candidates.approve(compiled.candidate.id);
+    const approvedCandidate = await candidates.approve(compiled.candidate.id);
+    if (!approvedCandidate.ok) throw new Error('expected the candidate to approve');
 
     const result = await createSopPublishService({ database }).publish(compiled.candidate.id);
     if (!result.ok) throw new Error(`expected a version: ${JSON.stringify(result)}`);
@@ -77,9 +89,11 @@ describe('publishing produces something the existing runtime will execute', () =
     expect(prepared.agentIr.id).toBe(agentVersion.agentIr.id);
   });
 
-  it('would be refused before publishing, because a draft is not executable', async () => {
+  it('would be refused before publishing, because a compiled candidate is still a draft', async () => {
     // The other half of the same claim: the gate is real, and the lifecycle
-    // change publishing performs is what gets a workflow through it.
+    // change publishing performs is what gets a workflow through it. A
+    // candidate — approved or not — carries lifecycle.status 'draft' until it
+    // is published, and that is what the runtime actually refuses.
     const database = getDatabase().db;
     const recorded = await createSopRecordingService({ database }).createFromRecording({
       title: 'Find a service request',
@@ -87,14 +101,14 @@ describe('publishing produces something the existing runtime will execute', () =
       sequence: recordingAt('www.plano.gov'),
     });
     if (!recorded.ok) throw new Error('the fixture recording should persist');
+    await approveRevision(database, recorded.revision.id);
 
     const compiled = await createSopCandidateService({ database }).compileDocument({
       documentId: recorded.document.id,
       outcomeMapping: { completed: 'request_found' },
-      agentId: 'agent_unpublished',
-      version: '0.0.1',
     });
     if (!compiled.ok) throw new Error('expected a candidate');
+    expect(compiled.candidate.agentIr.lifecycle.status).toBe('draft');
 
     try {
       prepareExecution({
@@ -122,16 +136,17 @@ describe('containment survives publication (ADR-022)', () => {
       sequence: recordingAt('www.plano.gov'),
     });
     if (!recorded.ok) throw new Error('the fixture recording should persist');
+    await approveRevision(database, recorded.revision.id);
 
     const candidates = createSopCandidateService({ database });
     const compiled = await candidates.compileDocument({
       documentId: recorded.document.id,
       outcomeMapping: { completed: 'request_found' },
-      agentId: 'agent_contained',
-      version: '0.0.1',
     });
     if (!compiled.ok) throw new Error('expected a candidate');
-    await candidates.approve(compiled.candidate.id);
+
+    const approvedCandidate = await candidates.approve(compiled.candidate.id);
+    if (!approvedCandidate.ok) throw new Error('expected the candidate to approve');
 
     const result = await createSopPublishService({ database }).publish(compiled.candidate.id);
     if (!result.ok) throw new Error('expected a version');

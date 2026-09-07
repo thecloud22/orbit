@@ -866,3 +866,47 @@ ADR-014 had already settled the mechanism: `AgentVersionRepository` deliberately
 | Make `published_from_candidate_id` non-nullable | Requires rewriting or excluding the seeded agent, whose row must not change |
 | Let the caller supply the version at publish time | Puts a semver decision in front of the non-engineer the recording flow exists for |
 | Flip the document's `executable` flag once published | The SOP Graph is non-executable by construction; the runnable thing is a separate artifact (ADR-016) |
+
+## ADR-024: Reach compile and approve from Watchtower, and close the review-lifecycle gap that exposing them surfaced
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+ADR-021 and ADR-023 gave sub-phase 2.5 a compiler and a technical approval, but neither ever got a Watchtower surface: `compileDocument` and `approve` existed only as calls a test could make. The Publish action ADR-023 added was consequently reachable only for a candidate created by hand outside the browser — a review page that says "this workflow has not been turned into an agent yet" with no way to change that.
+
+Building the missing routes required reading `compileDocument` closely enough to wire it, and that reading surfaced a real gap rather than a purely mechanical one. `sopGraphRevisions.findCurrent` returns the newest revision in *any* state short of `superseded` — draft, in review, rejected, all included. `compileDocument` called it and used whatever came back with no state check at all. Nothing had ever exercised this over HTTP, so nothing had ever needed a revision that was still being written to be refused.
+
+A second thing fell out at the same time: `approve` and `reject` were direct pass-throughs to the repository, which throws `RecordNotFoundError`, `InvalidRunTransitionError`, and `CandidateNotValidatedError` rather than returning a typed result — consistent with nothing in the codebase, including `compileDocument` two lines above it. Every other service in `@orbit/sop-service` (`revision-service`, `publish-service`, `compileDocument` itself) returns a discriminated result; a route calling `approve` would have been the first place in the API forced to catch bare repository exceptions to avoid a raw 500 for an ordinary "not ready yet".
+
+### Decision
+
+**Compiling now requires the current revision to be `approved`, not merely current.** A new refusal, `revision_not_approved`, names the actual state. This is not new policy — ADR-017 already established that only `draft` and `needs_clarification` revisions may be *edited*; compiling an unapproved one into a candidate is the same lifecycle bypassed a different way, through the one caller positioned to bypass it silently because nothing had asked it to refuse before.
+
+**`approve` and `reject` return typed results, matching every other write in this service.** Both pre-check the candidate's state so the ordinary case never throws, and both still catch the repository's own transition guard as the fallback for the race the pre-check cannot close — the same defense-in-depth `recordAnswer` was required to have in sub-phase 2.3, applied here because it is now reachable over HTTP rather than only from a test holding the only reference to a candidate.
+
+**An agent's identity is derived from its document, not supplied.** `compileDocument` no longer takes `agentId`/`version` as caller input — a person turning a workflow into an agent should not be asked to invent an opaque identifier. The id is `agent_<document's own suffix>`, a pure function of the document id with no state of its own, so recompiling the same document after fixing a binding lands under the same agent every time. `publish-service`'s per-agent version allocation and its "already published" check both depend on that stability; a random or caller-supplied id would have silently fragmented one workflow across what looks like several agents.
+
+**Compiling asks a reviewer to map each declared outcome to a business result, computed and shown by the server.** `SopReviewView` gained `declaredOutcomes`, deduplicated from the graph's own `outcome` steps, because the mapping is a business judgement (ADR-023) that the compiler cannot make and a reviewer should not have to derive from raw step JSON.
+
+**Neither new route, nor the panel that calls them, touches the SOP document.** Compiling produces a candidate row; approving moves it through its own lifecycle. `executable` and the "draft only" notice are exactly as untouched as publishing already left them (ADR-023), and a test asserts it at every layer this task added: the route response, the end-to-end HTTP loop, and the browser test.
+
+### Consequences
+
+- A workflow can now go from a recording to a running agent using nothing but Watchtower — compile, approve, publish, run — closing the loop 2.4f through 2.6 built one service at a time.
+- Compiling an unapproved revision is refused everywhere, not only through routes built after this task. Existing tests that had been compiling straight from a freshly recorded (`draft`) document were themselves exercising the gap; fixing the precondition meant teaching them to approve a revision first, the same way a reviewer would.
+- `approve` and `reject`'s signatures changed from `Promise<AgentIrCandidateRecord>` to a typed result union — a breaking change contained entirely to `@orbit/sop-service` and its own two call sites, both updated in this task.
+- A person compiling a workflow chooses only what each outcome *means*; the agent identity and its provisional version are no longer theirs to supply or get wrong.
+- **Rejecting a candidate still has no Watchtower surface.** The route and the service support it; recompiling a document already supersedes whatever candidate existed for it, which is the actual unblock mechanism today. Adding a Reject button is deferred until a real need for it — not "nobody could check it", which recompiling already resolves — is identified.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Ship the routes without the revision-approval check | Exposes an existing gap to more callers instead of closing it; a reviewer could compile a draft they had not finished |
+| Let the caller supply `agentId` at compile time | Puts an opaque identifier in front of the person the recording flow exists for, and risks the id changing across recompiles |
+| Keep `approve`/`reject` throwing, catch the specific error classes in the route | Every other write in this service returns a typed result; the route becomes the one place forced to know repository-level exception types |
+| Pre-check candidate state without also catching the repository's guard | Leaves the exact TOCTOU window `recordAnswer` was required to close in sub-phase 2.3, now reachable over HTTP from two concurrent requests |
+| Let the client compute `declaredOutcomes` from raw step JSON | Duplicates a projection the server already owns, and couples the UI to the SOP step shape rather than a stable view |

@@ -5,6 +5,8 @@ import { createLocalFilesystemArtifactStorage, type ArtifactStorage } from '@orb
 import { createTestArtifactRoot, removeTestArtifactRoot } from '@orbit/artifacts/testing';
 import { createArtifactService } from '@orbit/artifact-service';
 import { newArtifactId, newSopDocumentId, type AgentVersionId, type RunId } from '@orbit/contracts';
+import type { SelectorChain } from '@orbit/execution-mapping';
+import { buttonFingerprint, fieldFingerprint } from '@orbit/execution-mapping/testing';
 import { createRepositories } from '@orbit/db';
 import { seedTestAgentVersion, useTestDatabase } from '@orbit/db/testing';
 import { createFakeBrowser, createFakeBrowserFactory } from '@orbit/runtime/testing';
@@ -13,9 +15,12 @@ import {
   respondWith,
   validSopGraphProposal,
 } from '@orbit/sop-generation/testing';
+import type { RecordedEntry } from '@orbit/sop-recording';
 import {
+  createSopCandidateService,
   createSopDraftService,
   createSopPublishService,
+  createSopRecordingService,
   createSopRevisionService,
 } from '@orbit/sop-service';
 import type { FastifyInstance } from 'fastify';
@@ -65,6 +70,7 @@ describe('Orbit API over real persistence', () => {
           provider: createFakeSopProvider({ respond: () => respondWith(validSopGraphProposal()) }),
         }),
         sopRevisionService: createSopRevisionService({ database: getDatabase().db }),
+        sopCandidateService: createSopCandidateService({ database: getDatabase().db }),
         sopPublishService: createSopPublishService({ database: getDatabase().db }),
         // No browser: these tests never record, and a registry that could open
         // one would be a Chromium per test file for nothing.
@@ -464,6 +470,124 @@ describe('Orbit API over real persistence', () => {
       });
 
       expect(response.statusCode).toBe(404);
+    });
+  });
+
+  describe('compiling, approving and publishing a workflow over HTTP', () => {
+    // Only a recorded document has approved bindings: a free-text draft has
+    // none, and every navigate/fill/click step in it would refuse to compile
+    // with missing_binding. This is the actual path 2.4f-2 and 2.5 exist to
+    // feed, so it is the one that proves the loop this task closes.
+    const FIELD = [{ strategy: 'test_id', value: 'request-number-input' }] as SelectorChain;
+    const BUTTON = [
+      { strategy: 'test_id', value: 'search-request-button' },
+      { strategy: 'role_and_name', value: 'button', name: 'Search' },
+    ] as SelectorChain;
+    const SEQUENCE: readonly RecordedEntry[] = [
+      { kind: 'navigate', url: 'http://localhost:3001/requests' },
+      { kind: 'fill', selectors: FIELD, fingerprint: fieldFingerprint(), typedValue: 'SR-1001' },
+      { kind: 'click', selectors: BUTTON, fingerprint: buttonFingerprint() },
+    ];
+
+    async function recordedDocument() {
+      const recorded = await createSopRecordingService({
+        database: getDatabase().db,
+      }).createFromRecording({
+        title: 'Find a service request',
+        startUrl: 'http://localhost:3001/requests',
+        sequence: SEQUENCE,
+      });
+
+      if (!recorded.ok) throw new Error('the fixture recording should persist');
+      return recorded;
+    }
+
+    it('goes from a recorded document to a running agent using only the HTTP surface', async () => {
+      const recorded = await recordedDocument();
+
+      // A recorded revision starts in draft, same as a hand-authored one, and
+      // compiling one is refused before it has been through review (ADR-017) —
+      // checked here, before the revision is moved anywhere.
+      const tooEarly = await app.inject({
+        method: 'POST',
+        url: `/v1/sop-documents/${recorded.document.id}/candidates`,
+        payload: { outcomeMapping: { completed: 'request_found' } },
+      });
+      expect(tooEarly.statusCode).toBe(400);
+      expect(tooEarly.json().error.message).toContain('draft');
+
+      const submitted = await app.inject({
+        method: 'POST',
+        url: `/v1/sop-revisions/${recorded.revision.id}/transitions`,
+        payload: { action: 'submit_for_review' },
+      });
+      expect(submitted.statusCode).toBe(200);
+
+      const approvedRevision = await app.inject({
+        method: 'POST',
+        url: `/v1/sop-revisions/${recorded.revision.id}/transitions`,
+        payload: { action: 'approve' },
+      });
+      expect(approvedRevision.statusCode).toBe(200);
+      expect(approvedRevision.json().data.state).toBe('approved');
+
+      const compiled = await app.inject({
+        method: 'POST',
+        url: `/v1/sop-documents/${recorded.document.id}/candidates`,
+        payload: { outcomeMapping: { completed: 'request_found' } },
+      });
+      expect(compiled.statusCode).toBe(201);
+      expect(compiled.json().data.sandboxState).toBe('ready');
+      const candidateId = compiled.json().data.candidateId as string;
+
+      // Approving twice is refused; the second call names why.
+      const approved = await app.inject({
+        method: 'POST',
+        url: `/v1/agent-ir-candidates/${candidateId}/approve`,
+        payload: { note: 'Checked the selectors by hand.' },
+      });
+      expect(approved.statusCode).toBe(200);
+      expect(approved.json().data.state).toBe('approved');
+
+      const approvedTwice = await app.inject({
+        method: 'POST',
+        url: `/v1/agent-ir-candidates/${candidateId}/approve`,
+      });
+      expect(approvedTwice.statusCode).toBe(400);
+
+      const published = await app.inject({
+        method: 'POST',
+        url: `/v1/agent-ir-candidates/${candidateId}/publish`,
+      });
+      expect(published.statusCode).toBe(201);
+      const publishedAgentVersionId = published.json().data.agentVersionId as string;
+
+      // The whole reason this exists: the published agent is reachable the
+      // same way the seeded one is, with no candidate-shaped special case.
+      const listed = await app.inject({ method: 'GET', url: '/v1/agent-versions' });
+      expect(listed.statusCode).toBe(200);
+      const ids = (listed.json().data as { id: string }[]).map((version) => version.id);
+      expect(ids).toContain(publishedAgentVersionId);
+
+      // And the SOP document's own claim about itself never moved.
+      const document = await app.inject({
+        method: 'GET',
+        url: `/v1/sop-documents/${recorded.document.id}`,
+      });
+      expect(document.json().data.executable).toBe(false);
+      expect(document.json().data.publication.agentVersionId).toBe(publishedAgentVersionId);
+    });
+
+    it('reports the declared outcomes a reviewer needs to map before compiling', async () => {
+      const recorded = await recordedDocument();
+
+      const document = await app.inject({
+        method: 'GET',
+        url: `/v1/sop-documents/${recorded.document.id}`,
+      });
+
+      const outcomes = document.json().data.declaredOutcomes as { name: string; message: string }[];
+      expect(outcomes.map((outcome) => outcome.name)).toContain('completed');
     });
   });
 });

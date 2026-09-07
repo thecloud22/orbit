@@ -38,6 +38,20 @@ export interface AgentVersionView {
 }
 
 /**
+ * What compiling or approving a candidate produced.
+ *
+ * Deliberately thin: the caller re-fetches the review after either action, the
+ * same pattern the publish action already uses, so this exists only to
+ * acknowledge that the write happened and name what to look at next.
+ */
+export interface CandidateActionView {
+  readonly candidateId: string;
+  readonly state: string;
+  readonly sandboxState: string;
+  readonly sandboxNote: string | null;
+}
+
+/**
  * What publishing produced.
  *
  * Returned to the review page so it can link out to the agent rather than
@@ -271,6 +285,11 @@ export interface SopPublicationView {
   readonly agentVersion: string | null;
 }
 
+export interface SopDeclaredOutcomeView {
+  readonly name: string;
+  readonly message: string;
+}
+
 export interface SopReviewView {
   readonly documentId: string;
   readonly documentTitle: string;
@@ -296,6 +315,17 @@ export interface SopReviewView {
    * produces a separate artifact and changes nothing about the graph (ADR-016).
    */
   readonly publication: SopPublicationView;
+  /**
+   * The business outcomes this workflow can declare, as compiling it needs to
+   * know how each maps to `request_found` / `request_not_found`.
+   *
+   * Computed here rather than left to the client to derive from raw step JSON:
+   * an `outcome` step's `outcome` field is business vocabulary the compiler
+   * cannot resolve on its own (ADR-023), and a reviewer choosing the mapping is
+   * the whole reason a candidate is a proposal rather than a foregone
+   * conclusion.
+   */
+  readonly declaredOutcomes: readonly SopDeclaredOutcomeView[];
   readonly editable: boolean;
   readonly reviewNote: string | null;
   readonly reviewedAt: string | null;

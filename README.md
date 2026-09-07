@@ -606,9 +606,7 @@ alongside the seeded one and starts through the same route, the same
 the agent may open the hosts its recording visited, matched exactly, and nothing
 else (**ADR-022**).
 
-Still not built: compiling and approving a candidate have no Watchtower surface,
-so the Publish action is only reachable for candidates created through the
-services. See **ADR-023**.
+See **ADR-023**.
 
 ## Compiling a candidate agent (Phase 2.5)
 
@@ -616,6 +614,17 @@ A reviewed workflow plus its approved mappings compiles into **candidate Agent
 IR** — the typed document 2.6 later publishes as a runnable agent. Compilation
 is deterministic: no model is involved, because translating a reviewed document
 into a typed workflow is an exact operation.
+
+**Compiling and approving now happen from the review page**, alongside Publish.
+A workflow's current revision must be **approved** before it can be compiled at
+all — a precondition sub-phase 2.5 left out and this task added, since
+`findCurrent` returns the newest revision in any state short of superseded, and
+compiling a draft or in-review graph would bypass the review lifecycle
+(ADR-017) through the one caller positioned to bypass it silently. Compiling
+asks a person to map each declared outcome the workflow can reach to a
+business result; the agent's own identity is derived from its document rather
+than supplied, so recompiling the same workflow after fixing a binding always
+lands under the same agent. See **ADR-024**.
 
 **The compiler refuses far more than it accepts, and every refusal names a step
 and a reason.** "Why can my workflow not run?" is the whole point of this stage,
@@ -635,7 +644,9 @@ against a real page, the candidate is walked for steps needing a `secret` input
 Orbit cannot supply. If it needs one, the candidate is recorded as
 `cannot_validate` and **no browser is launched at all** — because the alternative
 is discovering the problem with a browser already open on a real password field.
-A candidate nobody could check cannot be approved; it can still be rejected.
+A candidate nobody could check cannot be approved; it can still be rejected, though
+rejecting has no button yet — recompiling a document already supersedes whatever
+candidate existed for it, which is today's actual way past a dead end.
 
 Candidates are derived, never authored: recompiling supersedes its predecessor in
 the same transaction, exactly as re-recording supersedes a binding.

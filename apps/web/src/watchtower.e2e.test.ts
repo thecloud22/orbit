@@ -948,6 +948,86 @@ describe('Watchtower end to end', () => {
 
       expect(response.status).toBe(404);
     });
+
+    it('goes from a fresh recording to a published, listed agent using only the UI', async () => {
+      // The gap this closes: compiling and approving a candidate had no
+      // Watchtower surface at all. Without this, "Publish" existed on the
+      // review page but nothing could ever reach it except a candidate created
+      // by hand outside the browser.
+      const page = await open('/');
+
+      await expect
+        .poll(() => page.getByTestId('record-workflow-form').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      await page.getByTestId('recording-title').fill('Find a service request, end to end');
+      await page.getByTestId('recording-url').fill('http://localhost:3001/requests');
+      await page.getByTestId('start-recording-button').click();
+
+      await expect
+        .poll(() => page.getByTestId('recording-action').count(), { timeout: 30_000 })
+        .toBe(3);
+      await page.getByTestId('finish-recording-button').click();
+
+      await expect.poll(() => page.getByTestId('sop-review').count(), { timeout: 30_000 }).toBe(1);
+
+      // A recording lands as a draft revision, same as any other document — it
+      // still has to pass review before it can be compiled (ADR-017).
+      await page.getByTestId('sop-action-submit_for_review').click();
+      await page.getByTestId('sop-action-approve').waitFor({ state: 'visible', timeout: 20_000 });
+      await page.getByTestId('sop-action-approve').click();
+      await expect
+        .poll(async () => (await page.getByTestId('sop-review-state').textContent()) ?? '')
+        .toContain('Approved');
+
+      // Nothing to compile a moment ago; now there is exactly one declared
+      // outcome to map, which the recorder itself appended.
+      await page
+        .getByTestId('outcome-mapping-completed')
+        .waitFor({ state: 'visible', timeout: 20_000 });
+      await page.getByTestId('outcome-mapping-completed').selectOption('request_found');
+      await page.getByTestId('compile-agent-button').click();
+
+      await expect
+        .poll(() => page.getByTestId('approve-candidate-button').count(), { timeout: 20_000 })
+        .toBe(1);
+      expect(await page.getByTestId('sop-publish-summary').textContent()).toContain(
+        'waiting for technical approval',
+      );
+      await page.getByTestId('approve-candidate-button').click();
+
+      await expect
+        .poll(() => page.getByTestId('publish-agent-button').count(), { timeout: 20_000 })
+        .toBe(1);
+      await page.getByTestId('publish-agent-button').click();
+
+      await expect
+        .poll(() => page.getByTestId('open-published-agent').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      // The document's own claim about itself never moved, through any of this.
+      expect(await page.getByTestId('sop-review-not-executable').count()).toBe(1);
+
+      const documentId = new URL(page.url()).searchParams.get('documentId');
+      const detail = (await (
+        await fetch(`${E2E_API_URL}/v1/sop-documents/${documentId}`)
+      ).json()) as {
+        data: { executable: false; publication: { agentVersionId: string | null } };
+      };
+      expect(detail.data.executable).toBe(false);
+      expect(detail.data.publication.agentVersionId).not.toBeNull();
+
+      // And the published agent is reachable the ordinary way, with no
+      // candidate-shaped special case in the list the trigger UI reads.
+      const versions = (await (await fetch(`${E2E_API_URL}/v1/agent-versions`)).json()) as {
+        data: { id: string }[];
+      };
+      expect(versions.data.map((version) => version.id)).toContain(
+        detail.data.publication.agentVersionId,
+      );
+
+      await page.close();
+    });
   });
 
   describe('artifact integrity', () => {

@@ -1,4 +1,5 @@
 import type { AgentIr } from '@orbit/agent-ir';
+import type { SopRevisionId } from '@orbit/contracts';
 import { createRepositories, type OrbitDatabase } from '@orbit/db';
 import { useTestDatabase } from '@orbit/db/testing';
 import type { SelectorChain } from '@orbit/execution-mapping';
@@ -15,6 +16,7 @@ import {
   PublishTransformationError,
 } from './publish-service';
 import { createSopRecordingService } from './recording-service';
+import { createSopRevisionService } from './revision-service';
 
 /**
  * Publishing an approved candidate, against real persistence.
@@ -35,6 +37,16 @@ const SEQUENCE: readonly RecordedEntry[] = [
   { kind: 'click', selectors: BUTTON, fingerprint: buttonFingerprint() },
 ];
 
+/** Moves a revision through its real lifecycle to `approved`, same as a reviewer would. */
+async function approveRevision(database: OrbitDatabase, revisionId: SopRevisionId): Promise<void> {
+  const revisions = createSopRevisionService({ database });
+  const submitted = await revisions.transition({ revisionId, action: 'submit_for_review' });
+  if (!submitted.ok) throw new Error(`could not submit for review: ${JSON.stringify(submitted)}`);
+
+  const approved = await revisions.transition({ revisionId, action: 'approve' });
+  if (!approved.ok) throw new Error(`could not approve the revision: ${JSON.stringify(approved)}`);
+}
+
 describe('publishing an approved candidate', () => {
   const getDatabase = useTestDatabase();
 
@@ -46,18 +58,20 @@ describe('publishing an approved candidate', () => {
     });
 
     if (!recorded.ok) throw new Error('the fixture recording should persist');
+    await approveRevision(database, recorded.revision.id);
 
     const candidates = createSopCandidateService({ database });
     const compiled = await candidates.compileDocument({
       documentId: recorded.document.id,
       outcomeMapping: { completed: 'request_found' },
-      agentId: 'agent_find_a_service_request',
-      version: '0.0.1',
     });
 
     if (!compiled.ok) throw new Error(`expected a candidate: ${JSON.stringify(compiled)}`);
 
-    await candidates.approve(compiled.candidate.id, 'Checked by hand.');
+    const approvedCandidate = await candidates.approve(compiled.candidate.id, 'Checked by hand.');
+    if (!approvedCandidate.ok) {
+      throw new Error(`could not approve the candidate: ${JSON.stringify(approvedCandidate)}`);
+    }
 
     return { recorded, candidateId: compiled.candidate.id, candidate: compiled.candidate };
   }
@@ -165,12 +179,11 @@ describe('refusals', () => {
       sequence: SEQUENCE,
     });
     if (!recorded.ok) throw new Error('the fixture recording should persist');
+    await approveRevision(database, recorded.revision.id);
 
     const compiled = await createSopCandidateService({ database }).compileDocument({
       documentId: recorded.document.id,
       outcomeMapping: { completed: 'request_found' },
-      agentId: 'agent_unapproved',
-      version: '0.0.1',
     });
     if (!compiled.ok) throw new Error('expected a candidate');
 
@@ -199,16 +212,17 @@ describe('refusals', () => {
       sequence: SEQUENCE,
     });
     if (!recorded.ok) throw new Error('the fixture recording should persist');
+    await approveRevision(database, recorded.revision.id);
 
     const candidates = createSopCandidateService({ database });
     const compiled = await candidates.compileDocument({
       documentId: recorded.document.id,
       outcomeMapping: { completed: 'request_found' },
-      agentId: 'agent_twice',
-      version: '0.0.1',
     });
     if (!compiled.ok) throw new Error('expected a candidate');
-    await candidates.approve(compiled.candidate.id);
+
+    const approvedCandidate = await candidates.approve(compiled.candidate.id);
+    if (!approvedCandidate.ok) throw new Error('expected the candidate to approve');
 
     const publisher = createSopPublishService({ database });
     const first = await publisher.publish(compiled.candidate.id);

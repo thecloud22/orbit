@@ -3,6 +3,7 @@ import { createArtifactService } from '@orbit/artifact-service';
 import { createDatabase, createRepositories } from '@orbit/db';
 import type { LLMProvider } from '@orbit/sop-generation';
 import {
+  createSopCandidateService,
   createSopDraftService,
   createSopPublishService,
   createSopRevisionService,
@@ -82,6 +83,7 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
         provider: options.sopProvider,
       }),
       sopRevisionService: createSopRevisionService({ database: handle.db }),
+      sopCandidateService: createSopCandidateService({ database: handle.db }),
       sopPublishService: createSopPublishService({ database: handle.db }),
       recordingSessions,
       dispatcher: createInProcessRunDispatcher({

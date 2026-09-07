@@ -13,7 +13,7 @@ import type { ApiRequestError } from './api-client';
  */
 
 export type PublicationStage =
-  /** Nothing compiled yet. Compiling has no Watchtower surface (see the report). */
+  /** Nothing compiled yet. */
   | { readonly kind: 'not_compiled' }
   /** Compiled, but not approved, so it cannot be published. */
   | { readonly kind: 'awaiting_approval'; readonly candidateId: string }
@@ -66,6 +66,54 @@ export function canPublish(stage: PublicationStage): boolean {
   return stage.kind === 'publishable';
 }
 
+export function canApprove(
+  stage: PublicationStage,
+): stage is { kind: 'awaiting_approval'; candidateId: string } {
+  return stage.kind === 'awaiting_approval';
+}
+
+/**
+ * Whether compiling can be offered at all, independent of `PublicationStage`.
+ *
+ * `not_compiled` alone is not enough: compiling reads the workflow's own
+ * *revision* state, not its publication state, and a revision only compiles
+ * once a reviewer has approved it (ADR-017) — a rule enforced on the server,
+ * mirrored here only so the button does not invite a request that will only
+ * ever be refused.
+ */
+export function canCompile(input: {
+  readonly stage: PublicationStage;
+  readonly revisionState: string;
+  readonly declaredOutcomeCount: number;
+}): boolean {
+  return (
+    input.stage.kind === 'not_compiled' &&
+    input.revisionState === 'approved' &&
+    input.declaredOutcomeCount > 0
+  );
+}
+
+/** Why compiling is not offered yet, when it isn't — for the reviewer, not a log. */
+export function compileBlockedReason(input: {
+  readonly stage: PublicationStage;
+  readonly revisionState: string;
+  readonly declaredOutcomeCount: number;
+}): string | null {
+  if (input.stage.kind !== 'not_compiled') {
+    return null;
+  }
+
+  if (input.revisionState !== 'approved') {
+    return 'Approve this workflow in review before it can be turned into an agent.';
+  }
+
+  if (input.declaredOutcomeCount === 0) {
+    return 'This workflow has no outcome step yet, so it has nothing to compile into.';
+  }
+
+  return null;
+}
+
 export type PublishFailureKind = 'not_approved' | 'already_published' | 'request_failed';
 
 export interface PublishFailure {
@@ -91,4 +139,25 @@ export function describePublishFailure(error: ApiRequestError): PublishFailure {
     message: error.message,
     agentVersionId: null,
   };
+}
+
+export interface CompileFailure {
+  readonly message: string;
+  /** One line per refusal, when the server named them (ADR-021). Empty otherwise. */
+  readonly refusals: readonly string[];
+}
+
+export function describeCompileFailure(error: ApiRequestError): CompileFailure {
+  return {
+    message: error.message,
+    refusals: error.details.map((detail) => detail.message),
+  };
+}
+
+export interface ApproveFailure {
+  readonly message: string;
+}
+
+export function describeApproveFailure(error: ApiRequestError): ApproveFailure {
+  return { message: error.message };
 }

@@ -43,6 +43,7 @@ const REVIEW: SopReviewView = {
     agentVersionId: null,
     agentVersion: null,
   },
+  declaredOutcomes: [],
   reviewNote: null,
   reviewedAt: null,
   executable: false,

@@ -1,4 +1,5 @@
 import type {
+  AgentIrCandidateRecord,
   AgentVersionSummary,
   AgentVersionRecord,
   RunRecord,
@@ -22,6 +23,7 @@ import {
   artifactUrl,
   redactPayload,
   type AgentVersionView,
+  type CandidateActionView,
   type PublishedAgentVersionView,
   type SopPublicationView,
   type ArtifactView,
@@ -55,6 +57,15 @@ export function toAgentVersionView(summary: AgentVersionSummary): AgentVersionVi
     description: summary.description,
     lifecycleStatus: summary.lifecycleStatus,
     inputSchema: summary.inputs,
+  };
+}
+
+export function toCandidateActionView(record: AgentIrCandidateRecord): CandidateActionView {
+  return {
+    candidateId: record.id,
+    state: record.state,
+    sandboxState: record.sandboxState,
+    sandboxNote: record.sandboxNote,
   };
 }
 
@@ -231,6 +242,15 @@ export function toSopReviewView(review: {
   const { graph } = review.revision;
   const lastIndex = graph.steps.length - 1;
 
+  // Deduplicated by name: two different paths can legitimately declare the
+  // same outcome, and a reviewer only ever needs to map a name once.
+  const declaredOutcomes = new Map<string, string>();
+  for (const step of graph.steps) {
+    if (step.kind === 'outcome' && !declaredOutcomes.has(step.outcome)) {
+      declaredOutcomes.set(step.outcome, step.message);
+    }
+  }
+
   const steps: readonly SopReviewStepView[] = graph.steps.map((step, index) => ({
     id: step.id,
     kind: step.kind,
@@ -294,6 +314,7 @@ export function toSopReviewView(review: {
     },
     availableActions: review.availableActions,
     publication: review.publication,
+    declaredOutcomes: [...declaredOutcomes].map(([name, message]) => ({ name, message })),
     editable: review.editable,
     reviewNote: review.revision.reviewNote,
     reviewedAt:

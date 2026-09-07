@@ -81,12 +81,21 @@ already-published rather than promoted, with `published_from_candidate_id` recor
 from and a check proving only the lifecycle status and the allocated version differ from what was
 approved (**ADR-023**). A published agent runs through the existing route, gate and interpreter.
 The review page gained a Publish action and a link out; the SOP Graph's `executable: false` is
-unchanged. Compiling and approving a candidate still have no Watchtower surface — the next gap.
+unchanged.
 
-**What follows**: compiling approved bindings into candidate Agent IR. It consumes the
-binding contract 2.4a froze and the bindings 2.4b produces, and must import `stepChecksum` from
-`@orbit/db` rather than recomputing it — there is one definition so the two cannot drift. See the
-Task P2-001 through P2-004F2 reports under `docs/tasks/reports/`.
+**Compiling and approving a candidate now have a Watchtower surface too.** Building it surfaced a
+real gap in 2.5: `compileDocument` accepted a revision in any state short of superseded, so a draft
+or in-review graph could be compiled. Compiling now requires an `approved` revision, named as its
+own refusal; `approve`/`reject` were converted to typed results to match every other write in the
+service; and an agent's identity is derived from its document rather than supplied, so recompiling
+the same workflow always lands under the same agent (**ADR-024**). A recorded workflow can now go
+from Home to a running, published agent using nothing but the browser.
+
+**What follows**: sub-phase 2.5's own limitations remain — the escalation-review reference workflow
+does not compile because branching is unsupported, and a workflow needing credentials compiles but
+can never be approved. Rejecting a candidate has a service and a route but no button; recompiling
+already supersedes whatever existed, which is today's actual unblock mechanism. See the
+Task P2-001 through P2-006 reports under `docs/tasks/reports/`.
 
 Phase 2 direction and the remaining sub-phases are in
 `docs/tasks/phase-2-sop-graph-requirements.md`. Model output is untrusted input: anything a model

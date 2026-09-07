@@ -5,7 +5,16 @@ import {
   type OutcomeMapping,
 } from '@orbit/agent-ir-compiler';
 import type { AgentIrCandidateId, SopDocumentId } from '@orbit/contracts';
-import { createRepositories, type AgentIrCandidateRecord, type OrbitDatabase } from '@orbit/db';
+import {
+  CandidateNotValidatedError,
+  createRepositories,
+  InvalidRunTransitionError,
+  RecordNotFoundError,
+  type AgentIrCandidateRecord,
+  type CandidateSandboxState,
+  type OrbitDatabase,
+  type SopRevisionState,
+} from '@orbit/db';
 
 /**
  * Turning a reviewed workflow into a candidate agent, and persisting it.
@@ -23,6 +32,11 @@ export type CompileDocumentResult =
   | { readonly ok: false; readonly reason: 'no_approved_revision' }
   | {
       readonly ok: false;
+      readonly reason: 'revision_not_approved';
+      readonly state: SopRevisionState;
+    }
+  | {
+      readonly ok: false;
       readonly reason: 'refused';
       readonly refusals: readonly CompileRefusal[];
     };
@@ -30,21 +44,75 @@ export type CompileDocumentResult =
 export interface CompileDocumentInput {
   readonly documentId: SopDocumentId;
   readonly outcomeMapping: OutcomeMapping;
-  readonly agentId: string;
-  readonly version: string;
 }
+
+export type ApproveCandidateResult =
+  | { readonly ok: true; readonly candidate: AgentIrCandidateRecord }
+  | { readonly ok: false; readonly reason: 'not_found' }
+  | {
+      readonly ok: false;
+      readonly reason: 'not_ready';
+      readonly sandboxState: CandidateSandboxState;
+    }
+  | { readonly ok: false; readonly reason: 'illegal_transition'; readonly state: string };
+
+export type RejectCandidateResult =
+  | { readonly ok: true; readonly candidate: AgentIrCandidateRecord }
+  | { readonly ok: false; readonly reason: 'not_found' }
+  | { readonly ok: false; readonly reason: 'illegal_transition'; readonly state: string };
 
 export interface SopCandidateService {
   compileDocument(input: CompileDocumentInput): Promise<CompileDocumentResult>;
-  approve(id: AgentIrCandidateId, note?: string): Promise<AgentIrCandidateRecord>;
-  reject(id: AgentIrCandidateId, note?: string): Promise<AgentIrCandidateRecord>;
+  approve(id: AgentIrCandidateId, note?: string): Promise<ApproveCandidateResult>;
+  reject(id: AgentIrCandidateId, note?: string): Promise<RejectCandidateResult>;
   current(documentId: SopDocumentId): Promise<AgentIrCandidateRecord | null>;
+}
+
+/**
+ * The agent identity a document compiles under.
+ *
+ * Derived rather than generated, and deliberately stable across recompiles: a
+ * person recompiling the same document after fixing a binding must land under
+ * the *same* agent, or `publish-service`'s per-agent version numbering and its
+ * "already published" check would both silently fragment across what a
+ * reviewer experiences as one workflow. Stripping the document's own prefix
+ * keeps the mapping a pure function of the document id, with no state of its
+ * own to drift — the same reasoning `stepChecksum` and the recording session
+ * ids elsewhere in this codebase already follow.
+ */
+function agentIdForDocument(documentId: SopDocumentId): string {
+  return `agent_${documentId.replace(/^sopdoc_/, '')}`;
 }
 
 export function createSopCandidateService(options: {
   readonly database: OrbitDatabase;
 }): SopCandidateService {
   const repositories = createRepositories(options.database);
+
+  /**
+   * The race-condition fallback shared by `approve` and `reject`.
+   *
+   * Both pre-check the candidate's state so the ordinary case never throws,
+   * but a pre-check alone leaves a window between the read and the write for a
+   * second concurrent request. This is what closes it: the repository's own
+   * transition guard still runs, and whatever it throws is turned into the
+   * same typed result the pre-check would have returned had it seen the race.
+   */
+  function asTransitionResult(
+    error: unknown,
+  ):
+    | { readonly ok: false; readonly reason: 'not_found' }
+    | { readonly ok: false; readonly reason: 'illegal_transition'; readonly state: string } {
+    if (error instanceof RecordNotFoundError) {
+      return { ok: false, reason: 'not_found' };
+    }
+
+    if (error instanceof InvalidRunTransitionError) {
+      return { ok: false, reason: 'illegal_transition', state: error.message };
+    }
+
+    throw error;
+  }
 
   return {
     async compileDocument(input) {
@@ -60,6 +128,16 @@ export function createSopCandidateService(options: {
         return { ok: false, reason: 'no_approved_revision' };
       }
 
+      // A workflow is compiled from what a reviewer actually approved, never
+      // from a draft in progress. `findCurrent` returns the newest revision in
+      // any state short of superseded — this is the check that was missing:
+      // without it, an in-review or rejected graph could become a candidate,
+      // which is the SOP review lifecycle (ADR-017) being bypassed by the one
+      // caller positioned to bypass it silently.
+      if (revision.state !== 'approved') {
+        return { ok: false, reason: 'revision_not_approved', state: revision.state };
+      }
+
       // Only approved mappings are compiled. A draft binding is somebody's work
       // in progress, and compiling one would put an unreviewed claim about a
       // real page into the document 2.6 publishes.
@@ -71,8 +149,10 @@ export function createSopCandidateService(options: {
         graph: revision.graph,
         bindings: bindings.map((record) => record.binding),
         outcomeMapping: input.outcomeMapping,
-        agentId: input.agentId,
-        version: input.version,
+        agentId: agentIdForDocument(input.documentId),
+        // Thrown away entirely at publish, which allocates the real number per
+        // agent (ADR-023) — never shown to a reviewer and never meant to be.
+        version: '0.0.0',
         sopId: input.documentId,
         sopVersion: String(revision.revisionNumber),
       });
@@ -99,18 +179,67 @@ export function createSopCandidateService(options: {
       return { ok: true, candidate };
     },
 
-    approve(id, note) {
-      return repositories.agentIrCandidates.approve(
-        id,
-        note === undefined ? undefined : { reviewNote: note },
-      );
+    async approve(id, note) {
+      // Read first so the ordinary failures come back as typed results rather
+      // than a caught exception: this is now reached over HTTP (previously
+      // only from tests), and a route translating a thrown DatabaseError into
+      // an HTTP response is exactly the seam that produces an ugly 500 for an
+      // ordinary "not ready yet".
+      const existing = await repositories.agentIrCandidates.findById(id);
+
+      if (existing === null) {
+        return { ok: false, reason: 'not_found' };
+      }
+
+      if (existing.state !== 'compiled') {
+        return { ok: false, reason: 'illegal_transition', state: existing.state };
+      }
+
+      if (existing.sandboxState !== 'ready') {
+        return { ok: false, reason: 'not_ready', sandboxState: existing.sandboxState };
+      }
+
+      try {
+        const candidate = await repositories.agentIrCandidates.approve(
+          id,
+          note === undefined ? undefined : { reviewNote: note },
+        );
+        return { ok: true, candidate };
+      } catch (error) {
+        // Sandbox state never changes after a candidate is created, so this
+        // pre-check's outcome and the repository's own re-check cannot
+        // disagree in practice — but "cannot happen" is not the same claim as
+        // "cannot throw", and an uncaught error here would surface as a raw
+        // 500 for what is still an ordinary refusal.
+        if (error instanceof CandidateNotValidatedError) {
+          return { ok: false, reason: 'not_ready', sandboxState: existing.sandboxState };
+        }
+        return asTransitionResult(error);
+      }
     },
 
-    reject(id, note) {
-      return repositories.agentIrCandidates.reject(
-        id,
-        note === undefined ? undefined : { reviewNote: note },
-      );
+    async reject(id, note) {
+      const existing = await repositories.agentIrCandidates.findById(id);
+
+      if (existing === null) {
+        return { ok: false, reason: 'not_found' };
+      }
+
+      // Rejection has no readiness precondition: refusing something nobody
+      // could check is exactly what a reviewer should be able to do.
+      if (existing.state !== 'compiled') {
+        return { ok: false, reason: 'illegal_transition', state: existing.state };
+      }
+
+      try {
+        const candidate = await repositories.agentIrCandidates.reject(
+          id,
+          note === undefined ? undefined : { reviewNote: note },
+        );
+        return { ok: true, candidate };
+      } catch (error) {
+        return asTransitionResult(error);
+      }
     },
 
     current(documentId) {

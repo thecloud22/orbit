@@ -1,4 +1,5 @@
-import { CandidateNotValidatedError, createRepositories, type OrbitDatabase } from '@orbit/db';
+import type { SopRevisionId } from '@orbit/contracts';
+import { createRepositories, type OrbitDatabase } from '@orbit/db';
 import { useTestDatabase } from '@orbit/db/testing';
 import type { SelectorChain } from '@orbit/execution-mapping';
 import { buttonFingerprint, fieldFingerprint } from '@orbit/execution-mapping/testing';
@@ -7,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createSopCandidateService } from './candidate-service';
 import { createSopRecordingService } from './recording-service';
+import { createSopRevisionService } from './revision-service';
 
 /**
  * Compiling a recorded workflow into a candidate agent, against real
@@ -34,6 +36,23 @@ const SIGN_IN: readonly RecordedEntry[] = [
   { kind: 'fill', selectors: FIELD, fingerprint: fieldFingerprint(), sensitive: true },
 ];
 
+/**
+ * Moves a revision through its real lifecycle to `approved`.
+ *
+ * Not a shortcut into the state: `draft -> in_review -> approved` is exactly
+ * what a reviewer clicking through Watchtower would do, driven through the
+ * same service that page calls. A test that wrote `approved` directly into the
+ * row would prove nothing about the precondition it exists to exercise.
+ */
+async function approveRevision(database: OrbitDatabase, revisionId: SopRevisionId): Promise<void> {
+  const revisions = createSopRevisionService({ database });
+  const submitted = await revisions.transition({ revisionId, action: 'submit_for_review' });
+  if (!submitted.ok) throw new Error(`could not submit for review: ${JSON.stringify(submitted)}`);
+
+  const approved = await revisions.transition({ revisionId, action: 'approve' });
+  if (!approved.ok) throw new Error(`could not approve the revision: ${JSON.stringify(approved)}`);
+}
+
 describe('compiling a document into a candidate agent', () => {
   const getDatabase = useTestDatabase();
 
@@ -59,18 +78,17 @@ describe('compiling a document into a candidate agent', () => {
 
   async function compile(sequence: readonly RecordedEntry[] = SEQUENCE) {
     const recorded = await recordDocument(sequence);
+    await approveRevision(getDatabase().db, recorded.revision.id);
 
     const result = await service().compileDocument({
       documentId: recorded.document.id,
       outcomeMapping: { completed: 'request_found' },
-      agentId: 'agent_compiled',
-      version: '0.1.0',
     });
 
     return { recorded, result };
   }
 
-  it('compiles a recorded workflow and stores the candidate', async () => {
+  it('compiles a recorded, approved workflow and stores the candidate', async () => {
     const { recorded, result } = await compile();
 
     expect(result.ok).toBe(true);
@@ -85,6 +103,60 @@ describe('compiling a document into a candidate agent', () => {
       'browser.click',
       'complete',
     ]);
+  });
+
+  it('refuses to compile a revision nobody has approved', async () => {
+    // This is the precondition sub-phase 2.5 left out: findCurrent returns the
+    // newest revision in any state short of superseded, so without this check
+    // a draft or in-review graph could become a candidate — the SOP review
+    // lifecycle (ADR-017) bypassed by the one caller positioned to bypass it.
+    const recorded = await recordDocument();
+
+    const stillDraft = await service().compileDocument({
+      documentId: recorded.document.id,
+      outcomeMapping: { completed: 'request_found' },
+    });
+
+    expect(stillDraft.ok).toBe(false);
+    if (stillDraft.ok) return;
+    expect(stillDraft.reason).toBe('revision_not_approved');
+    expect(stillDraft.reason === 'revision_not_approved' && stillDraft.state).toBe('draft');
+
+    // In review is not approved either — there is exactly one state this
+    // accepts.
+    const revisions = createSopRevisionService({ database: getDatabase().db });
+    const submitted = await revisions.transition({
+      revisionId: recorded.revision.id,
+      action: 'submit_for_review',
+    });
+    if (!submitted.ok) throw new Error('expected the submission to succeed');
+
+    const inReview = await service().compileDocument({
+      documentId: recorded.document.id,
+      outcomeMapping: { completed: 'request_found' },
+    });
+
+    expect(inReview.ok).toBe(false);
+    if (inReview.ok) return;
+    expect(inReview.reason).toBe('revision_not_approved');
+    expect(inReview.reason === 'revision_not_approved' && inReview.state).toBe('in_review');
+  });
+
+  it('derives a stable agent identity from the document, not from the call', async () => {
+    // Recompiling the same document must land under the same agent, or
+    // publish-service's per-agent version numbering would fragment across what
+    // a reviewer experiences as one workflow.
+    const { recorded, result } = await compile();
+    if (!result.ok) throw new Error('expected a candidate');
+
+    const second = await service().compileDocument({
+      documentId: recorded.document.id,
+      outcomeMapping: { completed: 'request_not_found' },
+    });
+
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.candidate.agentIr.id).toBe(result.candidate.agentIr.id);
   });
 
   it('records exactly which mappings went in, so approval names a fixed set', async () => {
@@ -116,8 +188,6 @@ describe('compiling a document into a candidate agent', () => {
     const second = await service().compileDocument({
       documentId: recorded.document.id,
       outcomeMapping: { completed: 'request_not_found' },
-      agentId: 'agent_compiled',
-      version: '0.2.0',
     });
 
     expect(second.ok).toBe(true);
@@ -134,14 +204,13 @@ describe('compiling a document into a candidate agent', () => {
 
   it('reports a refusal as a refusal rather than throwing', async () => {
     const recorded = await recordDocument();
+    await approveRevision(getDatabase().db, recorded.revision.id);
 
     const result = await service().compileDocument({
       documentId: recorded.document.id,
       // The recorder names its appended outcome `completed`; leaving it unmapped
       // is an ordinary state of affairs, not a fault.
       outcomeMapping: {},
-      agentId: 'agent_compiled',
-      version: '0.1.0',
     });
 
     expect(result.ok).toBe(false);
@@ -153,8 +222,6 @@ describe('compiling a document into a candidate agent', () => {
     const result = await service().compileDocument({
       documentId: 'sopdoc_missing' as never,
       outcomeMapping: {},
-      agentId: 'agent_compiled',
-      version: '0.1.0',
     });
 
     expect(result.ok ? null : result.reason).toBe('not_found');
@@ -165,22 +232,20 @@ describe('the separate technical approval', () => {
   const getDatabase = useTestDatabase();
 
   async function compiled(sequence: readonly RecordedEntry[] = SEQUENCE) {
-    const recorded = await createSopRecordingService({
-      database: getDatabase().db,
-    }).createFromRecording({
+    const database = getDatabase().db;
+    const recorded = await createSopRecordingService({ database }).createFromRecording({
       title: 'Find a service request',
       startUrl: 'http://localhost:3001/requests',
       sequence,
     });
 
     if (!recorded.ok) throw new Error('the fixture recording should persist');
+    await approveRevision(database, recorded.revision.id);
 
-    const service = createSopCandidateService({ database: getDatabase().db });
+    const service = createSopCandidateService({ database });
     const result = await service.compileDocument({
       documentId: recorded.document.id,
       outcomeMapping: { completed: 'request_found' },
-      agentId: 'agent_compiled',
-      version: '0.1.0',
     });
 
     if (!result.ok) throw new Error(`expected a candidate: ${JSON.stringify(result)}`);
@@ -193,9 +258,11 @@ describe('the separate technical approval', () => {
 
     const approved = await service.approve(candidate.id, 'Checked the selectors by hand.');
 
-    expect(approved.state).toBe('approved');
-    expect(approved.reviewNote).toBe('Checked the selectors by hand.');
-    expect(approved.reviewedAt).not.toBeNull();
+    expect(approved.ok).toBe(true);
+    if (!approved.ok) return;
+    expect(approved.candidate.state).toBe('approved');
+    expect(approved.candidate.reviewNote).toBe('Checked the selectors by hand.');
+    expect(approved.candidate.reviewedAt).not.toBeNull();
   });
 
   it('refuses to approve a workflow that needs a secret Orbit cannot supply', async () => {
@@ -207,7 +274,11 @@ describe('the separate technical approval', () => {
     expect(candidate.secretInputIds.length).toBeGreaterThan(0);
     expect(candidate.sandboxNote).toContain('opening a browser');
 
-    await expect(service.approve(candidate.id)).rejects.toThrow(CandidateNotValidatedError);
+    const result = await service.approve(candidate.id);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('not_ready');
+    expect(result.reason === 'not_ready' && result.sandboxState).toBe('cannot_validate');
   });
 
   it('lets a reviewer reject what nobody could check', async () => {
@@ -217,14 +288,38 @@ describe('the separate technical approval', () => {
 
     const rejected = await service.reject(candidate.id, 'Needs credentials Orbit cannot hold.');
 
-    expect(rejected.state).toBe('rejected');
+    expect(rejected.ok).toBe(true);
+    if (!rejected.ok) return;
+    expect(rejected.candidate.state).toBe('rejected');
   });
 
   it('refuses to approve a candidate twice', async () => {
     const { service, candidate } = await compiled();
 
+    const first = await service.approve(candidate.id);
+    expect(first.ok).toBe(true);
+
+    const second = await service.approve(candidate.id);
+    expect(second.ok).toBe(false);
+    if (second.ok) return;
+    expect(second.reason).toBe('illegal_transition');
+    expect(second.reason === 'illegal_transition' && second.state).toBe('approved');
+  });
+
+  it('says plainly when there is no such candidate to approve', async () => {
+    const service = createSopCandidateService({ database: getDatabase().db });
+    const result = await service.approve('aircand_missing' as never);
+
+    expect(result.ok ? null : result.reason).toBe('not_found');
+  });
+
+  it('refuses to reject a candidate that is already approved', async () => {
+    const { service, candidate } = await compiled();
     await service.approve(candidate.id);
 
-    await expect(service.approve(candidate.id)).rejects.toThrow(/only allowed from/);
+    const result = await service.reject(candidate.id);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('illegal_transition');
   });
 });

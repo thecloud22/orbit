@@ -1,5 +1,6 @@
 import type {
   AgentVersionView,
+  CandidateActionView,
   CreateRunResultView,
   DataEnvelope,
   RunDetailView,
@@ -236,6 +237,26 @@ export async function cancelRecording(sessionId: string): Promise<void> {
   if (!response.ok) {
     throw await toApiError(response);
   }
+}
+
+/** Compiles an approved revision and its approved bindings into a candidate agent. */
+export async function compileDocument(
+  documentId: string,
+  outcomeMapping: Readonly<Record<string, string>>,
+): Promise<CandidateActionView> {
+  return send<CandidateActionView>(`/v1/sop-documents/${documentId}/candidates`, 'POST', {
+    outcomeMapping,
+  });
+}
+
+/** The separate technical approval a candidate needs before it can be published. */
+export async function approveCandidate(
+  candidateId: string,
+  note?: string,
+): Promise<CandidateActionView> {
+  return send<CandidateActionView>(`/v1/agent-ir-candidates/${candidateId}/approve`, 'POST', {
+    ...(note === undefined ? {} : { note }),
+  });
 }
 
 /** Publishes an approved candidate as a runnable Agent Version. */
