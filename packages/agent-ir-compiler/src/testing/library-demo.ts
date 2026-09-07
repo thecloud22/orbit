@@ -1,0 +1,162 @@
+import { stepChecksum } from '@orbit/db/checksum';
+import type { ExecutionBinding } from '@orbit/execution-mapping';
+import { EXECUTION_BINDING_SCHEMA_VERSION } from '@orbit/execution-mapping';
+import { borrowOrHoldGraph } from '@orbit/sop-graph/testing';
+import type { SopGraph } from '@orbit/sop-graph';
+
+import type { OutcomeMapping } from '../compile';
+
+/**
+ * The branching demo: the borrow-or-hold workflow, and the bindings a person
+ * would produce by demonstrating it against `apps/library-portal`.
+ *
+ * Hand-authored, exactly as Phase 1 hand-authored its Agent IR fixture. Nothing
+ * about it is generated: these are the elements someone would point at, and
+ * pinning them here is what lets the compiler test and the real-browser runtime
+ * test agree on the same workflow instead of each inventing one.
+ *
+ * Behind a `./testing` subpath so production code has no import path to it.
+ */
+
+const REVISION_ID = 'soprev_library_demo';
+
+function target(testId: string, role: string, name: string) {
+  return {
+    selectors: [{ strategy: 'test_id' as const, value: testId }],
+    fingerprint: {
+      role,
+      accessibleName: name,
+      text: name,
+      boundingBox: { x: 0, y: 0, width: 120, height: 32 },
+    },
+  };
+}
+
+/**
+ * Checksummed against the step as the graph currently states it.
+ *
+ * Computed rather than pinned: a placeholder would make every one of these
+ * bindings stale the moment the fixture graph is touched, and the resulting
+ * refusal would be about drift that did not happen.
+ */
+function bindingFor(
+  graph: SopGraph,
+  stepId: string,
+  body: ExecutionBinding['body'],
+): ExecutionBinding {
+  const step = graph.steps.find((candidate) => candidate.id === stepId);
+
+  if (step === undefined) {
+    throw new Error(`fixture changed: borrowOrHoldGraph has no step "${stepId}"`);
+  }
+
+  return {
+    schemaVersion: EXECUTION_BINDING_SCHEMA_VERSION,
+    stepId,
+    body,
+    capturedAgainstRevisionId: REVISION_ID,
+    stepSha256: stepChecksum(step),
+  };
+}
+
+/**
+ * Every binding the workflow needs, including the decision's two branches.
+ *
+ * The decision's `when` values are copied from the graph rather than retyped,
+ * because the compiler matches branches by that text and a typo here would
+ * surface as a refusal about a branch nobody demonstrated.
+ */
+export function borrowOrHoldBindings(): readonly ExecutionBinding[] {
+  const graph = borrowOrHoldGraph();
+  const decision = graph.steps.find((step) => step.id === 'check_availability');
+
+  if (decision?.kind !== 'decision') {
+    throw new Error(
+      'fixture changed: borrowOrHoldGraph must contain a "check_availability" decision',
+    );
+  }
+
+  const [available, onLoan] = decision.branches;
+
+  if (available === undefined || onLoan === undefined) {
+    throw new Error('fixture changed: "check_availability" must declare two branches');
+  }
+
+  const binding = (stepId: string, body: ExecutionBinding['body']) =>
+    bindingFor(graph, stepId, body);
+
+  return [
+    binding('enter_isbn', {
+      kind: 'fill',
+      target: target('catalog-search-input', 'textbox', 'Search the catalog'),
+      valueSource: { kind: 'sop_variable', name: 'bookIsbn' },
+    }),
+    binding('search_catalog', {
+      kind: 'click',
+      target: target('catalog-search-button', 'button', 'Search'),
+    }),
+    binding('check_availability', {
+      kind: 'decision',
+      branches: [
+        // The Borrow form renders only for an available title and the Hold form
+        // only for one on loan, so each branch's element is present in exactly
+        // one of the two states. That mutual exclusivity is what makes the
+        // runtime's race between them a decision rather than a guess.
+        {
+          when: available.when,
+          ...target('catalog-borrow-button', 'button', 'Borrow'),
+        },
+        {
+          when: onLoan.when,
+          ...target('catalog-hold-button', 'button', 'Place a hold'),
+        },
+      ],
+    }),
+    binding('enter_borrow_member_id', {
+      kind: 'fill',
+      target: target('catalog-borrow-input', 'textbox', 'Member ID to borrow'),
+      valueSource: { kind: 'sop_variable', name: 'memberId' },
+    }),
+    binding('borrow_title', {
+      kind: 'click',
+      target: target('catalog-borrow-button', 'button', 'Borrow'),
+    }),
+    binding('read_borrow_confirmation', {
+      kind: 'extract',
+      target: target('catalog-borrow-result', 'paragraph', 'Borrowed'),
+      readMethod: { kind: 'text' },
+      variable: 'borrowConfirmation',
+    }),
+    binding('enter_hold_member_id', {
+      kind: 'fill',
+      target: target('catalog-hold-input', 'textbox', 'Member ID to place a hold'),
+      valueSource: { kind: 'sop_variable', name: 'memberId' },
+    }),
+    binding('place_hold', {
+      kind: 'click',
+      target: target('catalog-hold-button', 'button', 'Place a hold'),
+    }),
+    binding('read_hold_confirmation', {
+      kind: 'extract',
+      target: target('catalog-hold-result', 'paragraph', 'in line'),
+      readMethod: { kind: 'text' },
+      variable: 'holdConfirmation',
+    }),
+  ];
+}
+
+/**
+ * What each outcome means in business terms.
+ *
+ * Agent IR still declares Phase 1's two terminal business outcomes, so
+ * "borrowed" and "held" are mapped onto them. That is a genuine mismatch and it
+ * is stated here rather than hidden: widening the business-outcome vocabulary
+ * is its own change to a frozen contract and is not part of this task.
+ */
+export const BORROW_OR_HOLD_OUTCOME_MAPPING: OutcomeMapping = {
+  borrowed: 'request_found',
+  held: 'request_not_found',
+};
+
+export { borrowOrHoldGraph };
+export type { SopGraph };

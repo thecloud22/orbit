@@ -2,7 +2,7 @@ import type { SopDocumentId, SopRevisionId } from '@orbit/contracts';
 import { createRepositories, stepChecksum } from '@orbit/db';
 import { useTestDatabase } from '@orbit/db/testing';
 import { buttonFingerprint } from '@orbit/execution-mapping/testing';
-import type { BindingBody, SelectorChain } from '@orbit/execution-mapping';
+import { bindingTargets, type BindingBody, type SelectorChain } from '@orbit/execution-mapping';
 import { escalationReviewGraph } from '@orbit/sop-graph/testing';
 import type { SopGraph, SopStep } from '@orbit/sop-graph';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -88,7 +88,7 @@ describe('recording a binding', () => {
 
     expect(result.binding.state).toBe('draft');
     expect(result.binding.stepId).toBe('sign_in');
-    expect(result.binding.binding.body.target.selectors.length).toBe(2);
+    expect(bindingTargets(result.binding.binding.body)[0]?.selectors.length).toBe(2);
   });
 
   it('records the checksum the compiler will later trust', async () => {
@@ -109,7 +109,7 @@ describe('recording a binding', () => {
 
   it('never records a scope, because nothing can need one yet', async () => {
     const result = await create({ step: step('sign_in'), body: clickBody() });
-    expect(result.ok && result.binding.binding.body.target.scope).toBeUndefined();
+    expect(result.ok && bindingTargets(result.binding.binding.body)[0]?.scope).toBeUndefined();
   });
 
   it('refuses a manual_review step in terms a person can act on', async () => {
@@ -203,7 +203,8 @@ describe('assembleBinding', () => {
       revisionId: 'soprev_x' as SopRevisionId,
     });
 
-    expect(binding.schemaVersion).toBe('0.1');
+    // 0.2 since the decision body gained one element per branch (ADR-029).
+    expect(binding.schemaVersion).toBe('0.2');
     expect(binding.stepId).toBe('sign_in');
   });
 });

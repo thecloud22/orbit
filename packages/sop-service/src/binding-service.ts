@@ -24,6 +24,17 @@ import {
 import { classifyValue, type SopGraph, type SopStep } from '@orbit/sop-graph';
 
 /**
+ * The step kinds that must carry a binding, re-exported from the compiler.
+ *
+ * Callers that decide what to *offer* to bind — the API's binding sessions, the
+ * publish gate — need the same set the compiler enforces. Re-exported through
+ * the composition root rather than copied, because a copy that falls behind
+ * means offering work that changes nothing, or worse, refusing to offer work a
+ * publish then demands.
+ */
+export { BINDABLE_KINDS } from '@orbit/agent-ir-compiler';
+
+/**
  * Assembling a capture into a binding, and persisting it.
  *
  * The composition root for binding: the capture engine knows nothing about the
@@ -98,7 +109,23 @@ export type BindingChoice =
   | { readonly kind: 'fill'; readonly valueSource: ValueSource }
   | { readonly kind: 'extract'; readonly readMethod: ReadMethod; readonly variable: string }
   | { readonly kind: 'outcome'; readonly readMethod: ReadMethod; readonly variable: string }
-  | { readonly kind: 'decision'; readonly readMethod: ReadMethod; readonly condition: string };
+  /**
+   * A decision, with every branch already demonstrated.
+   *
+   * The odd one out: every other choice describes one capture, and this one
+   * describes several — one per branch, each with its own captured element. A
+   * decision is only bindable once the whole set exists, because the runtime
+   * resolves it by racing the branches against each other and a missing one is
+   * a state the agent could reach and could not name.
+   */
+  | {
+      readonly kind: 'decision';
+      readonly branches: readonly {
+        readonly when: string;
+        readonly selectors: SelectorChain;
+        readonly fingerprint: ElementFingerprint;
+      }[];
+    };
 
 export type BindingBodyResult =
   | { readonly ok: true; readonly body: BindingBody }
@@ -113,7 +140,14 @@ export type BindingBodyResult =
  */
 export function bindingBodyFor(input: {
   readonly step: SopStep;
-  readonly capture: BindingCapture;
+  /**
+   * Absent only for a decision, which carries its elements on the choice.
+   *
+   * Every other kind binds exactly one element and cannot be assembled without
+   * it; a decision binds one per branch, and there is no single capture that
+   * would be "the" one.
+   */
+  readonly capture?: BindingCapture;
   readonly choice: BindingChoice;
 }): BindingBodyResult {
   const { step, capture, choice } = input;
@@ -130,6 +164,14 @@ export function bindingBodyFor(input: {
       ok: false,
       reason: `This describes a "${choice.kind}" action, but the step is a "${step.kind}" step.`,
     };
+  }
+
+  if (choice.kind === 'decision') {
+    return decisionBodyFor(step, choice);
+  }
+
+  if (capture === undefined) {
+    return { ok: false, reason: 'This step binds one element, and none was captured.' };
   }
 
   const target = { selectors: capture.selectors, fingerprint: capture.fingerprint };
@@ -161,17 +203,56 @@ export function bindingBodyFor(input: {
           variable: choice.variable,
         },
       };
-    case 'decision':
-      return {
-        ok: true,
-        body: {
-          kind: 'decision',
-          target,
-          readMethod: choice.readMethod,
-          condition: choice.condition,
-        },
-      };
   }
+}
+
+/**
+ * A decision's body: one demonstrated element per declared branch.
+ *
+ * Refused unless the set is complete. A decision bound for two of its three
+ * branches would compile to an `expect_one_of` that cannot name the third
+ * state, so the agent would hang on a page it is actually looking at.
+ */
+function decisionBodyFor(
+  step: SopStep,
+  choice: Extract<BindingChoice, { kind: 'decision' }>,
+): BindingBodyResult {
+  if (step.kind !== 'decision') {
+    return { ok: false, reason: 'This step is not a decision.' };
+  }
+
+  const branches: { when: string; selectors: SelectorChain; fingerprint: ElementFingerprint }[] =
+    [];
+  const missing: string[] = [];
+
+  // Ordered by the graph, not by the order they happened to be demonstrated, so
+  // the compiled alternatives read in the same sequence as the workflow a
+  // reviewer is looking at.
+  for (const declared of step.branches) {
+    const demonstrated = choice.branches.find((branch) => branch.when === declared.when);
+
+    if (demonstrated === undefined) {
+      missing.push(declared.when);
+      continue;
+    }
+
+    branches.push({
+      when: declared.when,
+      selectors: demonstrated.selectors,
+      fingerprint: demonstrated.fingerprint,
+    });
+  }
+
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      reason: `Each branch of this decision needs its own element. Still to show: ${missing
+        .map((when) => `"${when}"`)
+        .join(', ')}.`,
+    };
+  }
+
+  return { ok: true, body: { kind: 'decision', branches } };
 }
 
 /**
@@ -270,6 +351,9 @@ export async function createBinding(input: CreateBindingInput): Promise<CreateBi
     kind: input.step.kind,
     declaredNames: declaredNames(input.graph),
     stepSha256: stepChecksum(input.step),
+    ...(input.step.kind === 'decision'
+      ? { branchConditions: input.step.branches.map((branch) => branch.when) }
+      : {}),
   });
 
   if (issues.length > 0) {

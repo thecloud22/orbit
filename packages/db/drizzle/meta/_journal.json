@@ -43,6 +43,13 @@
       "when": 1788805098676,
       "tag": "0005_agent_archiving",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788815299097,
+      "tag": "0006_model_usage_ledger",
+      "breakpoints": true
     }
   ]
 }

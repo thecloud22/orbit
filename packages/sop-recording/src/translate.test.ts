@@ -113,9 +113,15 @@ describe('translating a recording', () => {
     const result = translate();
     if (!result.ok) return;
 
-    const click = result.steps.find((entry) => entry.binding?.kind === 'click');
-    expect(click?.binding?.target.selectors).toEqual(BUTTON);
-    expect(click?.binding?.target.fingerprint.accessibleName).toBe('Search');
+    const body = result.steps.find((entry) => entry.binding?.kind === 'click')?.binding;
+
+    // Narrowed rather than asserted: a decision body carries no single
+    // `target`, so the union does not have one to read.
+    expect(body?.kind).toBe('click');
+    if (body?.kind !== 'click') return;
+
+    expect(body.target.selectors).toEqual(BUTTON);
+    expect(body.target.fingerprint.accessibleName).toBe('Search');
   });
 
   it('produces a graph that passes the real validator unchanged', () => {

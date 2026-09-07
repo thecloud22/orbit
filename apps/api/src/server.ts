@@ -13,6 +13,7 @@ import { registerPublishingRoutes } from './routes/publishing';
 import { registerPublishRecordingRoutes } from './routes/publish-recording';
 import { registerPublishBoundRoutes } from './routes/publish-bound';
 import { registerSopBindingRoutes } from './routes/sop-bindings';
+import { registerModelUsageRoutes } from './routes/model-usage';
 import { registerSopDraftRoutes } from './routes/sop-drafts';
 import { registerSopRevisionRoutes } from './routes/sop-revisions';
 
@@ -44,6 +45,7 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
   registerPublishingRoutes(app, options.context);
   registerArtifactRoutes(app, options.context);
   registerSopDraftRoutes(app, options.context);
+  registerModelUsageRoutes(app, options.context);
   registerSopRevisionRoutes(app, options.context);
   registerSopBindingRoutes(app, options.context);
   registerRecordingRoutes(app, options.context);

@@ -1,6 +1,7 @@
 import type { ArtifactService } from '@orbit/artifact-service';
 import type {
   AgentIrCandidateRepository,
+  ModelUsageRepository,
   AgentRepository,
   AgentVersionRepository,
   ArtifactRepository,
@@ -11,6 +12,8 @@ import type {
   SopDocumentRepository,
   SopGraphRevisionRepository,
 } from '@orbit/db';
+
+import type { ModelBudgets } from '@orbit/sop-generation';
 
 import type {
   PublishBoundDocumentService,
@@ -63,6 +66,7 @@ export interface StubContextOptions {
   readonly artifacts?: Partial<ArtifactRepository>;
   readonly executionBindings?: Partial<ExecutionBindingRepository>;
   readonly agentIrCandidates?: Partial<AgentIrCandidateRepository>;
+  readonly modelUsage?: Partial<ModelUsageRepository>;
   readonly sopDocuments?: Partial<SopDocumentRepository>;
   readonly sopGraphRevisions?: Partial<SopGraphRevisionRepository>;
   readonly artifactService?: Partial<ArtifactService>;
@@ -75,10 +79,14 @@ export interface StubContextOptions {
   readonly publishBoundDocumentService?: Partial<PublishBoundDocumentService>;
   readonly recordingSessions?: Partial<RecordingSessionRegistry>;
   readonly bindingSessions?: Partial<BindingSessionRegistry>;
+  readonly modelBudgets?: ModelBudgets;
 }
 
 export function createStubContext(options: StubContextOptions = {}): ApiContext {
   return {
+    // Uncapped by default: a route test asserting request validation should not
+    // have to know what a budget is.
+    modelBudgets: options.modelBudgets ?? {},
     repositories: {
       agents: stubbed('agents', options.agents ?? {}),
       agentVersions: stubbed('agentVersions', options.agentVersions ?? {}),
@@ -93,6 +101,7 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
       sopDocuments: stubbed('sopDocuments', options.sopDocuments ?? {}),
       sopGraphRevisions: stubbed('sopGraphRevisions', options.sopGraphRevisions ?? {}),
       executionBindings: stubbed('executionBindings', options.executionBindings ?? {}),
+      modelUsage: stubbed('modelUsage', options.modelUsage ?? {}),
       agentIrCandidates: stubbed('agentIrCandidates', options.agentIrCandidates ?? {}),
     },
     artifactService: stubbed('artifactService', options.artifactService ?? {}),

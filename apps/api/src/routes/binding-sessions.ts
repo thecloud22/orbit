@@ -22,8 +22,12 @@ import { assertOpenableTarget } from './browser-target';
  * wherever the last left the page; reopening a blank page every time would put
  * anything past a sign-in out of reach.
  *
- * Only `fill`, `click` and `extract` steps can be targeted, which is exactly
- * the set the compiler requires a binding for.
+ * Only the steps the compiler requires a binding for can be targeted:
+ * `fill`, `click`, `extract` and `decision`. A decision is the one that takes
+ * several sittings at this route — one capture per branch, each posted with the
+ * branch it demonstrates, and the binding row written only when the set is
+ * complete. Until then the response carries a null `bindingId`, because nothing
+ * has been written.
  */
 
 const startBodySchema = z.strictObject({
@@ -58,6 +62,8 @@ const bindBodySchema = z.strictObject({
     .string()
     .regex(/^[A-Za-z][A-Za-z0-9_]*$/)
     .optional(),
+  /** For a decision: the branch this capture demonstrates, in the graph's words. */
+  branchWhen: z.string().trim().min(1).max(500).optional(),
 });
 
 const sessionIdSchema = z.string().regex(/^bind_[A-Za-z0-9]+$/);
@@ -75,7 +81,7 @@ function parseSessionId(params: unknown): string {
 function notBindable(stepId: string): ApiError {
   return badRequest(
     `Step "${stepId}" is not a step a binding session can map: only filling a field, clicking ` +
-      'something, and reading a value are performed in a browser.',
+      'something, reading a value and choosing between branches are performed in a browser.',
   );
 }
 
@@ -193,6 +199,7 @@ export function registerBindingSessionRoutes(app: FastifyInstance, context: ApiC
         ...(body.data.valueSource === undefined ? {} : { valueSource: body.data.valueSource }),
         ...(body.data.readMethod === undefined ? {} : { readMethod: body.data.readMethod }),
         ...(body.data.variable === undefined ? {} : { variable: body.data.variable }),
+        ...(body.data.branchWhen === undefined ? {} : { branchWhen: body.data.branchWhen }),
       });
 
       if (!result.ok) {

@@ -20,6 +20,7 @@ export const BINDING_ISSUE_CODES = [
   'STEP_NOT_BINDABLE',
   'UNDECLARED_VARIABLE',
   'STALE_BINDING',
+  'BRANCH_MISMATCH',
 ] as const;
 
 export type BindingIssueCode = (typeof BINDING_ISSUE_CODES)[number];
@@ -38,6 +39,16 @@ export interface BoundStepDescription {
   readonly declaredNames: readonly string[];
   /** Checksum of the step as it reads now, to detect a stale binding. */
   readonly stepSha256: string;
+  /**
+   * For a `decision`: the `when` text of every branch the step declares.
+   *
+   * Supplied by the caller for the same reason everything else here is — this
+   * package must not import @orbit/sop-graph (ADR-002). Absent for every other
+   * kind, and absent is not the same as empty: an omitted list means "not a
+   * decision", and a decision binding is checked against it regardless, so a
+   * caller that forgets to pass it gets a refusal rather than a pass.
+   */
+  readonly branchConditions?: readonly string[];
 }
 
 /**
@@ -111,6 +122,8 @@ export function validateBindingAgainstStep(
     });
   }
 
+  issues.push(...branchIssues(binding, step));
+
   for (const [name, path] of referencedNames(binding)) {
     if (!step.declaredNames.includes(name)) {
       issues.push({
@@ -130,6 +143,54 @@ export function validateBindingAgainstStep(
   }
 
   return issues;
+}
+
+/**
+ * A decision binding's branches, against the branches the step declares.
+ *
+ * Exact set equality, in both directions. A branch the graph declares and the
+ * binding does not is a branch the workflow could take and the agent could not
+ * resolve; a branch the binding carries and the graph does not is an element
+ * demonstrated for a condition that no longer exists. Neither is safe to
+ * compile, and reporting only one of them would let the other through.
+ */
+function branchIssues(
+  binding: ExecutionBinding,
+  step: BoundStepDescription,
+): readonly BindingIssue[] {
+  if (binding.body.kind !== 'decision' || step.kind !== 'decision') {
+    return [];
+  }
+
+  const declared = new Set(step.branchConditions ?? []);
+  const bound = new Set(binding.body.branches.map((branch) => branch.when));
+
+  const missing = [...declared].filter((when) => !bound.has(when));
+  const extra = [...bound].filter((when) => !declared.has(when));
+
+  if (missing.length === 0 && extra.length === 0) {
+    return [];
+  }
+
+  const parts: string[] = [];
+
+  if (missing.length > 0) {
+    parts.push(`nothing was demonstrated for ${missing.map((when) => `"${when}"`).join(', ')}`);
+  }
+
+  if (extra.length > 0) {
+    parts.push(
+      `${extra.map((when) => `"${when}"`).join(', ')} ${extra.length === 1 ? 'is' : 'are'} no longer a branch of this step`,
+    );
+  }
+
+  return [
+    {
+      code: 'BRANCH_MISMATCH',
+      message: `This binding does not cover step "${binding.stepId}" exactly: ${parts.join('; ')}.`,
+      path: ['body', 'branches'],
+    },
+  ];
 }
 
 /** Every graph name a binding depends on, with where it appears. */

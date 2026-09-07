@@ -1,7 +1,7 @@
 import { createLocalFilesystemArtifactStorage } from '@orbit/artifacts';
 import { createArtifactService } from '@orbit/artifact-service';
 import { createDatabase, createRepositories } from '@orbit/db';
-import type { LLMProvider } from '@orbit/sop-generation';
+import type { LLMProvider, ModelBudgets, ModelRates } from '@orbit/sop-generation';
 import {
   createSopCandidateService,
   createSopDraftService,
@@ -54,6 +54,14 @@ export interface ApiBootstrapOptions {
    * end-to-end recording produces a genuine document.
    */
   readonly recordingSessionFactory?: RecordingSessionFactory;
+  /**
+   * Model token ceilings. Passed in rather than read here, for the same reason
+   * the provider is: an entry point resolves the environment, and this function
+   * composes what it is given (ADR-029).
+   */
+  readonly modelBudgets?: ModelBudgets;
+  /** Per-model rates for the cost estimate. */
+  readonly modelRates?: ModelRates;
 }
 
 export interface StartedApi {
@@ -94,6 +102,8 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
       sopDraftService: createSopDraftService({
         database: handle.db,
         provider: options.sopProvider,
+        ...(options.modelBudgets === undefined ? {} : { budgets: options.modelBudgets }),
+        ...(options.modelRates === undefined ? {} : { rates: options.modelRates }),
       }),
       sopRevisionService: createSopRevisionService({ database: handle.db }),
       sopCandidateService: createSopCandidateService({ database: handle.db }),
@@ -102,6 +112,7 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
       publishBoundDocumentService: createPublishBoundDocumentService({ database: handle.db }),
       recordingSessions,
       bindingSessions,
+      modelBudgets: options.modelBudgets ?? {},
       dispatcher: createInProcessRunDispatcher({
         database: handle.db,
         storage,

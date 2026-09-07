@@ -1,4 +1,4 @@
-import type { SopDraftView } from '@orbit/api/views';
+import type { ModelUsageView, SopDraftView } from '@orbit/api/views';
 import { describe, expect, it } from 'vitest';
 
 import { ApiRequestError } from './api-client';
@@ -6,6 +6,7 @@ import {
   describeSopDraftFailure,
   DRAFT_NOT_EXECUTABLE_NOTICE,
   numberedSteps,
+  summarizeModelSpend,
   summarizeSopDraft,
 } from './sop-draft-view-model';
 
@@ -106,5 +107,108 @@ describe('the draft notice', () => {
   it('says plainly that a draft cannot start browser automation', () => {
     expect(DRAFT_NOT_EXECUTABLE_NOTICE).toContain('not executable');
     expect(DRAFT_NOT_EXECUTABLE_NOTICE).toContain('cannot start browser automation');
+  });
+});
+
+/**
+ * The spend display.
+ *
+ * It is a courtesy, not a gate — the server refuses an over-budget Generate
+ * whether or not this rendered — so what matters here is that it never
+ * misreports the situation: that cost is always marked as an estimate, and that
+ * a scope which is out of room says which one it is.
+ */
+describe('summarizeModelSpend', () => {
+  function usage(overrides: Partial<ModelUsageView> = {}): ModelUsageView {
+    return {
+      global: {
+        calls: 3,
+        inputTokens: 9_000,
+        outputTokens: 1_000,
+        totalTokens: 10_000,
+        estimatedCostMicroUsd: 42_000,
+      },
+      document: null,
+      documentId: null,
+      scopes: [
+        {
+          scope: 'global',
+          label: 'the deployment-wide budget',
+          limitTokens: 1_000_000,
+          spentTokens: 10_000,
+          remainingTokens: 990_000,
+          exhausted: false,
+        },
+      ],
+      exhausted: false,
+      costIsEstimated: true,
+      ...overrides,
+    };
+  }
+
+  it('has nothing to say before the figures have loaded', () => {
+    expect(summarizeModelSpend(null)).toBeNull();
+  });
+
+  it('reports tokens, calls, and a cost it always marks as an estimate', () => {
+    const summary = summarizeModelSpend(usage());
+
+    expect(summary?.usedLabel).toBe('10,000 tokens across 3 model calls');
+    expect(summary?.costLabel).toContain('estimated');
+    expect(summary?.costLabel).toContain('$0.0420');
+  });
+
+  it('says which scope ran out, so raising the right ceiling is obvious', () => {
+    const summary = summarizeModelSpend(
+      usage({
+        exhausted: true,
+        scopes: [
+          {
+            scope: 'document',
+            label: 'this workflow’s budget',
+            limitTokens: 10_000,
+            spentTokens: 10_000,
+            remainingTokens: 0,
+            exhausted: true,
+          },
+        ],
+      }),
+    );
+
+    expect(summary?.exhausted).toBe(true);
+    expect(summary?.blockedReason).toContain('this workflow’s budget');
+  });
+
+  it('says "uncapped" rather than showing a ceiling that does not exist', () => {
+    const summary = summarizeModelSpend(
+      usage({
+        scopes: [
+          {
+            scope: 'global',
+            label: 'the deployment-wide budget',
+            limitTokens: null,
+            spentTokens: 10_000,
+            remainingTokens: null,
+            exhausted: false,
+          },
+        ],
+      }),
+    );
+
+    expect(summary?.remainingLabels).toEqual(['the deployment-wide budget: uncapped']);
+  });
+});
+
+describe('describeSopDraftFailure, for a budget', () => {
+  it('does not tell someone their text was rejected when they ran out of budget', () => {
+    const failure = describeSopDraftFailure(
+      new ApiRequestError({
+        status: 429,
+        message: 'This would exceed the deployment-wide budget.',
+      }),
+    );
+
+    expect(failure.kind).toBe('budget_exhausted');
+    expect(failure.title).toContain('budget');
   });
 });

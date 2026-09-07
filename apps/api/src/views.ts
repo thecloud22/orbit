@@ -489,6 +489,14 @@ export interface BindingTargetStepView {
   readonly sensitive: boolean;
   /** An extract step's declared field names. */
   readonly fields: readonly string[];
+  /** A decision step's branches, and which have been demonstrated. Empty otherwise. */
+  readonly branches: readonly BindingBranchView[];
+}
+
+/** One branch of a decision being bound, and whether its element is captured. */
+export interface BindingBranchView {
+  readonly when: string;
+  readonly captured: boolean;
 }
 
 export interface BindingSessionView {
@@ -502,10 +510,59 @@ export interface BindingSessionView {
   readonly failures: readonly BindingCaptureFailureView[];
 }
 
-/** What was written when a binding was saved, and where the session stands after. */
+/**
+ * What was written when a binding was saved, and where the session stands after.
+ *
+ * `bindingId` and `state` are null when a decision branch was demonstrated and
+ * others are still outstanding: something real happened — the capture is held —
+ * but no row was written, and reporting an id for a binding that does not exist
+ * would be worse than reporting none.
+ */
 export interface SavedBindingView {
-  readonly bindingId: string;
+  readonly bindingId: string | null;
   readonly stepId: string;
-  readonly state: string;
+  readonly state: string | null;
   readonly session: BindingSessionView;
+}
+
+/** Tokens and estimated cost over some set of model calls. */
+export interface ModelUsageTotalsView {
+  readonly calls: number;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly totalTokens: number;
+  /** An estimate in millionths of a dollar, never a bill. */
+  readonly estimatedCostMicroUsd: number;
+}
+
+/** One budget scope: what it allows, what is spent, and what is left. */
+export interface ModelBudgetScopeView {
+  readonly scope: string;
+  /** How the scope reads to a person. */
+  readonly label: string;
+  /** Null when this scope is uncapped in this deployment. */
+  readonly limitTokens: number | null;
+  readonly spentTokens: number;
+  /** Null when uncapped. Never negative. */
+  readonly remainingTokens: number | null;
+  readonly exhausted: boolean;
+}
+
+/**
+ * Model spend, and how much room is left.
+ *
+ * The per-run scope is deliberately absent: it applies to one Generate request
+ * that does not exist until the button is pressed, so there is nothing to
+ * report about it beforehand. It is enforced on the server all the same.
+ */
+export interface ModelUsageView {
+  readonly global: ModelUsageTotalsView;
+  /** Null when no document was asked about. */
+  readonly document: ModelUsageTotalsView | null;
+  readonly documentId: string | null;
+  readonly scopes: readonly ModelBudgetScopeView[];
+  /** True when any scope is out of room, so a Generate would be refused. */
+  readonly exhausted: boolean;
+  /** Stated on every surface that shows a figure derived from it. */
+  readonly costIsEstimated: true;
 }

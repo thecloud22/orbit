@@ -1,3 +1,4 @@
+import type { ModelUsageView } from '@orbit/api/views';
 import type { SopDraftView } from '@orbit/api/views';
 
 import type { ApiRequestError } from './api-client';
@@ -9,7 +10,8 @@ import type { ApiRequestError } from './api-client';
  * and decide nothing themselves, so the rules stay testable without a DOM.
  */
 
-export type SopDraftFailureKind = 'rejected_draft' | 'not_configured' | 'request_failed';
+export type SopDraftFailureKind =
+  'rejected_draft' | 'budget_exhausted' | 'not_configured' | 'request_failed';
 
 export interface SopDraftFailure {
   readonly kind: SopDraftFailureKind;
@@ -29,6 +31,19 @@ export interface SopDraftFailure {
  * in the wrong place entirely.
  */
 export function describeSopDraftFailure(error: ApiRequestError): SopDraftFailure {
+  // A budget refusal is its own kind, before the 422 below. Both leave the
+  // person without a workflow, and only one of them is fixed by rewriting the
+  // description — telling someone their text was rejected when they have simply
+  // run out of budget sends them to rewrite something that was fine.
+  if (error.status === 429) {
+    return {
+      kind: 'budget_exhausted',
+      title: 'The model budget is used up',
+      message: error.message,
+      issues: error.details.map((detail) => ({ where: detail.field, message: detail.message })),
+    };
+  }
+
   if (error.status === 422) {
     return {
       kind: 'rejected_draft',
@@ -94,4 +109,63 @@ export function numberedSteps(draft: SopDraftView): readonly {
     kind: step.kind,
     summary: step.summary,
   }));
+}
+
+/**
+ * Model spend, as the drafting card shows it.
+ *
+ * Every figure that involves money says it is an estimate, here and in the
+ * component, because it is computed from rates held in configuration and is not
+ * a bill from anyone.
+ */
+export interface ModelSpendSummary {
+  readonly usedLabel: string;
+  readonly costLabel: string;
+  readonly remainingLabels: readonly string[];
+  readonly exhausted: boolean;
+  /** Why Generate is unavailable, or null when it is available. */
+  readonly blockedReason: string | null;
+}
+
+/** Micro-USD as dollars. Four places, because a draft costs cents. */
+export function formatEstimatedCost(microUsd: number): string {
+  return `$${(microUsd / 1_000_000).toFixed(4)}`;
+}
+
+function formatTokens(tokens: number): string {
+  return tokens.toLocaleString('en-US');
+}
+
+export function summarizeModelSpend(usage: ModelUsageView | null): ModelSpendSummary | null {
+  if (usage === null) {
+    return null;
+  }
+
+  // The document's own spend when a document is in view, the deployment's
+  // otherwise. Showing both would make the headline number ambiguous, and the
+  // per-scope lines below already say what the other one is.
+  const totals = usage.document ?? usage.global;
+
+  const remainingLabels = usage.scopes.map((scope) =>
+    scope.limitTokens === null
+      ? `${scope.label}: uncapped`
+      : `${scope.label}: ${formatTokens(scope.remainingTokens ?? 0)} of ${formatTokens(
+          scope.limitTokens,
+        )} tokens left`,
+  );
+
+  const hit = usage.scopes.find((scope) => scope.exhausted);
+
+  return {
+    usedLabel: `${formatTokens(totals.totalTokens)} tokens across ${totals.calls} model ${
+      totals.calls === 1 ? 'call' : 'calls'
+    }`,
+    costLabel: `${formatEstimatedCost(totals.estimatedCostMicroUsd)} (estimated)`,
+    remainingLabels,
+    exhausted: usage.exhausted,
+    blockedReason:
+      hit === undefined
+        ? null
+        : `${hit.label} is used up, so Orbit will not make another model call. Raise the ceiling in the API's configuration to continue.`,
+  };
 }

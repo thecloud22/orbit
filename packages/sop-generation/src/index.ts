@@ -21,6 +21,7 @@
 export const PACKAGE_NAME = '@orbit/sop-generation' as const;
 
 export * from './anthropic-provider';
+export * from './budget';
 export * from './generate';
 export * from './prompt';
 export * from './proposal';

@@ -1,5 +1,6 @@
 import type { ArtifactService } from '@orbit/artifact-service';
 import type { OrbitRepositories } from '@orbit/db';
+import type { ModelBudgets } from '@orbit/sop-generation';
 import type {
   PublishBoundDocumentService,
   PublishRecordingService,
@@ -57,4 +58,13 @@ export interface ApiContext {
    * directory for the same reason (ADR-020, ADR-027).
    */
   readonly bindingSessions: BindingSessionRegistry;
+  /**
+   * The token ceilings this deployment is running with (ADR-029).
+   *
+   * Here so the read route can report headroom. The *enforcement* lives in the
+   * draft service, which is given the same object: the route reports, and the
+   * server refuses, and the two read the same numbers rather than each holding
+   * their own.
+   */
+  readonly modelBudgets: ModelBudgets;
 }

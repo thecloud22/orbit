@@ -19,6 +19,18 @@ export const BINDING_SESSION_EMPTY_MESSAGE =
 export const BINDING_PICK_MESSAGE =
   'Click the value to read in the browser window — the page will not react — and it appears here.';
 
+/**
+ * The instruction for a decision, which is unlike every other kind.
+ *
+ * Every other step is demonstrated once. A decision is demonstrated once *per
+ * branch*: put the page into that state first, then point at the thing that
+ * proves you are in it. Saying which branch is being asked for is the whole
+ * usability of this, so the branch text goes in the sentence.
+ */
+export function branchPickMessage(when: string): string {
+  return `Put the page into the state where ${when}, then click the element that proves it. The page will not react.`;
+}
+
 export interface BindingCaptureRow {
   readonly captureId: string;
   readonly label: string;
@@ -42,7 +54,50 @@ export function captureRows(session: BindingSessionView | null): readonly Bindin
 
 /** The instruction line, which differs for a step that reads rather than acts. */
 export function captureInstruction(session: BindingSessionView | null): string {
+  const branch = session === null ? null : nextBranch(session.step);
+
+  if (branch !== null) {
+    return branchPickMessage(branch.when);
+  }
+
   return session?.step.mode === 'pick' ? BINDING_PICK_MESSAGE : BINDING_SESSION_EMPTY_MESSAGE;
+}
+
+/**
+ * The branch a decision is currently asking for, or null.
+ *
+ * The first one still missing an element, in the graph's own order, so the
+ * person is walked through them in the sequence they read the workflow in.
+ * Null once every branch is covered — and null for every kind that is not a
+ * decision, which is what makes it safe to call unconditionally.
+ */
+export function nextBranch(
+  step: BindingTargetStepView,
+): { readonly when: string; readonly position: number; readonly total: number } | null {
+  if (step.kind !== 'decision') {
+    return null;
+  }
+
+  const index = step.branches.findIndex((branch) => !branch.captured);
+
+  const branch = step.branches[index];
+
+  return branch === undefined
+    ? null
+    : { when: branch.when, position: index + 1, total: step.branches.length };
+}
+
+/** How far through a decision's branches this sitting has got. */
+export function branchProgress(step: BindingTargetStepView): string | null {
+  if (step.kind !== 'decision' || step.branches.length === 0) {
+    return null;
+  }
+
+  const captured = step.branches.filter((branch) => branch.captured).length;
+
+  return captured === step.branches.length
+    ? `All ${step.branches.length} branches demonstrated. Saving now writes the binding.`
+    : `${captured} of ${step.branches.length} branches demonstrated.`;
 }
 
 export interface BindingFormFields {
@@ -85,6 +140,23 @@ export function multiFieldWarning(step: BindingTargetStepView): string | null {
   return `This step reads ${step.fields.length} values, and one binding reads one element. Bind the value the workflow depends on most; the rest are not covered yet.`;
 }
 
+/**
+ * What the save button says.
+ *
+ * A decision's last branch writes the binding; the ones before it only record
+ * a capture, and a button that said "Save this binding" three times would be
+ * claiming to have saved something twice that it had not.
+ */
+export function saveButtonLabel(session: BindingSessionView | null): string {
+  const branch = session === null ? null : nextBranch(session.step);
+
+  return branch === null
+    ? 'Save this binding'
+    : branch.position === branch.total
+      ? `Use this for "${branch.when}" and save`
+      : `Use this for "${branch.when}"`;
+}
+
 /** Why "Save this binding" is not available yet, or null when it is. */
 export function bindDisabledReason(input: {
   readonly session: BindingSessionView | null;
@@ -100,7 +172,11 @@ export function bindDisabledReason(input: {
   }
 
   if (input.selectedCaptureId === null) {
-    return 'Choose which capture was this step.';
+    const branch = nextBranch(input.session.step);
+
+    return branch === null
+      ? 'Choose which capture was this step.'
+      : `Choose the capture that shows "${branch.when}".`;
   }
 
   const fields = formFieldsFor(input.session.step);

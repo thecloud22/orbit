@@ -35,7 +35,7 @@ silently.
 checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
-**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5, 2.6 and 2.7** are
+**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5, 2.6, 2.7 and 2.8** are
 complete.
 `@orbit/sop-graph` provides the non-executable graph contract and its validation;
 `@orbit/sop-generation` turns free text into a proposed graph; `@orbit/sop-service` persists drafts
@@ -74,8 +74,9 @@ bindings into candidate Agent IR, refusing anything it cannot compile completely
 and reason for each refusal. Candidates are persisted in `agent_ir_candidates`, superseded on
 recompilation, and gated behind a separate technical approval that refuses any candidate whose
 sandbox readiness is `cannot_validate` — the fail-closed secret check, applied before a browser
-could be launched (**ADR-021**). The reference escalation-review workflow does not compile, because
-2.5 handles linear graphs only.
+could be launched (**ADR-021**). The reference escalation-review workflow still does not compile — but as of
+sub-phase 2.8 that is because three of its steps route to a person and its decisions have no
+bindings, not because branching is unsupported.
 
 **Sub-phase 2.6 is complete.** An approved candidate publishes into a runnable Agent Version, minted
 already-published rather than promoted, with `published_from_candidate_id` recording where it came
@@ -147,6 +148,41 @@ Phase 2 direction and the remaining sub-phases are in
 `docs/tasks/phase-2-sop-graph-requirements.md`. Model output is untrusted input: anything a model
 produces goes through `parseSopGraphDocument` before it is persisted, and Task 3 inherits the same
 rule for every user edit.
+
+**Sub-phase 2.8 is complete: a workflow can branch, and model spend is capped.**
+
+A `decision` step now compiles, publishes and runs. Nothing in `@orbit/agent-ir`, `@orbit/runtime` or
+`@orbit/executor-playwright` changed to make that true — `browser.expect_one_of` had been executable
+since Phase 1. What was missing was an Execution Binding that could describe a branch, so the
+`decision` body changed (additively, no migration) from `{target, readMethod, condition}` — read a
+value, evaluate a predicate nothing can evaluate — to `branches: [{when, selectors, fingerprint}]`,
+one demonstrated element per branch, with `EXECUTION_BINDING_SCHEMA_VERSION` at `0.2`. The branches
+live in one body because a binding is keyed by step, and a row per branch would make each supersede
+the last. Branches are matched to the graph by the reviewer's own condition text, never by array
+position, and a binding covering anything but the exact declared set is refused (**ADR-029**).
+Watchtower binds a decision by walking its branches one at a time, writing nothing until all are
+covered. `BINDABLE_KINDS` now has one definition, owned by the compiler.
+
+**Every model call is metered, and refused before it is made once a budget is spent.** Three scopes —
+global, per agent (per *document* at drafting time, since a document is 1:1 with the agent it will
+become), and per run (one Generate: the attempt plus its one repair) — all checked before **each**
+call, with the most restrictive one reported. `model_usage` is an append-only ledger of one row per
+provider *call*; every scope is a sum over it, with no running total kept anywhere else. Cost is an
+estimate from configured rates and says so on every surface. Ceilings default to *set*, not
+unlimited, and are configurable per scope. The server is the gate; the Generate button reflects it.
+A repair refused mid-request returns the draft's own validation issues alongside the budget reason —
+never a silent half-result.
+
+**The branching demo** is `docs/demo/branching-library-demo.md`: search the library catalog, then
+borrow the title or place a hold on it depending on what the page shows. Both branches are driven in
+a real browser against the real library portal (port 3020) by
+`apps/browser-worker/src/library-borrow-or-hold.runtime.test.ts`. It is deliberately not seeded into
+`orbit_dev`.
+
+Known, and recorded rather than left to be discovered: a decision's fingerprints are **not**
+re-verified at run time, because `expect_one_of` resolves by visibility and does not call the drift
+check; and Agent IR still declares only Phase 1's two business outcomes, so the demo maps
+`borrowed`/`held` onto them.
 
 ### Where the pieces live
 

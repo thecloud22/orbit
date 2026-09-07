@@ -1,8 +1,19 @@
 import { useState, type FormEvent } from 'react';
 
+import type { ModelSpendSummary } from './sop-draft-view-model';
+
 export interface SopDraftFormProps {
   readonly isGenerating: boolean;
   readonly onGenerate: (sourceText: string) => void;
+  /**
+   * Model spend and headroom, or null while it is still loading.
+   *
+   * The button reflects it, and that is all it does. The **server** is the gate
+   * (ADR-029): a Generate that would exceed a ceiling is refused before any call
+   * is made, whether or not this component ever rendered. Disabling the button
+   * is a courtesy so nobody writes three paragraphs first.
+   */
+  readonly spend?: ModelSpendSummary | null;
 }
 
 /**
@@ -13,10 +24,11 @@ export interface SopDraftFormProps {
  * 2.3, and shipping half of one now would set an expectation this phase cannot
  * meet.
  */
-export function SopDraftForm({ isGenerating, onGenerate }: SopDraftFormProps) {
+export function SopDraftForm({ isGenerating, onGenerate, spend }: SopDraftFormProps) {
   const [sourceText, setSourceText] = useState('');
   const trimmed = sourceText.trim();
-  const disabled = isGenerating || trimmed.length === 0;
+  const blocked = spend?.exhausted === true;
+  const disabled = isGenerating || trimmed.length === 0 || blocked;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -47,6 +59,29 @@ export function SopDraftForm({ isGenerating, onGenerate }: SopDraftFormProps) {
         </p>
       </div>
 
+      {spend != null && (
+        <section
+          className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2"
+          data-testid="model-spend"
+        >
+          <p className="text-xs text-slate-700">
+            Model use so far: <strong data-testid="model-spend-used">{spend.usedLabel}</strong>,
+            costing about <span data-testid="model-spend-cost">{spend.costLabel}</span>. Cost is an
+            estimate from configured rates, not a bill.
+          </p>
+          <ul className="mt-1 list-disc pl-5 text-xs text-slate-600">
+            {spend.remainingLabels.map((label) => (
+              <li key={label}>{label}</li>
+            ))}
+          </ul>
+          {spend.blockedReason !== null && (
+            <p className="mt-2 text-xs font-medium text-rose-800" data-testid="model-spend-blocked">
+              {spend.blockedReason}
+            </p>
+          )}
+        </section>
+      )}
+
       <div>
         <button
           className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:bg-slate-300"
@@ -54,7 +89,7 @@ export function SopDraftForm({ isGenerating, onGenerate }: SopDraftFormProps) {
           disabled={disabled}
           type="submit"
         >
-          {isGenerating ? 'Generating…' : 'Generate draft'}
+          {isGenerating ? 'Generating…' : blocked ? 'Budget used up' : 'Generate draft'}
         </button>
       </div>
     </form>

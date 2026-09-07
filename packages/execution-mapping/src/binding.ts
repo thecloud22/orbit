@@ -76,6 +76,23 @@ const bindingBase = {
 };
 
 /**
+ * One branch of a decision, and the element that proves it was taken.
+ *
+ * A decision is bound by demonstrating each branch in turn: put the page into
+ * that state, then point at the element that only appears in it. `when` is the
+ * graph branch's own condition text, which is how a branch binding is matched
+ * back to the branch it describes — by the reviewer's words rather than by
+ * array position, so reordering the graph's branches cannot silently rebind a
+ * decision to the wrong outcome.
+ */
+export const decisionBranchBindingSchema = z.strictObject({
+  when: z.string().min(1),
+  selectors: selectorChainSchema,
+  fingerprint: elementFingerprintSchema,
+});
+export type DecisionBranchBinding = z.infer<typeof decisionBranchBindingSchema>;
+
+/**
  * The four bindable step kinds, plus the two read kinds.
  *
  * `manual_review` is absent by construction rather than by a check: there is
@@ -102,12 +119,24 @@ export const bindingBodySchema = z.discriminatedUnion('kind', [
     /** The graph variable this populates. Validated against the graph. */
     variable: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/),
   }),
+  /**
+   * A decision carries one element *per branch*, and no `target` at all.
+   *
+   * It used to be `{target, readMethod, condition}` — read one value, evaluate
+   * a predicate — which nothing could execute: the runtime has no expression
+   * evaluator and never will (arbitrary expressions are excluded by CLAUDE.md).
+   * What it *does* have is `browser.expect_one_of`, which waits for whichever
+   * of several known page states appears and branches on that. So a decision is
+   * bound the way the runtime can actually resolve it: one locator per branch.
+   *
+   * The branches live inside this one body rather than as one binding per
+   * branch because a binding is keyed by step — `listCurrent` keeps exactly one
+   * live binding per `stepId` — so a per-branch row would make every branch
+   * supersede the last.
+   */
   z.strictObject({
-    ...bindingBase,
     kind: z.literal('decision'),
-    readMethod: readMethodSchema,
-    /** The branch condition this reading feeds. */
-    condition: z.string().min(1),
+    branches: z.array(decisionBranchBindingSchema).min(2),
   }),
   z.strictObject({
     ...bindingBase,
@@ -122,7 +151,14 @@ export type BindingKind = BindingBody['kind'];
 /** Kinds that perform an action; the rest only read. */
 export const ACTION_BINDING_KINDS = ['navigate', 'fill', 'click'] as const;
 
-export const EXECUTION_BINDING_SCHEMA_VERSION = '0.1';
+/**
+ * 0.2: the `decision` body carries one element per branch (see above).
+ *
+ * The version is stored per binding and read as an opaque string, so rows
+ * written at 0.1 still parse — every other body kind is unchanged, and no
+ * decision binding could exist at 0.1 because nothing could create one.
+ */
+export const EXECUTION_BINDING_SCHEMA_VERSION = '0.2';
 
 export const executionBindingSchema = z.strictObject({
   schemaVersion: z.string().min(1),
@@ -146,4 +182,20 @@ export type ExecutionBinding = z.infer<typeof executionBindingSchema>;
 /** Whether a binding's fingerprint should be compared as an action or a read. */
 export function comparisonModeFor(kind: BindingKind): 'action' | 'read' {
   return (ACTION_BINDING_KINDS as readonly string[]).includes(kind) ? 'action' : 'read';
+}
+
+/**
+ * Every element a binding names, in order.
+ *
+ * One for every kind but `decision`, which names one per branch. Callers that
+ * used to reach for `body.target` go through this instead, so adding a body
+ * with a different element arity again does not silently break them.
+ */
+export function bindingTargets(body: BindingBody): readonly ElementTarget[] {
+  return body.kind === 'decision'
+    ? body.branches.map((branch) => ({
+        selectors: branch.selectors,
+        fingerprint: branch.fingerprint,
+      }))
+    : [body.target];
 }

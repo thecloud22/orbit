@@ -8,8 +8,17 @@ import type {
   SopDocumentRecord,
   SopGraphRevisionRecord,
 } from '@orbit/db';
-import { stepChecksum } from '@orbit/db';
-import { isBindableStepKind, validateBindingAgainstStep } from '@orbit/execution-mapping';
+import { stepChecksum, type ModelUsageTotals } from '@orbit/db';
+import {
+  ASSUMED_TOKENS_PER_CALL,
+  MODEL_BUDGET_SCOPE_LABELS,
+  type ModelBudgets,
+} from '@orbit/sop-generation';
+import {
+  bindingTargets,
+  isBindableStepKind,
+  validateBindingAgainstStep,
+} from '@orbit/execution-mapping';
 import {
   describeStep,
   describeStepById,
@@ -42,6 +51,9 @@ import {
   type SopBindingsView,
   type SopReviewView,
   type SopStepBindingView,
+  type ModelBudgetScopeView,
+  type ModelUsageTotalsView,
+  type ModelUsageView,
 } from './views';
 
 /**
@@ -396,9 +408,18 @@ export function toSopBindingsView(input: {
             kind: step.kind,
             declaredNames: input.declaredNames,
             stepSha256: stepChecksum(step),
+            ...(step.kind === 'decision'
+              ? { branchConditions: step.branches.map((branch) => branch.when) }
+              : {}),
           });
 
     const approved = binding !== undefined && binding.state === 'approved';
+
+    // A decision names one element per branch, so "the" element is the first
+    // one it demonstrates. Shown rather than hidden: the panel's purpose is to
+    // let a reviewer recognise what was bound, and the first branch's element
+    // is enough to do that.
+    const [target] = binding === undefined ? [] : bindingTargets(binding.binding.body);
 
     return {
       stepId: step.id,
@@ -409,22 +430,24 @@ export function toSopBindingsView(input: {
       supersededCount: supersededByStep.get(step.id) ?? 0,
       stale: issues.some((issue) => issue.code === 'STALE_BINDING'),
       issues: issues.map((issue) => ({ code: issue.code, message: issue.message })),
-      selectors: approved
-        ? binding.binding.body.target.selectors.map((locator) => ({
-            strategy: locator.strategy,
-            value: locator.value,
-            name: locator.name ?? null,
-          }))
-        : null,
-      fingerprint: approved
-        ? {
-            role: binding.binding.body.target.fingerprint.role,
-            accessibleName: binding.binding.body.target.fingerprint.accessibleName,
-            text: binding.binding.body.target.fingerprint.text,
-            width: binding.binding.body.target.fingerprint.boundingBox?.width ?? null,
-            height: binding.binding.body.target.fingerprint.boundingBox?.height ?? null,
-          }
-        : null,
+      selectors:
+        approved && target !== undefined
+          ? target.selectors.map((locator) => ({
+              strategy: locator.strategy,
+              value: locator.value,
+              name: locator.name ?? null,
+            }))
+          : null,
+      fingerprint:
+        approved && target !== undefined
+          ? {
+              role: target.fingerprint.role,
+              accessibleName: target.fingerprint.accessibleName,
+              text: target.fingerprint.text,
+              width: target.fingerprint.boundingBox?.width ?? null,
+              height: target.fingerprint.boundingBox?.height ?? null,
+            }
+          : null,
     };
   });
 
@@ -467,6 +490,10 @@ export function toBindingSessionView(state: BindingSessionState): BindingSession
       declaredValue: state.step.declaredValue,
       sensitive: state.step.sensitive,
       fields: state.step.fields,
+      branches: state.step.branches.map((branch) => ({
+        when: branch.when,
+        captured: branch.captured,
+      })),
     },
     captures: state.captures.map((capture) => ({
       captureId: capture.captureId,
@@ -479,13 +506,72 @@ export function toBindingSessionView(state: BindingSessionState): BindingSession
 }
 
 export function toSavedBindingView(input: {
-  readonly binding: ExecutionBindingRecord;
+  /** Null when a decision branch was captured and the binding is not yet complete. */
+  readonly binding: ExecutionBindingRecord | null;
   readonly state: BindingSessionState;
 }): SavedBindingView {
   return {
-    bindingId: input.binding.id,
-    stepId: input.binding.stepId,
-    state: input.binding.state,
+    bindingId: input.binding?.id ?? null,
+    stepId: input.binding?.stepId ?? input.state.step.stepId,
+    state: input.binding?.state ?? null,
     session: toBindingSessionView(input.state),
+  };
+}
+
+/**
+ * Model spend and budget headroom, for the drafting surface.
+ *
+ * The remaining figures are floored at zero. A negative "remaining" is
+ * arithmetically true when a call overshot its ceiling — the check charges an
+ * assumed size before the call and the real one can be larger — but "-4,000
+ * tokens left" reads as a bug rather than as "you are out", and the fact that
+ * matters is `exhausted`.
+ */
+export function toModelUsageView(input: {
+  readonly budgets: ModelBudgets;
+  readonly global: ModelUsageTotals;
+  readonly document: ModelUsageTotals | null;
+  readonly documentId: string | null;
+}): ModelUsageView {
+  const spentByScope: Readonly<Record<'global' | 'document', number>> = {
+    global: input.global.totalTokens,
+    document: input.document?.totalTokens ?? 0,
+  };
+
+  const scopes: ModelBudgetScopeView[] = (['global', 'document'] as const)
+    // A per-document scope is meaningless when no document was asked about, so
+    // it is omitted rather than reported as zero of a ceiling.
+    .filter((scope) => scope !== 'document' || input.document !== null)
+    .map((scope) => {
+      const limit = input.budgets[scope] ?? null;
+      const spent = spentByScope[scope];
+
+      return {
+        scope,
+        label: MODEL_BUDGET_SCOPE_LABELS[scope],
+        limitTokens: limit,
+        spentTokens: spent,
+        remainingTokens: limit === null ? null : Math.max(0, limit - spent),
+        exhausted: limit !== null && limit - spent < ASSUMED_TOKENS_PER_CALL,
+      };
+    });
+
+  return {
+    global: toTotalsView(input.global),
+    document: input.document === null ? null : toTotalsView(input.document),
+    documentId: input.documentId,
+    scopes,
+    exhausted: scopes.some((scope) => scope.exhausted),
+    costIsEstimated: true,
+  };
+}
+
+function toTotalsView(totals: ModelUsageTotals): ModelUsageTotalsView {
+  return {
+    calls: totals.calls,
+    inputTokens: totals.inputTokens,
+    outputTokens: totals.outputTokens,
+    totalTokens: totals.totalTokens,
+    estimatedCostMicroUsd: totals.estimatedCostMicroUsd,
   };
 }

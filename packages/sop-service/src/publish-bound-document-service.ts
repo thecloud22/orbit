@@ -1,4 +1,8 @@
-import type { CompileRefusal, OutcomeMapping } from '@orbit/agent-ir-compiler';
+import {
+  BINDABLE_KINDS as COMPILER_BINDABLE_KINDS,
+  type CompileRefusal,
+  type OutcomeMapping,
+} from '@orbit/agent-ir-compiler';
 import type { SopDocumentId } from '@orbit/contracts';
 import {
   createRepositories,
@@ -66,11 +70,13 @@ export interface PublishBoundDocumentService {
 /**
  * The step kinds the compiler requires a binding for.
  *
- * Held here as the same set the compiler enforces rather than a looser guess:
- * a `navigate` step compiles from the graph's own `urlHint`, and a
- * `manual_review` step is not automatable at all, so neither blocks publishing.
+ * Imported from the compiler rather than restated here. It used to be a
+ * hand-copied literal, and adding `decision` to the compiler while this stayed
+ * at three kinds would have let a workflow with an unbound decision reach a
+ * publish that the compiler then refused — the exact ordering problem this gate
+ * exists to prevent.
  */
-const BINDABLE_KINDS = new Set(['fill', 'click', 'extract']);
+const BINDABLE_KINDS = COMPILER_BINDABLE_KINDS;
 
 /** Bindable steps with no approved, usable (non-stale, well-formed) binding. */
 export async function unboundStepIdsFor(input: {
@@ -103,6 +109,9 @@ export async function unboundStepIdsFor(input: {
         kind: step.kind,
         declaredNames: names,
         stepSha256: stepChecksum(step),
+        ...(step.kind === 'decision'
+          ? { branchConditions: step.branches.map((branch) => branch.when) }
+          : {}),
       });
     })
     .map((step) => step.id);

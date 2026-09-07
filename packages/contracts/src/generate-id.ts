@@ -7,6 +7,8 @@ import {
   artifactLinkIdSchema,
   eventIdSchema,
   executionBindingIdSchema,
+  modelRequestIdSchema,
+  modelUsageIdSchema,
   requestIdSchema,
   runIdSchema,
   runStepIdSchema,
@@ -19,6 +21,8 @@ import {
   type ArtifactLinkId,
   type EventId,
   type ExecutionBindingId,
+  type ModelRequestId,
+  type ModelUsageId,
   type RequestId,
   type RunId,
   type RunStepId,
@@ -177,4 +181,12 @@ export function newExecutionBindingId(): ExecutionBindingId {
 
 export function newAgentIrCandidateId(): AgentIrCandidateId {
   return agentIrCandidateIdSchema.parse(`aircand_${monotonicUlid()}`);
+}
+
+export function newModelUsageId(): ModelUsageId {
+  return modelUsageIdSchema.parse(`modelusage_${monotonicUlid()}`);
+}
+
+export function newModelRequestId(): ModelRequestId {
+  return modelRequestIdSchema.parse(`modelreq_${monotonicUlid()}`);
 }

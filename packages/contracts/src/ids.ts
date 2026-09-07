@@ -99,6 +99,28 @@ export const executionBindingIdSchema = z
 export type ExecutionBindingId = z.infer<typeof executionBindingIdSchema>;
 
 /**
+ * Model usage identifiers (Phase 2.8).
+ *
+ * A `modelusage_` id names one provider *call*, and a `modelreq_` id names the
+ * request that made it — a single Generate, which may involve an initial call
+ * and one repair. They are separate ids because the per-run budget is a sum
+ * over the request while the ledger is a row per call: one id could not carry
+ * both meanings without the ledger losing the ability to say what a single
+ * request actually cost.
+ */
+export const modelUsageIdSchema = z
+  .string()
+  .regex(idPattern('modelusage'), 'must be an opaque id prefixed with "modelusage_"')
+  .brand<'ModelUsageId'>();
+export type ModelUsageId = z.infer<typeof modelUsageIdSchema>;
+
+export const modelRequestIdSchema = z
+  .string()
+  .regex(idPattern('modelreq'), 'must be an opaque id prefixed with "modelreq_"')
+  .brand<'ModelRequestId'>();
+export type ModelRequestId = z.infer<typeof modelRequestIdSchema>;
+
+/**
  * Candidate Agent IR identifier (Phase 2.5).
  *
  * A candidate is a proposal that a reviewed graph and its approved mappings

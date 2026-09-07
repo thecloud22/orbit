@@ -3,10 +3,12 @@ import { createRepositories, type ExecutionBindingRecord, type OrbitDatabase } f
 import type { BindingIssue, ReadMethod, ValueSource } from '@orbit/execution-mapping';
 import type { CapturedAction, RecordingSession } from '@orbit/execution-recorder';
 import {
+  BINDABLE_KINDS,
   bindingBodyFor,
   captureModeForStepKind,
   createBinding,
   defaultValueSourceFor,
+  type BindingCapture,
   type BindingChoice,
 } from '@orbit/sop-service';
 import { describeStep, type SopGraph, type SopStep } from '@orbit/sop-graph';
@@ -47,12 +49,14 @@ export type BindingSessionId = string;
 /**
  * The step kinds a binding session will target.
  *
- * Exactly the compiler's `BINDABLE_KINDS`. A `navigate` step compiles from the
- * graph's own `urlHint` and needs no binding; `manual_review` routes to a
- * person; `decision` and `outcome` are not compiled at all today. Offering to
- * bind any of them would be offering work that changes nothing.
+ * Exactly the compiler's `BINDABLE_KINDS`, imported rather than restated so the
+ * two cannot drift: a kind the compiler requires a binding for and this set
+ * omits is a workflow that can never be published from Watchtower.
+ *
+ * `navigate` compiles from the graph's own `urlHint`, `manual_review` routes to
+ * a person, and `outcome` touches no element, so none of them appears here.
  */
-const SESSION_BINDABLE_KINDS = new Set(['fill', 'click', 'extract']);
+const SESSION_BINDABLE_KINDS: ReadonlySet<string> = BINDABLE_KINDS;
 
 export interface BindingCaptureSummary {
   readonly captureId: string;
@@ -82,6 +86,23 @@ export interface BindingTargetStep {
   readonly sensitive: boolean;
   /** For an extract: the field names the step declares. */
   readonly fields: readonly string[];
+  /**
+   * For a decision: every branch, and whether it has been demonstrated yet.
+   *
+   * A decision is bound by walking these in turn — put the screen into that
+   * state, point at the element that proves it — so the panel needs to know
+   * which one it is asking for and how many are left. Empty for every other
+   * kind.
+   */
+  readonly branches: readonly BindingBranchProgress[];
+}
+
+const EMPTY_BRANCH_CAPTURES: ReadonlyMap<string, BindingCapture> = new Map();
+
+/** One branch of a decision, and whether an element has been captured for it. */
+export interface BindingBranchProgress {
+  readonly when: string;
+  readonly captured: boolean;
 }
 
 export interface BindingSessionState {
@@ -123,12 +144,22 @@ export interface BindInput {
   readonly readMethod?: ReadMethod;
   /** For an extract: which declared field this populates. */
   readonly variable?: string;
+  /**
+   * For a decision: which branch this capture demonstrates.
+   *
+   * Required for a decision and meaningless for anything else. The capture is
+   * held against that branch; the binding itself is written only once every
+   * branch has one, because a partly bound decision would compile to an
+   * `expect_one_of` that cannot name a state the agent can actually reach.
+   */
+  readonly branchWhen?: string;
 }
 
 export type BindResult =
   | {
       readonly ok: true;
-      readonly binding: ExecutionBindingRecord;
+      /** Null when a decision branch was recorded and others are still to come. */
+      readonly binding: ExecutionBindingRecord | null;
       readonly state: BindingSessionState;
     }
   | { readonly ok: false; readonly reason: 'not_found' }
@@ -172,6 +203,14 @@ interface OpenBindingSession {
    * current revision at save time, where correctness actually depends on it.
    */
   step: SopStep;
+  /**
+   * Captures held per decision branch, keyed by the branch's `when` text.
+   *
+   * Session state rather than persisted state: nothing is written until the set
+   * is complete, so abandoning a half-demonstrated decision leaves no partial
+   * binding behind. Cleared whenever the session targets a different step.
+   */
+  branchCaptures: Map<string, BindingCapture>;
 }
 
 /** What the page reported, as a sentence someone can read while working. */
@@ -197,7 +236,10 @@ function describeCapture(capture: CapturedAction): BindingCaptureSummary {
   };
 }
 
-function describeTarget(step: SopStep): BindingTargetStep {
+function describeTarget(
+  step: SopStep,
+  branchCaptures: ReadonlyMap<string, BindingCapture>,
+): BindingTargetStep {
   return {
     stepId: step.id,
     kind: step.kind,
@@ -206,6 +248,13 @@ function describeTarget(step: SopStep): BindingTargetStep {
     declaredValue: step.kind === 'fill' ? step.value : null,
     sensitive: step.kind === 'fill' && step.sensitive === true,
     fields: step.kind === 'extract' ? step.fields.map((field) => field.name) : [],
+    branches:
+      step.kind === 'decision'
+        ? step.branches.map((branch) => ({
+            when: branch.when,
+            captured: branchCaptures.has(branch.when),
+          }))
+        : [],
   };
 }
 
@@ -214,7 +263,11 @@ function findStep(graph: SopGraph, stepId: string): SopStep | undefined {
 }
 
 /** The one judgement a capture cannot supply, defaulted from the step where it can be. */
-function choiceFor(step: SopStep, input: BindInput): BindingChoice | { readonly refusal: string } {
+function choiceFor(
+  step: SopStep,
+  input: BindInput,
+  branchCaptures: ReadonlyMap<string, BindingCapture>,
+): BindingChoice | { readonly refusal: string } {
   if (step.kind === 'click') {
     return { kind: 'click' };
   }
@@ -245,6 +298,17 @@ function choiceFor(step: SopStep, input: BindInput): BindingChoice | { readonly 
     }
 
     return { kind: 'extract', readMethod: input.readMethod ?? { kind: 'text' }, variable };
+  }
+
+  if (step.kind === 'decision') {
+    return {
+      kind: 'decision',
+      branches: [...branchCaptures].map(([when, capture]) => ({
+        when,
+        selectors: capture.selectors,
+        fingerprint: capture.fingerprint,
+      })),
+    };
   }
 
   return {
@@ -281,7 +345,7 @@ export function createBindingSessionRegistry(
       startUrl: open.startUrl,
       currentUrl: open.session.currentUrl(),
       startedAt: open.startedAt.toISOString(),
-      step: describeTarget(open.step),
+      step: describeTarget(open.step, open.branchCaptures),
       captures: open.session.captures().map(describeCapture),
       failures: open.session
         .failures()
@@ -330,7 +394,10 @@ export function createBindingSessionRegistry(
         return { ok: false, reason: 'session_exists', sessionId: existing };
       }
 
-      const session = await options.factory.open(input.startUrl, describeTarget(step).mode);
+      const session = await options.factory.open(
+        input.startUrl,
+        describeTarget(step, EMPTY_BRANCH_CAPTURES).mode,
+      );
 
       const open: OpenBindingSession = {
         documentId: input.documentId,
@@ -338,6 +405,7 @@ export function createBindingSessionRegistry(
         startedAt: now(),
         session,
         step,
+        branchCaptures: new Map(),
       };
 
       const sessionId = sessions.add(open);
@@ -376,8 +444,12 @@ export function createBindingSessionRegistry(
 
       // Switching modes leaves the page exactly where it is, which is the whole
       // point of not reloading to do it.
-      await open.session.setMode(describeTarget(step).mode);
+      await open.session.setMode(describeTarget(step, EMPTY_BRANCH_CAPTURES).mode);
       open.session.clearCaptures();
+      // Half-demonstrated branches belong to the step that was being bound.
+      // Carrying them to the next one would attach an element captured for one
+      // decision to a different step's branch of the same name.
+      open.branchCaptures.clear();
       open.step = step;
 
       return { ok: true, state: toState(sessionId, open) };
@@ -417,7 +489,44 @@ export function createBindingSessionRegistry(
         return { ok: false, reason: 'unknown_capture', captureId: input.captureId };
       }
 
-      const choice = choiceFor(step, input);
+      const captured: BindingCapture = {
+        selectors: capture.selectors,
+        fingerprint: capture.fingerprint,
+        url: capture.url,
+        ...(capture.typedValue === undefined ? {} : { typedValue: capture.typedValue }),
+      };
+
+      // A decision is bound one branch at a time. The capture is held against
+      // the branch it demonstrates and nothing is written until every branch
+      // has one, so abandoning a half-demonstrated decision leaves no partial
+      // binding behind.
+      if (step.kind === 'decision') {
+        const branch = step.branches.find((candidate) => candidate.when === input.branchWhen);
+
+        if (branch === undefined) {
+          return {
+            ok: false,
+            reason: 'refused',
+            message:
+              input.branchWhen === undefined
+                ? 'This step is a decision, so the capture must say which branch it demonstrates.'
+                : `This decision has no branch "${input.branchWhen}".`,
+          };
+        }
+
+        open.branchCaptures.set(branch.when, captured);
+        open.session.clearCaptures();
+
+        const outstanding = step.branches.filter(
+          (candidate) => !open.branchCaptures.has(candidate.when),
+        );
+
+        if (outstanding.length > 0) {
+          return { ok: true, binding: null, state: toState(sessionId, open) };
+        }
+      }
+
+      const choice = choiceFor(step, input, open.branchCaptures);
 
       if ('refusal' in choice) {
         return { ok: false, reason: 'refused', message: choice.refusal };
@@ -425,12 +534,7 @@ export function createBindingSessionRegistry(
 
       const body = bindingBodyFor({
         step,
-        capture: {
-          selectors: capture.selectors,
-          fingerprint: capture.fingerprint,
-          url: capture.url,
-          ...(capture.typedValue === undefined ? {} : { typedValue: capture.typedValue }),
-        },
+        ...(step.kind === 'decision' ? {} : { capture: captured }),
         choice,
       });
 
@@ -465,6 +569,7 @@ export function createBindingSessionRegistry(
       // The session deliberately stays open: binding a workflow means binding
       // several steps, and each starts where the last left the page.
       open.session.clearCaptures();
+      open.branchCaptures.clear();
 
       return { ok: true, binding: created.binding, state: toState(sessionId, open) };
     },

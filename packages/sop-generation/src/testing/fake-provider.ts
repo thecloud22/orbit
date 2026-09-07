@@ -1,4 +1,10 @@
-import type { LLMProvider, ProviderDescriptor, SopGraphProposalRequest } from '../provider';
+import type { ModelCallUsage } from '../budget';
+import type {
+  LLMProvider,
+  ProviderDescriptor,
+  SopGraphProposalRequest,
+  SopGraphProposalResponse,
+} from '../provider';
 import { SopProviderError } from '../provider';
 
 /**
@@ -15,11 +21,20 @@ import { SopProviderError } from '../provider';
  */
 
 export type FakeProviderResponse =
-  | { readonly kind: 'respond'; readonly raw: unknown }
+  | { readonly kind: 'respond'; readonly raw: unknown; readonly usage?: ModelCallUsage | null }
   | { readonly kind: 'throw'; readonly message: string };
 
-export function respondWith(raw: unknown): FakeProviderResponse {
-  return { kind: 'respond', raw };
+/**
+ * `usage` defaults to a small, fixed, non-zero pair.
+ *
+ * Not zero: a test that never touches usage should still exercise the ledger
+ * writing something, so that "no usage was recorded" is a failure the existing
+ * tests can catch rather than the silent default.
+ */
+export const FAKE_CALL_USAGE: ModelCallUsage = { inputTokens: 1_000, outputTokens: 500 };
+
+export function respondWith(raw: unknown, usage?: ModelCallUsage | null): FakeProviderResponse {
+  return usage === undefined ? { kind: 'respond', raw } : { kind: 'respond', raw, usage };
 }
 
 export function failWith(message: string): FakeProviderResponse {
@@ -73,7 +88,7 @@ export function createFakeSopProvider(options: FakeSopProviderOptions): FakeSopP
       return requests.length;
     },
 
-    generateSopGraphProposal(request: SopGraphProposalRequest): Promise<unknown> {
+    generateSopGraphProposal(request: SopGraphProposalRequest): Promise<SopGraphProposalResponse> {
       const callIndex = requests.length;
       requests.push(request);
 
@@ -81,7 +96,10 @@ export function createFakeSopProvider(options: FakeSopProviderOptions): FakeSopP
 
       return response.kind === 'throw'
         ? Promise.reject(new SopProviderError(response.message, { provider: 'fake' }))
-        : Promise.resolve(response.raw);
+        : Promise.resolve({
+            proposal: response.raw,
+            usage: response.usage === undefined ? FAKE_CALL_USAGE : response.usage,
+          });
     },
   };
 }

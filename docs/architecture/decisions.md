@@ -1092,3 +1092,85 @@ This reverses ADR-019's stated property that action mode "lets the event through
 | Wait indefinitely rather than bounding it | A page that stops responding to clicks is a worse failure than a missed capture, and it would be blamed on the site rather than on Orbit |
 | Keep the approve button "just in case" | It approves something publishing approves anyway; a control whose only effect is to do early what happens regardless teaches people it matters when it does not |
 | Remove the revision state machine as well | It is the audit trail — what a workflow went through is the product — and ADR-017's editability rule depends on it |
+
+## ADR-029: Bind a decision per branch, and cap model spend in three scopes before the call
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+Two unrelated things, decided together because they landed in the same task.
+
+**A workflow that chooses could be drafted but never run.** `decision` is one of the seven SOP Graph step kinds and has been since sub-phase 2.1; the reference workflow in the requirements document branches three times. The compiler refused every one of them with `branching_unsupported`, so an AI draft or a hand edit that produced a decision produced a workflow that could not be published. That refusal was recorded as "2.5 compiles linear graphs only", which read as a statement about a missing capability. It was not: Agent IR has had `browser.expect_one_of` since Phase 1 (`alternatives: [{whenVisible, next}]`, minimum two, with `graph.ts` deriving successors from it and enforcing acyclicity), and the runtime has executed it since Task 6 — `selectAlternative` races the alternatives' locators, jumps to the winner's `next`, and records `selectedAlternativeIndex` and `matchedLocator` as evidence. The seeded Phase 1 fixture already used it.
+
+What was actually missing sat in one field of one schema. `ExecutionBinding`'s `decision` body was `{target, readMethod, condition}` — read one value off the page, evaluate a predicate against it. Nothing in Orbit can evaluate a predicate: there is no expression evaluator, and arbitrary expressions are excluded by CLAUDE.md and will stay excluded. So the one shape that was supposed to make a decision executable described something the runtime could not do, while the thing it *could* do — wait to see which of several known states appeared — had no way to be described at all.
+
+**Nothing bounded what the model could spend.** Free-text drafting calls a provider up to twice per Generate, and the only thing standing between a deployment and an unbounded bill was that nobody pressed the button too often. There was no ledger, no ceiling, and no figure anywhere in the product saying what a draft had cost.
+
+### Decision
+
+**Branching is implemented without touching Agent IR, the runtime, or the Playwright executor.** `packages/agent-ir`, `packages/runtime` and `packages/executor-playwright` are byte-identical after this task. A graph `decision` compiles to one `browser.expect_one_of` with one alternative per branch: `whenVisible` is that branch's demonstrated locator, `next` is the graph branch's own `nextStepId`. That this was possible is the evidence that the gap was never in the executable layer.
+
+**A decision binding carries one element per branch, and no `target` at all.** The body is now `{kind: 'decision', branches: [{when, selectors, fingerprint}]}`, minimum two. `EXECUTION_BINDING_SCHEMA_VERSION` moves to `0.2`. This is a deliberate change to a contract ADR-018 froze, made because the frozen shape described an operation that could not be performed; the four other bodies are untouched and rows written at `0.1` still parse, since the version is read as an opaque string and no decision binding could have existed at `0.1`.
+
+**The branches live inside one binding body rather than as one binding per branch.** A binding is keyed by step — `listCurrent` keeps exactly one live binding per `stepId`, and a re-record supersedes its predecessor. One row per branch would therefore make each branch supersede the last, and a decision would end up bound to whichever branch was demonstrated most recently. The storage model made this the only correct shape; no migration was needed, because the body column is JSONB.
+
+**Branches are matched by the reviewer's own condition text, never by array position.** `validateBindingAgainstStep` accepts a decision binding only when its `when` values are exactly the set the graph step declares — no extras, none missing — and the compiler re-checks the same thing rather than trusting it. Position matching would mean that reordering a graph's branches silently rebinds the decision to the wrong outcome, which is the class of error that produces a correct-looking agent doing the opposite of what it says.
+
+**A decision is bound by walking its branches, in `pick` mode, in one sitting.** The person puts the page into each state in turn and points at the element that proves it; pointing performs nothing. Captures are held in session state and **nothing is written until every branch has one**, so an abandoned half-demonstration leaves no partial binding. The API's save route reports a null `bindingId` for a branch that was recorded but did not complete the set, because reporting an id for a row that does not exist would be worse than reporting none.
+
+**`BINDABLE_KINDS` now has one definition.** The compiler owns it; `publish-bound-document-service.ts` and the API's binding-session registry import it through `@orbit/sop-service` rather than restating it. Three hand-copied literals would have meant a kind the compiler requires and the session refuses to bind — a workflow that can never be published, with nothing saying why. Watchtower keeps its own literal deliberately: importing the compiler would pull `node:crypto` and a database checksum into a browser bundle, and the client only decides what to *offer*.
+
+**Model spend is capped in three scopes, and every scope is checked before the call is made.** A cap enforced after the fact is not a cap — the tokens are already gone. At drafting time neither an agent nor a run exists, so the three scopes map onto what is real at that moment, and this mapping is stated rather than left implicit:
+
+| Scope | At drafting time it means | Why |
+|---|---|---|
+| **Global** | every call in the deployment | the overall pot; nothing else bounds it |
+| **Per agent** | every call for one SOP **document** | a document is 1:1 with the agent it will become — `agentIdForDocument` derives that agent's id from the document id deterministically — so "per agent" before publication is "per document" |
+| **Per run** | one Generate request: the initial call plus its one repair | a "run" of the drafting flow is one request; the repair is part of the same unit of work and is charged to it |
+
+All three are checked before **each** call, and the **most restrictive** one that would be exceeded is the one reported. Reporting the first scope that happened to fail would send someone to raise a ceiling that was not the one stopping them.
+
+**The ledger is one row per provider *call*, and every scope is a sum over it.** Not one row per draft: a draft costs up to two calls, and a counter of drafts would let the expensive case through free. There is no stored running total anywhere — a counter would be a second source of truth that could drift from the evidence, and the number a budget is enforced against and the number a person is shown now come from the same rows. `model_usage` is append-only by construction: the repository has no update and no delete, except `attachDocument`, which only ever fills in a null.
+
+**The first call of a brand-new document is recorded unattributed and adopted afterwards.** At the moment that call is made, no document exists — one is created only if the draft turns out to be valid. So `document_id` is nullable, the rows are written anyway, and the transaction that creates the document adopts its own request's unattributed rows. `attachDocument` cannot move a row from one document to another.
+
+**Cost is an estimate, and says so everywhere it appears.** Per-model rates live in this deployment's configuration (`ORBIT_LLM_RATES_USD_PER_MTOK`, with defaults). Nothing fetches a price list, because calling one would turn an estimate into something that looks like a bill. It is stored as integer micro-USD, since floating-point dollars summed over a ledger stop adding up. A model with no configured rate is costed at a conservative non-zero fallback rather than at zero: zero is the one answer that is certainly wrong and the one a reader would not question.
+
+**Budgets default to *set*, not to unlimited.** A deployment that configures nothing still has a ceiling in all three scopes. Removing one is spelled `unlimited`, deliberately, because a blank and a zero are both things somebody types by accident. Anything unparseable throws at boot rather than falling back: starting with a ceiling somebody meant to set and mistyped is the failure this must not have.
+
+**The server is the gate; the button is a courtesy.** `POST /v1/sop-drafts` refuses an over-budget Generate with **429** — distinct from the 422 that means the model produced something unusable — whether or not any UI ever rendered. `GET /v1/model-usage` reports spend and headroom so the button can be disabled before someone writes three paragraphs, and it cannot change a ceiling: a cap a client could lift is not a cap.
+
+**A repair refused mid-request returns both facts.** If the first call succeeds, spends real tokens, and the repair is no longer affordable, the result is `budget_exhausted_before_repair`, carrying the invalid draft's own validation issues *and* the budget reason. Reporting only the issues would blame the model for a budget decision; reporting only the budget would hide what the draft actually got wrong. Never a silent half-result, and never a charged call that was not allowed.
+
+### Consequences
+
+- A branching workflow compiles, publishes and runs. The library demo (`docs/demo/branching-library-demo.md`) searches a catalog and either borrows a title or places a hold on it, proven by a real-browser test that drives both branches.
+- The escalation-review reference workflow still does not compile, and the refusal is now accurate: three of its steps route to a person, and its decisions have no bindings. Branching is no longer the obstacle.
+- `branching_unsupported` is gone as a refusal code, replaced by `missing_branch_binding` and `unresolved_branch_target` — both of which name something a person can act on.
+- **A decision's fingerprints are not re-verified at run time.** `verifyBinding` runs before an action or a read; `browser.expect_one_of` resolves by visibility and does not call it. A branch locator that had drifted onto a different element would be selected rather than refused. Changing that means changing `packages/runtime`, which this task deliberately did not.
+- The recorder CLI refuses to bind a decision and says where to do it instead. Its flow is one capture, one binding, and a decision needs several; half-binding one from a terminal is worse than not offering it.
+- Every model call is now recorded whether the draft it produced was kept or thrown away, so a run of invalid drafts appears in the ledger rather than vanishing.
+- A deployment upgrading to this version gains ceilings it did not previously have. That is intended, and the defaults are generous, but a heavy user will meet them; raising one is a single environment variable.
+- `SavedBindingView.bindingId` and `.state` are now nullable. Every existing caller reads them only after a completed save, so nothing regressed, but the type is honest about the branch-in-progress case.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Add a branching construct to Agent IR | It is already there and already executed. Adding a second would fork control flow across two representations |
+| Teach the runtime to evaluate the binding's `condition` predicate | An expression evaluator in the runtime is excluded by CLAUDE.md, and would put arbitrary user-authored logic on the execution path |
+| Keep the `decision` body's `target` and add `branches` beside it | A target that means nothing for the one kind that has it. Every reader would have to know which field to ignore |
+| One binding row per branch | `listCurrent` keeps one live binding per step, so each branch would supersede the last and the decision would end up bound to whichever was demonstrated most recently |
+| Match branches to bindings by array position | Reordering a graph's branches would silently rebind the decision to the wrong outcome — a correct-looking agent doing the opposite of what it says |
+| Write each branch's capture as it is demonstrated, completing the binding later | A partly written decision would compile to an `expect_one_of` that cannot name a state the agent can reach, and the agent would hang on a page it is looking at |
+| Cap spend by counting drafts rather than calls | A draft costs one call or two, and the expensive case would go free |
+| Check the budget once, before the first call | The repair is a second real call; a check that has not seen the first call's tokens cannot bound the second |
+| Enforce the cap after the call, and report the overrun | The tokens are spent. That is a report, not a cap |
+| Keep a running total column and compare against it | A second source of truth beside the ledger, free to drift from the evidence it is supposed to summarise |
+| Default every budget to unlimited and let deployments opt in | The failure mode is an unbounded bill nobody chose. Raising a ceiling is one variable; discovering an unbounded one is a postmortem |
+| Fetch real prices from the provider | It would make an estimate look like a bill, and put a network call on a path that has no need of one |
+| Cost an unpriced model at zero | The one answer that is certainly wrong, and the one nobody would question |
+| Enforce the cap in the UI by disabling the button | A gate a client owns is not a gate. The button reflects the budget; the server enforces it |

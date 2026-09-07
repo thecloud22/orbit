@@ -18,6 +18,7 @@ export * from './agent-ir-candidates';
 export * from './agent-versions';
 export * from './agents';
 export * from './execution-bindings';
+export * from './model-usage';
 export * from './artifact-links';
 export * from './artifacts';
 export * from './run-events';
@@ -33,6 +34,9 @@ export const ORBIT_TABLE_NAMES = [
   // revisions first would fail rather than cascade.
   'agent_ir_candidates',
   'execution_bindings',
+  // Before documents: a usage row references one with `set null`, and the
+  // reset truncates rather than nulls.
+  'model_usage',
   'sop_clarification_answers',
   'sop_graph_revisions',
   'sop_documents',

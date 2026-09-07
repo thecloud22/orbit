@@ -189,7 +189,7 @@ describe('compiling the Phase 1 workflow', () => {
 });
 
 describe('refusals', () => {
-  it('refuses a branching workflow, naming the decision step', () => {
+  it('refuses an unbound decision, naming the step', () => {
     const graph = findServiceRequestGraph();
     const steps: SopStep[] = [
       ...graph.steps.slice(0, 3),
@@ -207,7 +207,9 @@ describe('refusals', () => {
 
     const result = compile({ graph: { ...graph, steps } });
 
-    expect(refusalCodes(result)).toContain('branching_unsupported');
+    // A decision now compiles — but only once somebody has demonstrated what
+    // each branch looks like. This one has no binding at all.
+    expect(refusalCodes(result)).toContain('missing_binding');
     expect(result.ok ? [] : result.refusals.map((entry) => entry.stepId)).toContain('how_many');
   });
 

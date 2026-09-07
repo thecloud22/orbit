@@ -7,7 +7,7 @@ import {
   type Locator,
 } from '@orbit/agent-ir';
 import { stepChecksum } from '@orbit/db/checksum';
-import type { ExecutionBinding } from '@orbit/execution-mapping';
+import type { ExecutionBinding, SelectorChain } from '@orbit/execution-mapping';
 import {
   classifyValue,
   type InputDeclaration as SopInputDeclaration,
@@ -69,7 +69,15 @@ function unlocatable(stepId: string): CompileRefusal {
  * when it does its URL is preferred: it is where the recording actually landed
  * rather than where the draft said it would.
  */
-const BINDABLE_KINDS = new Set<SopStep['kind']>(['fill', 'click', 'extract']);
+export const BINDABLE_KINDS = new Set<SopStep['kind']>([
+  'fill',
+  'click',
+  'extract',
+  // A decision is bound by demonstrating each branch: put the screen into that
+  // state, then point at the element that proves it. That is one locator per
+  // branch, which is what `browser.expect_one_of` resolves at run time.
+  'decision',
+]);
 
 /** Agent IR declares one value type today; anything else cannot be expressed. */
 function irInputFor(declaration: SopInputDeclaration): IrInputDeclaration | null {
@@ -90,6 +98,15 @@ function irInputFor(declaration: SopInputDeclaration): IrInputDeclaration | null
 }
 
 function locatorFor(binding: ExecutionBinding): Locator | undefined {
+  return binding.body.kind === 'decision'
+    ? undefined
+    : locatorFromChain(binding.body.target.selectors);
+}
+
+/**
+ * The one locator Agent IR carries for an element, taken from its chain.
+ */
+function locatorFromChain(selectors: SelectorChain): Locator | undefined {
   // The first selector in the chain is the preferred one; 2.4b verified every
   // candidate resolves to the same single element, so taking the head is not a
   // guess. Agent IR carries one locator per step, so the rest of the chain is
@@ -98,7 +115,7 @@ function locatorFor(binding: ExecutionBinding): Locator | undefined {
   // An empty chain should be unreachable — the schema requires one — but it is
   // handled rather than asserted away, because the failure it would cause is a
   // step that acts on nothing.
-  const [first] = binding.body.target.selectors;
+  const [first] = selectors;
 
   if (first === undefined) {
     return undefined;
@@ -225,17 +242,6 @@ export function compileCandidate(input: CompileInput): CompileResult {
   }
 
   for (const step of graph.steps) {
-    if (step.kind === 'decision') {
-      refusals.push(
-        refusal(
-          'branching_unsupported',
-          `Step "${step.id}" is a decision, and branching workflows cannot be compiled yet.`,
-          step.id,
-        ),
-      );
-      continue;
-    }
-
     if (step.kind === 'manual_review') {
       refusals.push(
         refusal(
@@ -348,6 +354,94 @@ export function compileCandidate(input: CompileInput): CompileResult {
           step.id,
         ),
       );
+      continue;
+    }
+
+    if (step.kind === 'decision') {
+      if (binding.body.kind !== 'decision') {
+        refusals.push(
+          refusal(
+            'missing_binding',
+            `Step "${step.id}" is a decision but its mapping is a ${binding.body.kind}.`,
+            step.id,
+          ),
+        );
+        continue;
+      }
+
+      const bound = binding.body;
+      const alternatives: { readonly whenVisible: Locator; readonly next: string }[] = [];
+      let refusedBranch = false;
+
+      for (const branch of step.branches) {
+        // Matched on the reviewer's own condition text rather than on position,
+        // so reordering the graph's branches cannot rebind a decision to the
+        // wrong outcome. The binding validator enforces the same set equality
+        // at save time; this is the compiler refusing rather than trusting it.
+        const demonstrated = bound.branches.find((candidate) => candidate.when === branch.when);
+
+        if (demonstrated === undefined) {
+          refusals.push(
+            refusal(
+              'missing_branch_binding',
+              `Step "${step.id}" branches on "${branch.when}", and nobody has shown what that state looks like.`,
+              step.id,
+            ),
+          );
+          refusedBranch = true;
+          continue;
+        }
+
+        if (!graph.steps.some((candidate) => candidate.id === branch.nextStepId)) {
+          refusals.push(
+            refusal(
+              'unresolved_branch_target',
+              `Step "${step.id}" branches to "${branch.nextStepId}" on "${branch.when}", and this workflow has no such step.`,
+              step.id,
+            ),
+          );
+          refusedBranch = true;
+          continue;
+        }
+
+        const branchLocator = locatorFromChain(demonstrated.selectors);
+
+        if (branchLocator === undefined) {
+          refusals.push(unlocatable(step.id));
+          refusedBranch = true;
+          continue;
+        }
+
+        alternatives.push({ whenVisible: branchLocator, next: branch.nextStepId });
+      }
+
+      if (refusedBranch) {
+        continue;
+      }
+
+      // The graph schema already requires two, so this is unreachable rather
+      // than expected — and it is checked anyway, because `expect_one_of` with
+      // one alternative is not a choice and Agent IR would reject it with a
+      // message about array length rather than about this workflow.
+      if (alternatives.length < 2) {
+        refusals.push(
+          refusal(
+            'missing_branch_binding',
+            `Step "${step.id}" resolves to ${String(alternatives.length)} branch(es), and a decision needs at least two.`,
+            step.id,
+          ),
+        );
+        continue;
+      }
+
+      actions.add('expect_one_of');
+      steps.push({
+        id: step.id,
+        sourceSopStepIds: [step.id],
+        type: 'browser.expect_one_of',
+        alternatives,
+        evidence: { captureScreenshot: true },
+      });
       continue;
     }
 

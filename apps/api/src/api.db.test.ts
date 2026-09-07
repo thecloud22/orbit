@@ -109,6 +109,10 @@ describe('Orbit API over real persistence', () => {
           database: getDatabase().db,
           factory: bindingFactory,
         }),
+        // Uncapped: these tests are about routes and persistence, and a ceiling
+        // reached mid-suite would fail them for a reason unrelated to what they
+        // assert. The budget itself is tested where it lives.
+        modelBudgets: {},
       },
     });
 

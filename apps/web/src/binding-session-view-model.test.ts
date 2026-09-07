@@ -8,14 +8,74 @@ import { describe, expect, it } from 'vitest';
 import { ApiRequestError } from './api-client';
 import {
   bindDisabledReason,
+  branchProgress,
   captureInstruction,
   captureRows,
   DEFAULT_BINDING_START_URL,
   describeBindingSessionFailure,
   formFieldsFor,
   multiFieldWarning,
+  nextBranch,
+  saveButtonLabel,
   suggestedStartUrl,
 } from './binding-session-view-model';
+
+function decisionStep(captured: readonly boolean[]): BindingTargetStepView {
+  return targetStep({
+    stepId: 'check_availability',
+    kind: 'decision',
+    summary: 'Decide whether the title is available',
+    mode: 'pick',
+    declaredValue: null,
+    branches: [
+      { when: 'the title is available to borrow', captured: captured[0] ?? false },
+      { when: 'the title is on loan', captured: captured[1] ?? false },
+    ],
+  });
+}
+
+describe('binding a decision, one branch at a time', () => {
+  it('asks for the first branch nobody has demonstrated', () => {
+    expect(nextBranch(decisionStep([false, false]))).toEqual({
+      when: 'the title is available to borrow',
+      position: 1,
+      total: 2,
+    });
+  });
+
+  it('moves on once a branch has been captured', () => {
+    expect(nextBranch(decisionStep([true, false]))?.when).toBe('the title is on loan');
+  });
+
+  it('asks for nothing once every branch is covered', () => {
+    expect(nextBranch(decisionStep([true, true]))).toBeNull();
+  });
+
+  it('never asks a non-decision for a branch', () => {
+    expect(nextBranch(targetStep())).toBeNull();
+  });
+
+  it('names the branch in the instruction, because that is the whole task', () => {
+    const view = session({ step: decisionStep([true, false]), captures: [] });
+    expect(captureInstruction(view)).toContain('the title is on loan');
+  });
+
+  it('reports how far through the branches this sitting has got', () => {
+    expect(branchProgress(decisionStep([true, false]))).toBe('1 of 2 branches demonstrated.');
+    expect(branchProgress(decisionStep([true, true]))).toContain('Saving now writes the binding');
+    expect(branchProgress(targetStep())).toBeNull();
+  });
+
+  it('says the last branch is the one that saves, and the others are not', () => {
+    expect(saveButtonLabel(session({ step: decisionStep([false, false]) }))).toBe(
+      'Use this for "the title is available to borrow"',
+    );
+    expect(saveButtonLabel(session({ step: decisionStep([true, false]) }))).toBe(
+      'Use this for "the title is on loan" and save',
+    );
+    expect(saveButtonLabel(session())).toBe('Save this binding');
+  });
+});
 
 function targetStep(overrides: Partial<BindingTargetStepView> = {}): BindingTargetStepView {
   return {
@@ -26,6 +86,7 @@ function targetStep(overrides: Partial<BindingTargetStepView> = {}): BindingTarg
     declaredValue: '${inputs.requestNumber}',
     sensitive: false,
     fields: [],
+    branches: [],
     ...overrides,
   };
 }

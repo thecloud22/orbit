@@ -1,6 +1,7 @@
 import { SOP_GRAPH_SCHEMA_VERSION } from '@orbit/sop-graph';
 import { describe, expect, it } from 'vitest';
 
+import { ASSUMED_TOKENS_PER_CALL } from './budget';
 import { generateSopGraph } from './generate';
 import { SOP_GENERATION_PROMPT_VERSION } from './prompt';
 import { SopProviderError, type LLMProvider } from './provider';
@@ -201,5 +202,128 @@ describe('SopProviderError', () => {
     expect(error.provider).toBe('anthropic');
     expect(error.cause).toBe(cause);
     expect(error.message).not.toContain('acct_123');
+  });
+});
+
+/**
+ * The budget, inside the pipeline.
+ *
+ * The claims here are the ones a cap has to make to be worth anything: the
+ * check happens *before* the call, usage accumulates across both attempts of a
+ * draft, and a repair that would exceed a ceiling is refused rather than made —
+ * with the invalid draft's own issues returned alongside the reason, so nothing
+ * is silently half-done.
+ */
+describe('generateSopGraph, under a token budget', () => {
+  it('records what each call spent, on the way through', async () => {
+    const provider = createFakeSopProvider({
+      respond: respondInOrder([
+        respondWith(validSopGraphProposal(), { inputTokens: 700, outputTokens: 300 }),
+      ]),
+    });
+
+    const result = await generateSopGraph({ provider, sourceText: 'anything' });
+
+    expect(result.calls).toEqual([
+      { attempt: 1, usage: { inputTokens: 700, outputTokens: 300 }, assumed: false },
+    ]);
+  });
+
+  it('accumulates usage across the attempt and its repair', async () => {
+    const provider = createFakeSopProvider({
+      respond: respondInOrder([
+        respondWith(invalidSopGraphProposal(), { inputTokens: 700, outputTokens: 300 }),
+        respondWith(validSopGraphProposal(), { inputTokens: 900, outputTokens: 100 }),
+      ]),
+    });
+
+    const result = await generateSopGraph({ provider, sourceText: 'anything' });
+
+    expect(result.ok).toBe(true);
+    expect(result.calls.map((call) => call.attempt)).toEqual([1, 2]);
+    expect(
+      result.calls.reduce(
+        (total, call) => total + call.usage.inputTokens + call.usage.outputTokens,
+        0,
+      ),
+    ).toBe(2_000);
+  });
+
+  it('makes no call at all when a budget is already exhausted', async () => {
+    const provider = createFakeSopProvider({
+      respond: respondInOrder([respondWith(validSopGraphProposal())]),
+    });
+
+    const result = await generateSopGraph({
+      provider,
+      sourceText: 'anything',
+      budgets: { global: 1_000 },
+      spend: { global: 1_000, document: 0, request: 0 },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('budget_exhausted');
+    // The point of checking before the call rather than after it.
+    expect(provider.callCount).toBe(0);
+    expect(result.calls).toEqual([]);
+  });
+
+  it('refuses the repair when the first call used up the budget, and says so', async () => {
+    // The mid-session case: the attempt succeeds, spends real tokens, and the
+    // repair that might have fixed it is no longer affordable. This must not be
+    // a silent half-result, and must not be reported as the model failing.
+    const provider = createFakeSopProvider({
+      respond: respondInOrder([
+        respondWith(invalidSopGraphProposal(), { inputTokens: 9_000, outputTokens: 1_000 }),
+        respondWith(validSopGraphProposal()),
+      ]),
+    });
+
+    const result = await generateSopGraph({
+      provider,
+      sourceText: 'anything',
+      budgets: { request: 12_000 },
+      spend: { global: 0, document: 0, request: 0 },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('budget_exhausted_before_repair');
+    // The repair was never made — one call, not two.
+    expect(provider.callCount).toBe(1);
+    expect(result.calls).toHaveLength(1);
+
+    if (result.reason !== 'budget_exhausted_before_repair') return;
+    // And the draft's own problems come back with it, so the person is not told
+    // only that they ran out.
+    expect(result.issues.length).toBeGreaterThan(0);
+    expect(result.refusal.scope).toBe('request');
+  });
+
+  it('charges an assumed size when the provider reports no usage', async () => {
+    // A provider that stops reporting usage must not silently become free, or
+    // the next check would let an unbounded number of calls through.
+    const provider = createFakeSopProvider({
+      respond: respondInOrder([respondWith(validSopGraphProposal(), null)]),
+    });
+
+    const result = await generateSopGraph({ provider, sourceText: 'anything' });
+
+    expect(result.calls[0]?.assumed).toBe(true);
+    expect(result.calls[0]?.usage.inputTokens).toBe(ASSUMED_TOKENS_PER_CALL);
+  });
+
+  it('still reports what a failed provider call spent', async () => {
+    const provider = createFakeSopProvider({
+      respond: respondInOrder([failWith('the provider is unreachable')]),
+    });
+
+    const result = await generateSopGraph({ provider, sourceText: 'anything' });
+
+    expect(result.ok).toBe(false);
+    // Nothing came back, so nothing was charged — but the field is present on
+    // every outcome, so a caller never has to ask whether it exists.
+    expect(result.calls).toEqual([]);
   });
 });

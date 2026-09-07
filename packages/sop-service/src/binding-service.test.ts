@@ -123,6 +123,58 @@ describe('bindingBodyFor', () => {
   });
 });
 
+describe('bindingBodyFor, for a decision', () => {
+  const decision = step('check_password_expired');
+
+  if (decision.kind !== 'decision') {
+    throw new Error('fixture changed: "check_password_expired" should be a decision');
+  }
+
+  const branches = decision.branches.map((branch, index) => ({
+    when: branch.when,
+    selectors: [{ strategy: 'test_id', value: `branch-${String(index)}` }] as SelectorChain,
+    fingerprint: buttonFingerprint(),
+  }));
+
+  it('builds one element per branch, ordered by the graph', () => {
+    const result = bindingBodyFor({
+      step: decision,
+      // Demonstrated in the reverse of the graph's order, on purpose: the
+      // person walks the page, not the JSON, and the body must still read in
+      // the order the workflow does.
+      choice: { kind: 'decision', branches: [...branches].reverse() },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.body.kind !== 'decision') return;
+
+    expect(result.body.branches.map((branch) => branch.when)).toEqual(
+      decision.branches.map((branch) => branch.when),
+    );
+    expect(result.body.branches[0]?.selectors).toEqual(branches[0]?.selectors);
+  });
+
+  it('refuses a decision with a branch nobody demonstrated, and names it', () => {
+    const result = bindingBodyFor({
+      step: decision,
+      choice: { kind: 'decision', branches: branches.slice(0, 1) },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    expect(result.reason).toContain(branches[1]?.when ?? '');
+  });
+
+  it('needs no single capture, because a decision has no single element', () => {
+    // The absence of `capture` is the point: every other kind refuses without
+    // one, and a decision must not.
+    expect(bindingBodyFor({ step: decision, choice: { kind: 'decision', branches } }).ok).toBe(
+      true,
+    );
+  });
+});
+
 describe('defaultValueSourceFor', () => {
   it('reads a reference straight off the step, so a drafted fill needs no second answer', () => {
     expect(defaultValueSourceFor(step('enter_request_number'))).toEqual({

@@ -106,12 +106,17 @@ describe('recording a workflow end to end', () => {
 
     // And the selectors were verified against the real page at capture time,
     // so they are the ones the drift check will later resolve.
-    const clickBinding = result.bindings.find((binding) => binding.binding.body.kind === 'click');
-    expect(clickBinding?.binding.body.target.selectors[0]).toEqual({
+    const body = result.bindings.find((binding) => binding.binding.body.kind === 'click')?.binding
+      .body;
+
+    expect(body?.kind).toBe('click');
+    if (body?.kind !== 'click') return;
+
+    expect(body.target.selectors[0]).toEqual({
       strategy: 'test_id',
       value: 'search-request-button',
     });
-    expect(clickBinding?.binding.body.target.fingerprint.accessibleName).toBe('Search');
+    expect(body.target.fingerprint.accessibleName).toBe('Search');
   }, 90_000);
 
   it('appears in the documents list and opens in review, like any other document', async () => {

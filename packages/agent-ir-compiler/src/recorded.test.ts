@@ -113,11 +113,13 @@ describe('a recorded workflow', () => {
 });
 
 describe('the escalation-review reference workflow', () => {
-  it('is refused, because 2.5 compiles linear workflows only', () => {
+  it('is refused: it routes to a person, and nothing in it is bound', () => {
     // This is the worked example from the requirements document and the
-    // realistic target for Phase 2. It does not compile yet, and pinning that
+    // realistic target for Phase 2. It still does not compile, and pinning that
     // here means the limitation is a test rather than a paragraph someone has
-    // to remember.
+    // to remember. What changed in this task is *why*: branching itself is no
+    // longer the obstacle — these decisions simply have no bindings, and three
+    // steps still route to a human, which nothing can automate.
     const graph = escalationReviewGraph();
 
     const result = compileCandidate({
@@ -131,7 +133,9 @@ describe('the escalation-review reference workflow', () => {
     if (result.ok) return;
 
     const codes = new Set(result.refusals.map((entry) => entry.code));
-    expect(codes.has('branching_unsupported')).toBe(true);
+    // Not `missing_branch_binding`: with no bindings at all, a decision is
+    // refused for having none, exactly as a fill or a click is.
+    expect(codes.has('missing_binding')).toBe(true);
     expect(codes.has('manual_review_unsupported')).toBe(true);
   });
 });

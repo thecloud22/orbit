@@ -379,6 +379,33 @@ Set `ANTHROPIC_API_KEY` in `.env` (see `.env.example`). Without it the API still
 starts and every other route works; the draft route reports that generation is
 unavailable. `ORBIT_LLM_MODEL` overrides the default, `claude-sonnet-5`.
 
+### Model spend limits (Phase 2.8)
+
+Every model call is metered and refused **before it is made** once a budget is
+spent. Three scopes, all checked before each call, with the most restrictive one
+that would be exceeded reported:
+
+| Scope | At drafting time it means | Default | Variable |
+|---|---|---|---|
+| Global | every call in this deployment | 5,000,000 tokens | `ORBIT_LLM_TOKEN_BUDGET_GLOBAL` |
+| Per agent | every call for one SOP **document** | 500,000 tokens | `ORBIT_LLM_TOKEN_BUDGET_PER_AGENT` |
+| Per run | one Generate: the attempt plus its one repair | 100,000 tokens | `ORBIT_LLM_TOKEN_BUDGET_PER_RUN` |
+
+"Per agent" is per document because a document is 1:1 with the agent it will
+become, so before publication the two are the same thing. Ceilings default to
+**set**, not unlimited; removing one is spelled `unlimited`, and anything else
+unparseable stops the API from starting rather than falling back.
+
+Spend is summed from `model_usage`, an append-only ledger of one row per
+provider *call* — a draft costs one call or two, and the call is the unit that
+is billed. `GET /v1/model-usage` reports spend and headroom, and Watchtower's
+Generate button reflects it, but the **server** is the gate: an over-budget
+Generate is refused with 429 whether or not any UI rendered.
+
+Cost is an **estimate**, computed from rates in `ORBIT_LLM_RATES_USD_PER_MTOK`
+(with built-in defaults). Nothing fetches a price list, and every surface that
+shows the figure says it is approximate. See **ADR-029**.
+
 ### The deterministic fake provider
 
 Every automated test uses a scripted fake provider and makes no network call. The

@@ -6,7 +6,14 @@ import {
   validateBindingAgainstStep,
   type BoundStepDescription,
 } from './validate';
-import { clickBinding, extractBinding, fillBinding, FIXTURE_STEP_SHA256 } from './testing/fixtures';
+import {
+  clickBinding,
+  clickTarget,
+  decisionBinding,
+  extractBinding,
+  fillBinding,
+  FIXTURE_STEP_SHA256,
+} from './testing/fixtures';
 
 function step(overrides: Partial<BoundStepDescription> = {}): BoundStepDescription {
   return {
@@ -32,7 +39,7 @@ describe('parseExecutionBinding', () => {
       body: {
         ...bad.body,
         target: {
-          ...bad.body.target,
+          ...clickTarget(),
           selectors: [{ strategy: 'css', value: 'div > button:nth-child(2)' }],
         },
       },
@@ -44,7 +51,7 @@ describe('parseExecutionBinding', () => {
   it('cannot express a binding for a manual_review step', () => {
     const result = parseExecutionBinding({
       ...clickBinding(),
-      body: { kind: 'manual_review', target: clickBinding().body.target },
+      body: { kind: 'manual_review', target: clickTarget() },
     });
 
     expect(result.ok).toBe(false);
@@ -55,7 +62,7 @@ describe('parseExecutionBinding', () => {
     expect(
       parseExecutionBinding({
         ...bad,
-        body: { ...bad.body, target: { ...bad.body.target, selectors: [] } },
+        body: { ...bad.body, target: { ...clickTarget(), selectors: [] } },
       }).ok,
     ).toBe(false);
   });
@@ -64,6 +71,58 @@ describe('parseExecutionBinding', () => {
 describe('validateBindingAgainstStep', () => {
   it('accepts a binding whose step matches', () => {
     expect(validateBindingAgainstStep(clickBinding(), step())).toEqual([]);
+  });
+
+  it('accepts a decision whose branches match the step exactly', () => {
+    expect(
+      validateBindingAgainstStep(
+        decisionBinding(),
+        step({
+          stepId: 'check_availability',
+          kind: 'decision',
+          branchConditions: ['the title is available', 'the title is on loan'],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('refuses a decision with a branch nobody demonstrated', () => {
+    const issues = validateBindingAgainstStep(
+      decisionBinding(),
+      step({
+        stepId: 'check_availability',
+        kind: 'decision',
+        branchConditions: ['the title is available', 'the title is on loan', 'no such title'],
+      }),
+    );
+
+    expect(issues.map((issue) => issue.code)).toEqual(['BRANCH_MISMATCH']);
+    expect(issues[0]?.message).toContain('"no such title"');
+  });
+
+  it('refuses a decision carrying a branch the step no longer declares', () => {
+    const issues = validateBindingAgainstStep(
+      decisionBinding(),
+      step({
+        stepId: 'check_availability',
+        kind: 'decision',
+        branchConditions: ['the title is available'],
+      }),
+    );
+
+    expect(issues.map((issue) => issue.code)).toEqual(['BRANCH_MISMATCH']);
+    expect(issues[0]?.message).toContain('no longer a branch');
+  });
+
+  it('refuses a decision when the caller supplied no branch conditions at all', () => {
+    // Absent is not "anything goes": a caller that forgets to describe the
+    // step's branches must get a refusal, not a pass.
+    expect(
+      validateBindingAgainstStep(
+        decisionBinding(),
+        step({ stepId: 'check_availability', kind: 'decision' }),
+      ).map((issue) => issue.code),
+    ).toEqual(['BRANCH_MISMATCH']);
   });
 
   it('reports a step the workflow does not have', () => {

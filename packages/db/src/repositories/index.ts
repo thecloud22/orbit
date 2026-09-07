@@ -10,6 +10,7 @@ import {
   createExecutionBindingRepository,
   type ExecutionBindingRepository,
 } from './execution-bindings';
+import { createModelUsageRepository, type ModelUsageRepository } from './model-usage';
 import { createRunEventRepository, type RunEventRepository } from './run-events';
 import { createRunStepRepository, type RunStepRepository } from './run-steps';
 import { createRunRepository, type RunRepository } from './runs';
@@ -24,6 +25,7 @@ export * from './agent-versions';
 export * from './agents';
 export * from './artifacts';
 export * from './execution-bindings';
+export * from './model-usage';
 export * from './run-events';
 export * from './run-steps';
 export * from './runs';
@@ -41,6 +43,8 @@ export interface OrbitRepositories {
   readonly sopGraphRevisions: SopGraphRevisionRepository;
   readonly executionBindings: ExecutionBindingRepository;
   readonly agentIrCandidates: AgentIrCandidateRepository;
+  /** The model-spend ledger: one row per provider call (ADR-029). */
+  readonly modelUsage: ModelUsageRepository;
 }
 
 export function createRepositories(executor: Executor): OrbitRepositories {
@@ -55,6 +59,7 @@ export function createRepositories(executor: Executor): OrbitRepositories {
     sopGraphRevisions: createSopGraphRevisionRepository(executor),
     executionBindings: createExecutionBindingRepository(executor),
     agentIrCandidates: createAgentIrCandidateRepository(executor),
+    modelUsage: createModelUsageRepository(executor),
   };
 }
 

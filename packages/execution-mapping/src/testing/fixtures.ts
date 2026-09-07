@@ -1,4 +1,4 @@
-import type { ExecutionBinding } from '../binding';
+import type { ElementTarget, ExecutionBinding } from '../binding';
 import { EXECUTION_BINDING_SCHEMA_VERSION } from '../binding';
 import type { ElementFingerprint } from '../fingerprint';
 
@@ -39,20 +39,22 @@ export function statusFingerprint(): ElementFingerprint {
   };
 }
 
+/** The element `clickBinding` names, for tests that mutate a target. */
+export function clickTarget(): ElementTarget {
+  return {
+    selectors: [
+      { strategy: 'test_id', value: 'search-request-button' },
+      { strategy: 'role_and_name', value: 'button', name: 'Search' },
+    ],
+    fingerprint: buttonFingerprint(),
+  };
+}
+
 export function clickBinding(overrides: Partial<ExecutionBinding> = {}): ExecutionBinding {
   return {
     schemaVersion: EXECUTION_BINDING_SCHEMA_VERSION,
     stepId: 'search_request',
-    body: {
-      kind: 'click',
-      target: {
-        selectors: [
-          { strategy: 'test_id', value: 'search-request-button' },
-          { strategy: 'role_and_name', value: 'button', name: 'Search' },
-        ],
-        fingerprint: buttonFingerprint(),
-      },
-    },
+    body: { kind: 'click', target: clickTarget() },
     capturedAgainstRevisionId: 'soprev_fixture',
     stepSha256: SHA,
     ...overrides,
@@ -89,6 +91,45 @@ export function extractBinding(overrides: Partial<ExecutionBinding> = {}): Execu
       },
       readMethod: { kind: 'text' },
       variable: 'requestStatus',
+    },
+    capturedAgainstRevisionId: 'soprev_fixture',
+    stepSha256: SHA,
+    ...overrides,
+  };
+}
+
+/**
+ * A decision bound the way one is actually demonstrated: one element per
+ * branch, matched to the branch by the graph's own condition text.
+ */
+export function decisionBinding(overrides: Partial<ExecutionBinding> = {}): ExecutionBinding {
+  return {
+    schemaVersion: EXECUTION_BINDING_SCHEMA_VERSION,
+    stepId: 'check_availability',
+    body: {
+      kind: 'decision',
+      branches: [
+        {
+          when: 'the title is available',
+          selectors: [{ strategy: 'test_id', value: 'catalog-borrow-button' }],
+          fingerprint: {
+            role: 'button',
+            accessibleName: 'Borrow',
+            text: 'Borrow',
+            boundingBox: { x: 0, y: 0, width: 90, height: 30 },
+          },
+        },
+        {
+          when: 'the title is on loan',
+          selectors: [{ strategy: 'test_id', value: 'catalog-hold-button' }],
+          fingerprint: {
+            role: 'button',
+            accessibleName: 'Place a hold',
+            text: 'Place a hold',
+            boundingBox: { x: 0, y: 0, width: 120, height: 30 },
+          },
+        },
+      ],
     },
     capturedAgainstRevisionId: 'soprev_fixture',
     stepSha256: SHA,

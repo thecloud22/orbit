@@ -20,6 +20,8 @@
     "pino": "^10.0.0"
   },
   "devDependencies": {
+    "@orbit/agent-ir-compiler": "workspace:*",
+    "@orbit/sop-service": "workspace:*",
     "@types/node": "^26.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.9.0"

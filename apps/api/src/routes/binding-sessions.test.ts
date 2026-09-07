@@ -29,6 +29,7 @@ const SESSION: BindingSessionState = {
     declaredValue: '${inputs.requestNumber}',
     sensitive: false,
     fields: [],
+    branches: [],
   },
   captures: [
     {

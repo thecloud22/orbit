@@ -13,6 +13,7 @@ import type {
   SopBindingsView,
   PublishedAgentVersionView,
   SopDocumentSummaryView,
+  ModelUsageView,
   SopDraftView,
   SopReviewView,
 } from '@orbit/api/views';
@@ -146,6 +147,18 @@ export async function fetchArtifact(url: string): Promise<Blob> {
  * error envelope's `details`, so the caller can show a reviewer why a draft was
  * refused rather than only that it was.
  */
+/**
+ * Model spend and remaining budget.
+ *
+ * A courtesy, not a gate. The server refuses a Generate that would exceed a
+ * ceiling whether or not anything asked this first; what this buys is telling
+ * someone *before* they write three paragraphs.
+ */
+export async function getModelUsage(documentId?: string): Promise<ModelUsageView> {
+  const query = documentId === undefined ? '' : `?documentId=${encodeURIComponent(documentId)}`;
+  return getJson(`/v1/model-usage${query}`);
+}
+
 export async function createSopDraft(sourceText: string): Promise<SopDraftView> {
   const response = await fetch('/v1/sop-drafts', {
     method: 'POST',
@@ -267,6 +280,8 @@ export async function saveBinding(
     readonly readMethod?:
       { kind: 'text' } | { kind: 'attribute'; attribute: string } | { kind: 'checked' };
     readonly variable?: string;
+    /** For a decision: which branch this capture demonstrates. */
+    readonly branchWhen?: string;
   },
 ): Promise<SavedBindingView> {
   return send(`/v1/binding-sessions/${sessionId}/binding`, 'POST', input);

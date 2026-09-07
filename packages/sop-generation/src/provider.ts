@@ -1,5 +1,7 @@
 import type { SopGraphIssue } from '@orbit/sop-graph';
 
+import type { ModelCallUsage } from './budget';
+
 /**
  * The model boundary.
  *
@@ -50,10 +52,25 @@ export interface ProviderDescriptor {
   readonly model: string;
 }
 
+/**
+ * What one call produced, and what it cost in tokens.
+ *
+ * Usage travels with the proposal rather than through a side channel, because
+ * the two are facts about the same call and a caller that could get one without
+ * the other would eventually record a proposal it never billed. `usage` is null
+ * only when the provider genuinely did not report any — a fact worth keeping
+ * distinguishable from "zero tokens", which is not a thing that happens.
+ */
+export interface SopGraphProposalResponse {
+  /** The model's structured output, unvalidated. */
+  readonly proposal: unknown;
+  readonly usage: ModelCallUsage | null;
+}
+
 export interface LLMProvider {
   readonly descriptor: ProviderDescriptor;
-  /** Returns the model's structured output, unvalidated. Throws SopProviderError. */
-  generateSopGraphProposal(request: SopGraphProposalRequest): Promise<unknown>;
+  /** Returns the model's structured output and its token usage. Throws SopProviderError. */
+  generateSopGraphProposal(request: SopGraphProposalRequest): Promise<SopGraphProposalResponse>;
 }
 
 /**
@@ -67,7 +84,7 @@ export interface LLMProvider {
 export function createUnconfiguredSopProvider(reason: string): LLMProvider {
   return {
     descriptor: { provider: 'unconfigured', model: 'none' },
-    generateSopGraphProposal() {
+    generateSopGraphProposal(): Promise<SopGraphProposalResponse> {
       return Promise.reject(new SopProviderError(reason, { provider: 'unconfigured' }));
     },
   };

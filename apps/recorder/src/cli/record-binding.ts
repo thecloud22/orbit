@@ -525,8 +525,14 @@ async function askChoice(
   const readMethod = readMethodFor(method, attribute);
 
   if (step.kind === 'decision') {
-    const condition = (await ask(context.io, '  Which branch condition does this feed? ')).trim();
-    return { kind: 'decision', readMethod, condition };
+    // A decision binds one element *per branch*, and this CLI's flow is
+    // one-capture-one-binding. Refused rather than half-bound: Watchtower's
+    // binding panel walks the branches in turn and is the way to bind one.
+    process.stdout.write(
+      '  A decision needs one element per branch, which this recorder cannot assemble.\n' +
+        '  Bind it from the review page in Watchtower instead.\n',
+    );
+    return undefined;
   }
 
   const variable = (await ask(context.io, '  Which workflow value does it populate? ')).trim();

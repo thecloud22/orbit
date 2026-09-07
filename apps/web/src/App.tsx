@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import type { AgentVersionView, SopDraftView } from '@orbit/api/views';
+import type { AgentVersionView, ModelUsageView, SopDraftView } from '@orbit/api/views';
 
 import { AgentsPage } from './AgentsPage';
 import { ApiErrorNotice } from './ApiErrorNotice';
@@ -8,12 +8,17 @@ import {
   ApiRequestError,
   archiveAgent,
   createSopDraft,
+  getModelUsage,
   listAgentVersions,
   restoreAgent,
   startRecording,
 } from './api-client';
 import { APP_INFO } from './app-info';
-import { describeSopDraftFailure, type SopDraftFailure } from './sop-draft-view-model';
+import {
+  describeSopDraftFailure,
+  summarizeModelSpend,
+  type SopDraftFailure,
+} from './sop-draft-view-model';
 import { SopDraftForm } from './SopDraftForm';
 import { SopDraftPanel } from './SopDraftPanel';
 import { DocumentsPage } from './DocumentsPage';
@@ -46,6 +51,7 @@ export function App() {
   const [draft, setDraft] = useState<SopDraftView | null>(null);
   const [draftFailure, setDraftFailure] = useState<SopDraftFailure | null>(null);
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
+  const [modelUsage, setModelUsage] = useState<ModelUsageView | null>(null);
   const [isStartingRecording, setIsStartingRecording] = useState(false);
   const [recordingError, setRecordingError] = useState<ApiRequestError | null>(null);
   const [view, setView] = useState<View>(() => viewFromSearch(window.location.search));
@@ -78,6 +84,25 @@ export function App() {
     setView(next);
   }, []);
 
+  /**
+   * Spend, refreshed after every Generate as well as on load.
+   *
+   * A failure here is swallowed on purpose: this is a courtesy display, and the
+   * server refuses an over-budget Generate whether or not it rendered. Showing
+   * an error about a spend readout would be louder than the thing it reports.
+   */
+  const refreshModelUsage = useCallback(async () => {
+    try {
+      setModelUsage(await getModelUsage());
+    } catch {
+      setModelUsage(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshModelUsage();
+  }, [refreshModelUsage]);
+
   async function generateDraft(sourceText: string) {
     setIsGeneratingDraft(true);
     setDraftFailure(null);
@@ -98,6 +123,11 @@ export function App() {
       );
     } finally {
       setIsGeneratingDraft(false);
+      // After the failure path as well as the success path: a refused call
+      // still spent tokens if it got as far as the model, and a call the budget
+      // stopped did not — the ledger knows which, and this is how the display
+      // finds out.
+      void refreshModelUsage();
     }
   }
 
@@ -336,6 +366,7 @@ export function App() {
                   <SopDraftForm
                     isGenerating={isGeneratingDraft}
                     onGenerate={(sourceText) => void generateDraft(sourceText)}
+                    spend={summarizeModelSpend(modelUsage)}
                   />
                 </div>
               </section>

@@ -2,7 +2,13 @@ import { ChatAnthropic } from '@langchain/anthropic';
 
 import { sopGraphProposalSchema, type SopGraphProposal } from './proposal';
 import { buildGenerationMessage, SOP_GENERATION_SYSTEM_PROMPT } from './prompt';
-import { SopProviderError, type LLMProvider, type SopGraphProposalRequest } from './provider';
+import type { ModelCallUsage } from './budget';
+import {
+  SopProviderError,
+  type LLMProvider,
+  type SopGraphProposalRequest,
+  type SopGraphProposalResponse,
+} from './provider';
 
 /**
  * The Anthropic-backed provider.
@@ -69,6 +75,37 @@ function unvalidatedArguments(response: {
   return response.parsed;
 }
 
+/**
+ * The token counts the provider reported, or null when it reported none.
+ *
+ * Read off the raw `AIMessage`, which is available only because `includeRaw` is
+ * already set for the repair loop's sake. Read defensively — the shape is
+ * LangChain's rather than ours — and a call whose usage cannot be read is
+ * recorded as unknown rather than as zero: a budget that silently treats an
+ * unreadable call as free is a budget with a hole in it, and the pipeline
+ * charges an assumed cost for one instead.
+ */
+function usageOf(raw: unknown): ModelCallUsage | null {
+  if (typeof raw !== 'object' || raw === null || !('usage_metadata' in raw)) {
+    return null;
+  }
+
+  const metadata = (raw as { readonly usage_metadata?: unknown }).usage_metadata;
+
+  if (typeof metadata !== 'object' || metadata === null) {
+    return null;
+  }
+
+  const input = (metadata as { readonly input_tokens?: unknown }).input_tokens;
+  const output = (metadata as { readonly output_tokens?: unknown }).output_tokens;
+
+  if (typeof input !== 'number' || typeof output !== 'number') {
+    return null;
+  }
+
+  return { inputTokens: input, outputTokens: output };
+}
+
 export function createAnthropicSopProvider(options: AnthropicSopProviderOptions): LLMProvider {
   const model = options.model ?? DEFAULT_SOP_GENERATION_MODEL;
 
@@ -87,7 +124,9 @@ export function createAnthropicSopProvider(options: AnthropicSopProviderOptions)
   return {
     descriptor: { provider: ANTHROPIC_PROVIDER_NAME, model },
 
-    async generateSopGraphProposal(request: SopGraphProposalRequest): Promise<unknown> {
+    async generateSopGraphProposal(
+      request: SopGraphProposalRequest,
+    ): Promise<SopGraphProposalResponse> {
       try {
         const response = await structured.invoke([
           { role: 'system', content: SOP_GENERATION_SYSTEM_PROMPT },
@@ -97,7 +136,7 @@ export function createAnthropicSopProvider(options: AnthropicSopProviderOptions)
           },
         ]);
 
-        return unvalidatedArguments(response);
+        return { proposal: unvalidatedArguments(response), usage: usageOf(response.raw) };
       } catch (error) {
         // Wrapped, never re-thrown bare: the pipeline converts exactly one
         // error type into a provider failure, and the original is kept as the

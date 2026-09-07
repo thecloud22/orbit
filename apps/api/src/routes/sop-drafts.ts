@@ -85,6 +85,29 @@ export function registerSopDraftRoutes(app: FastifyInstance, context: ApiContext
         throw internalError('The SOP could not be generated because the model provider failed.');
       }
 
+      // 429: a budget stopped this, and the person can do something about it.
+      // Kept apart from the 422 below because the two ask for different things
+      // — one is "the model could not do it", the other is "you have run out" —
+      // and a status that conflated them would send someone to the wrong place.
+      if (result.reason === 'budget_exhausted') {
+        throw new ApiError({
+          code: 'VALIDATION_ERROR',
+          statusCode: 429,
+          message: result.refusal.message,
+        });
+      }
+
+      if (result.reason === 'budget_exhausted_before_repair') {
+        throw new ApiError({
+          code: 'VALIDATION_ERROR',
+          statusCode: 429,
+          message:
+            `${result.refusal.message} The draft that was produced did not pass validation, ` +
+            'and the repair that might have fixed it was not attempted. Nothing was saved.',
+          details: toErrorDetails(result.issues),
+        });
+      }
+
       // 422: the request was well-formed and the model was reached; what came
       // back was not a valid SOP Graph even after one repair. Nothing was
       // persisted.

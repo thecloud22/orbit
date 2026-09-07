@@ -13,8 +13,10 @@
  */
 
 export const COMPILE_REFUSAL_CODES = [
-  /** A `decision` step: 2.5 compiles linear graphs only. */
-  'branching_unsupported',
+  /** A branch of a `decision` step nobody has demonstrated on a page. */
+  'missing_branch_binding',
+  /** A branch that names a step this workflow does not contain. */
+  'unresolved_branch_target',
   /** A `manual_review` step: routing to a human has no executable form. */
   'manual_review_unsupported',
   /** A step that needs an approved binding and has none. */

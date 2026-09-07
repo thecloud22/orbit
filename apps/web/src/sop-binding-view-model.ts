@@ -175,11 +175,25 @@ export function summarizeBindings(bindings: SopBindingsView | null): string | nu
  * compiler requires a binding for.
  *
  * A `navigate` step compiles from the graph's own URL hint, a `manual_review`
- * step routes to a person, and `decision`/`outcome` steps are not compiled
- * today. Offering to bind any of them would be offering work that changes
- * nothing.
+ * step routes to a person, and an `outcome` step touches no element. Offering
+ * to bind any of them would be offering work that changes nothing.
+ *
+ * `decision` joined the list once the compiler learned to emit
+ * `browser.expect_one_of`: a decision now needs one demonstrated element per
+ * branch, and without them a branching workflow cannot be published at all.
+ *
+ * Stated as a literal rather than imported from `@orbit/agent-ir-compiler`,
+ * because Watchtower must not pull a compiler — with its `node:crypto` and its
+ * database checksum import — into a browser bundle. The API is the authority;
+ * this list only decides what to offer, and a disagreement surfaces as a
+ * refusal from the server rather than as a wrong binding.
  */
-export const WATCHTOWER_BINDABLE_KINDS: readonly string[] = ['fill', 'click', 'extract'];
+export const WATCHTOWER_BINDABLE_KINDS: readonly string[] = [
+  'fill',
+  'click',
+  'extract',
+  'decision',
+];
 
 /**
  * Whether the compiler requires a binding for this kind of step.

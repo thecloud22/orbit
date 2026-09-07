@@ -194,7 +194,7 @@ describe('binding sessions', () => {
     const result = await registered.bind(started.state.sessionId, { captureId: captureId! });
 
     expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    if (!result.ok || result.binding === null) return;
 
     expect(result.binding.state).toBe('approved');
     expect(result.binding.stepId).toBe('enter_request_number');
@@ -244,7 +244,7 @@ describe('binding sessions', () => {
     const result = await registered.bind(started.state.sessionId, { captureId: captureId! });
 
     expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    if (!result.ok || result.binding === null) return;
 
     const current = await createRepositories(database).sopGraphRevisions.findCurrent(
       documentId as never,
@@ -324,7 +324,7 @@ describe('binding sessions', () => {
     });
 
     expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    if (!result.ok || result.binding === null) return;
     expect(result.binding.binding.body).toMatchObject({
       kind: 'extract',
       variable: 'status',

@@ -7,6 +7,7 @@ import {
 
 import { startApi } from './bootstrap';
 import { loadRootEnv, resolveRepositoryArtifactRoot } from './env';
+import { resolveModelBudgets, resolveModelRates } from './model-budget-env';
 
 /**
  * The API process.
@@ -49,6 +50,8 @@ function resolveSopProvider(): LLMProvider {
 try {
   await startApi({
     sopProvider: resolveSopProvider(),
+    modelBudgets: resolveModelBudgets(),
+    modelRates: resolveModelRates(),
     databaseUrl: requireDatabaseUrl('DATABASE_URL'),
     artifactRoot: resolveRepositoryArtifactRoot(),
     port: Number(process.env['API_PORT'] ?? 3002),

@@ -1,5 +1,5 @@
 import type { SopDocumentId, SopRevisionId } from '@orbit/contracts';
-import { clickBinding, fillBinding } from '@orbit/execution-mapping/testing';
+import { clickBinding, clickTarget, fillBinding } from '@orbit/execution-mapping/testing';
 import { BINDING_STATES, type BindingState } from '@orbit/execution-mapping';
 import { escalationReviewGraph } from '@orbit/sop-graph/testing';
 import { eq } from 'drizzle-orm';
@@ -68,8 +68,12 @@ describe('execution binding persistence', () => {
     expect(created.parentBindingId).toBeNull();
 
     const read = await repositories().executionBindings.findById(created.id);
-    expect(read?.binding.body.kind).toBe('click');
-    expect(read?.binding.body.target.selectors[0]).toEqual({
+    const body = read?.binding.body;
+
+    expect(body?.kind).toBe('click');
+    if (body?.kind !== 'click') return;
+
+    expect(body.target.selectors[0]).toEqual({
       strategy: 'test_id',
       value: 'search-request-button',
     });
@@ -85,7 +89,7 @@ describe('execution binding persistence', () => {
           body: {
             ...click().body,
             target: {
-              ...click().body.target,
+              ...clickTarget(),
               selectors: [{ strategy: 'css', value: 'div > button' }],
             },
           },

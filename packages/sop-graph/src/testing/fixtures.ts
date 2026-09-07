@@ -358,3 +358,139 @@ export function minimalGraph(): SopGraph {
 export function cloneGraph(graph: SopGraph): SopGraph {
   return JSON.parse(JSON.stringify(graph)) as SopGraph;
 }
+
+/**
+ * The branching demo workflow: borrow a title, or place a hold on it.
+ *
+ * The first graph in this repository whose decision is meant to *execute*
+ * rather than only validate. It targets `apps/library-portal` (port 3020),
+ * whose catalog row renders a Borrow form only when a title is available and a
+ * Hold form only when it is on loan — two mutually exclusive, visually
+ * distinguishable states, which is precisely what `browser.expect_one_of`
+ * resolves by waiting for whichever one appears.
+ *
+ * Step order matters and is not incidental: the borrow path is written
+ * immediately after the decision so it is the fall-through, and it ends in a
+ * terminal outcome so control never runs on into the hold path below it.
+ */
+export function borrowOrHoldGraph(): SopGraph {
+  return {
+    schemaVersion: SOP_GRAPH_SCHEMA_VERSION,
+    title: 'Borrow a library title, or place a hold',
+    description:
+      'Search the catalog for a title. Borrow it if it is available; place a hold if it is on loan.',
+    entryStepId: 'open_catalog',
+    inputs: [
+      {
+        id: 'bookIsbn',
+        label: 'ISBN',
+        type: 'string',
+        required: true,
+        minLength: 1,
+        example: '978-0-13-235088-4',
+      },
+      {
+        id: 'memberId',
+        label: 'Member ID',
+        type: 'string',
+        required: true,
+        minLength: 1,
+        example: 'LIB-1001',
+      },
+    ],
+    outputs: [
+      { name: 'borrowConfirmation', label: 'Borrow confirmation' },
+      { name: 'holdConfirmation', label: 'Hold confirmation' },
+    ],
+    steps: [
+      {
+        id: 'open_catalog',
+        kind: 'navigate',
+        urlHint: 'http://localhost:3020/catalog',
+        purpose: 'Open the library catalog search page',
+      },
+      {
+        id: 'enter_isbn',
+        kind: 'fill',
+        fieldHint: 'Search the catalog',
+        value: '${inputs.bookIsbn}',
+        purpose: 'Search for the title by its ISBN',
+      },
+      {
+        id: 'search_catalog',
+        kind: 'click',
+        targetHint: 'Search',
+        purpose: 'Run the catalog search',
+      },
+      {
+        id: 'check_availability',
+        kind: 'decision',
+        question: 'Is the title available to borrow, or already on loan?',
+        purpose: 'Decide whether to borrow the title or join the queue for it',
+        branches: [
+          { when: 'the title is available to borrow', nextStepId: 'enter_borrow_member_id' },
+          { when: 'the title is on loan', nextStepId: 'enter_hold_member_id' },
+        ],
+      },
+      {
+        id: 'enter_borrow_member_id',
+        kind: 'fill',
+        fieldHint: 'Member ID to borrow',
+        value: '${inputs.memberId}',
+        purpose: 'Identify the member borrowing the title',
+      },
+      {
+        id: 'borrow_title',
+        kind: 'click',
+        targetHint: 'Borrow',
+        purpose: 'Borrow the available title',
+      },
+      {
+        id: 'read_borrow_confirmation',
+        kind: 'extract',
+        fields: [
+          { name: 'borrowConfirmation', labelHint: 'Borrow confirmation message', required: true },
+        ],
+        purpose: 'Record what the library said about the loan',
+      },
+      {
+        id: 'borrowed',
+        kind: 'outcome',
+        outcome: 'borrowed',
+        message: 'The title was borrowed.',
+        returns: [{ name: 'borrowConfirmation' }],
+      },
+      {
+        id: 'enter_hold_member_id',
+        kind: 'fill',
+        fieldHint: 'Member ID to place a hold',
+        value: '${inputs.memberId}',
+        purpose: 'Identify the member joining the queue',
+      },
+      {
+        id: 'place_hold',
+        kind: 'click',
+        targetHint: 'Place a hold',
+        purpose: 'Place a hold on the title that is out',
+      },
+      {
+        id: 'read_hold_confirmation',
+        kind: 'extract',
+        fields: [
+          { name: 'holdConfirmation', labelHint: 'Hold confirmation message', required: true },
+        ],
+        purpose: 'Record the queue position the library reported',
+      },
+      {
+        id: 'held',
+        kind: 'outcome',
+        outcome: 'held',
+        message: 'A hold was placed on the title.',
+        returns: [{ name: 'holdConfirmation' }],
+      },
+    ],
+    assumptions: [],
+    clarificationQuestions: [],
+    risks: [],
+  };
+}

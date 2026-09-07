@@ -10,11 +10,14 @@ import {
 } from './api-client';
 import {
   bindDisabledReason,
+  branchProgress,
   captureInstruction,
   captureRows,
   describeBindingSessionFailure,
   formFieldsFor,
   multiFieldWarning,
+  nextBranch,
+  saveButtonLabel,
   type BindingFailure,
 } from './binding-session-view-model';
 import { LOCAL_BROWSER_NOTICE, RECORDING_POLL_INTERVAL_MS } from './recording-view-model';
@@ -111,16 +114,24 @@ export function BindingSessionPanel({ sessionId, onSaved, onClosed }: BindingSes
     setFailure(null);
 
     try {
+      const branch = session === null ? null : nextBranch(session.step);
+
       const saved = await saveBinding(sessionId, {
         captureId: selectedCaptureId,
         ...(variable === null || variable === '' ? {} : { variable }),
+        ...(branch === null ? {} : { branchWhen: branch.when }),
       });
 
       setSession(saved.session);
-      setSavedStepId(saved.stepId);
+      // Null when a decision branch was captured and others remain: nothing was
+      // written, so the panel must not claim a binding was saved.
+      setSavedStepId(saved.bindingId === null ? null : saved.stepId);
       setSelectedCaptureId(null);
       setVariable(null);
-      onSaved();
+
+      if (saved.bindingId !== null) {
+        onSaved();
+      }
     } catch (caught) {
       setFailure(
         describeBindingSessionFailure(
@@ -150,6 +161,8 @@ export function BindingSessionPanel({ sessionId, onSaved, onClosed }: BindingSes
   const fields = session === null ? null : formFieldsFor(session.step);
   const warning = session === null ? null : multiFieldWarning(session.step);
   const disabledReason = bindDisabledReason({ session, selectedCaptureId, variable });
+  const branch = session === null ? null : nextBranch(session.step);
+  const progress = session === null ? null : branchProgress(session.step);
 
   return (
     <section
@@ -184,6 +197,24 @@ export function BindingSessionPanel({ sessionId, onSaved, onClosed }: BindingSes
         >
           Saved and approved. The browser is still open — bind another step by choosing one below,
           or click Done.
+        </p>
+      )}
+
+      {progress !== null && (
+        <p
+          className="mt-2 rounded bg-slate-50 px-3 py-2 text-xs text-slate-700"
+          data-testid="binding-branch-progress"
+        >
+          {progress}
+        </p>
+      )}
+
+      {branch !== null && (
+        <p
+          className="mt-2 rounded bg-indigo-50 px-3 py-2 text-xs text-indigo-900"
+          data-testid="binding-branch-prompt"
+        >
+          Branch {branch.position} of {branch.total}: <strong>{branch.when}</strong>
         </p>
       )}
 
@@ -295,7 +326,7 @@ export function BindingSessionPanel({ sessionId, onSaved, onClosed }: BindingSes
           onClick={() => void save()}
           type="button"
         >
-          {isSaving ? 'Saving…' : 'Save this binding'}
+          {isSaving ? 'Saving…' : saveButtonLabel(session)}
         </button>
         {disabledReason !== null && (
           <span className="text-xs text-slate-500" data-testid="binding-disabled-reason">

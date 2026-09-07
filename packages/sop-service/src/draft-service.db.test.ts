@@ -270,3 +270,163 @@ describe('SOP draft persistence', () => {
     }
   });
 });
+
+/**
+ * The token cap, over real persistence.
+ *
+ * The pipeline's own tests prove the check happens before the call. These prove
+ * the other half: that the ledger is written whatever the outcome, that spend is
+ * read back from it on the next Generate, and that a brand-new document adopts
+ * the calls that made it.
+ */
+describe('model spend and budgets', () => {
+  const getDatabase = useTestDatabase();
+
+  function service(options: {
+    readonly responses: Parameters<typeof respondInOrder>[0];
+    readonly budgets?: Parameters<typeof createSopDraftService>[0]['budgets'];
+  }) {
+    return createSopDraftService({
+      database: getDatabase().db,
+      provider: createFakeSopProvider({ respond: respondInOrder(options.responses) }),
+      ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
+      rates: { 'fake-model': { inputPerMillionUsd: 3, outputPerMillionUsd: 15 } },
+    });
+  }
+
+  it('records one ledger row per call, attributed to the document it made', async () => {
+    const result = await service({
+      responses: [
+        respondWith(invalidSopGraphProposal(), { inputTokens: 700, outputTokens: 300 }),
+        respondWith(validSopGraphProposal(), { inputTokens: 900, outputTokens: 100 }),
+      ],
+    }).createDraft({ kind: 'new_document', sourceText: SOURCE_TEXT });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const repositories = createRepositories(getDatabase().db);
+    const rows = await repositories.modelUsage.listForDocument(result.document.id);
+
+    // Two calls, not one draft: the unit that is billed is the unit recorded.
+    expect(rows.map((row) => row.attempt)).toEqual([1, 2]);
+    expect((await repositories.modelUsage.totalsForDocument(result.document.id)).totalTokens).toBe(
+      2_000,
+    );
+
+    // 1,600 input at $3/Mtok plus 400 output at $15/Mtok = $0.0108.
+    expect(
+      (await repositories.modelUsage.totalsForDocument(result.document.id)).estimatedCostMicroUsd,
+    ).toBe(10_800);
+  });
+
+  it('records the call even when the draft it produced was thrown away', async () => {
+    // A call that happened cannot un-happen. Recording only successful drafts
+    // would let a run of invalid ones spend without ever appearing.
+    const result = await service({
+      responses: [
+        respondWith(invalidSopGraphProposal(), { inputTokens: 500, outputTokens: 100 }),
+        respondWith(invalidSopGraphProposal(), { inputTokens: 500, outputTokens: 100 }),
+      ],
+    }).createDraft({ kind: 'new_document', sourceText: SOURCE_TEXT });
+
+    expect(result.ok).toBe(false);
+    expect((await createRepositories(getDatabase().db).modelUsage.totals()).totalTokens).toBe(
+      1_200,
+    );
+  });
+
+  it('counts a document’s earlier drafts against its own budget', async () => {
+    const first = await service({
+      responses: [respondWith(validSopGraphProposal(), { inputTokens: 40_000, outputTokens: 0 })],
+      budgets: { document: 45_000 },
+    }).createDraft({ kind: 'new_document', sourceText: SOURCE_TEXT });
+
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    // The second draft of the *same document* is refused, which only works
+    // because the first draft's calls were adopted into it.
+    const second = await service({
+      responses: [respondWith(validSopGraphProposal())],
+      budgets: { document: 45_000 },
+    }).createDraft({ kind: 'new_revision', documentId: first.document.id });
+
+    expect(second.ok).toBe(false);
+    if (second.ok) return;
+    expect(second.reason).toBe('budget_exhausted');
+  });
+
+  it('leaves a document’s budget alone when another document spent the tokens', async () => {
+    const first = await service({
+      responses: [respondWith(validSopGraphProposal(), { inputTokens: 40_000, outputTokens: 0 })],
+      budgets: { document: 45_000 },
+    }).createDraft({ kind: 'new_document', sourceText: SOURCE_TEXT });
+
+    expect(first.ok).toBe(true);
+
+    // A different document, same ceiling, and it is unaffected — which is the
+    // whole meaning of a per-agent scope.
+    const second = await service({
+      responses: [respondWith(validSopGraphProposal())],
+      budgets: { document: 45_000 },
+    }).createDraft({ kind: 'new_document', sourceText: `${SOURCE_TEXT} Again.` });
+
+    expect(second.ok).toBe(true);
+  });
+
+  it('stops at the global ceiling regardless of which document is drafting', async () => {
+    await service({
+      responses: [respondWith(validSopGraphProposal(), { inputTokens: 40_000, outputTokens: 0 })],
+      budgets: { global: 45_000 },
+    }).createDraft({ kind: 'new_document', sourceText: SOURCE_TEXT });
+
+    const second = await service({
+      responses: [respondWith(validSopGraphProposal())],
+      budgets: { global: 45_000 },
+    }).createDraft({ kind: 'new_document', sourceText: `${SOURCE_TEXT} Again.` });
+
+    expect(second.ok).toBe(false);
+    if (second.ok) return;
+    expect(second.reason).toBe('budget_exhausted');
+  });
+
+  it('saves nothing when the budget refuses the call outright', async () => {
+    await service({
+      responses: [respondWith(validSopGraphProposal(), { inputTokens: 40_000, outputTokens: 0 })],
+      budgets: { global: 45_000 },
+    }).createDraft({ kind: 'new_document', sourceText: SOURCE_TEXT });
+
+    const before = await countRows(getDatabase().db);
+
+    const refused = await service({
+      responses: [respondWith(validSopGraphProposal())],
+      budgets: { global: 45_000 },
+    }).createDraft({ kind: 'new_document', sourceText: `${SOURCE_TEXT} Again.` });
+
+    expect(refused.ok).toBe(false);
+    expect(await countRows(getDatabase().db)).toEqual(before);
+  });
+
+  it('returns the draft’s own issues when the repair was the thing refused', async () => {
+    const result = await service({
+      responses: [
+        respondWith(invalidSopGraphProposal(), { inputTokens: 9_000, outputTokens: 1_000 }),
+        respondWith(validSopGraphProposal()),
+      ],
+      budgets: { request: 12_000 },
+    }).createDraft({ kind: 'new_document', sourceText: SOURCE_TEXT });
+
+    expect(result.ok).toBe(false);
+    if (result.ok || result.reason !== 'budget_exhausted_before_repair') {
+      throw new Error(`expected a refused repair, got ${result.ok ? 'success' : result.reason}`);
+    }
+
+    expect(result.issues.length).toBeGreaterThan(0);
+    expect(result.refusal.scope).toBe('request');
+    // The first call still spent tokens, and the ledger still says so.
+    expect((await createRepositories(getDatabase().db).modelUsage.totals()).totalTokens).toBe(
+      10_000,
+    );
+  });
+});
