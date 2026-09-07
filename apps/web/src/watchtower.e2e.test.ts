@@ -613,13 +613,18 @@ describe('Watchtower end to end', () => {
       await page.close();
     });
 
-    it('will not submit for review until every question is answered, then approves', async () => {
+    it('names unanswered questions as what blocks publishing, and clears once answered', async () => {
+      // Nobody submits for review or approves any more (ADR-028): publishing
+      // drives the whole lifecycle. What still belongs in front of a person is
+      // a clarification nobody answered, because publishing would refuse on it.
       const page = await open();
       await openReview(page);
 
-      // Blocked, and the page says why rather than just omitting a button.
+      expect(await page.getByTestId('sop-lifecycle-actions').count()).toBe(0);
       expect(await page.getByTestId('sop-action-submit_for_review').count()).toBe(0);
-      const blocked = (await page.getByTestId('sop-submit-blocked').textContent()) ?? '';
+      expect(await page.getByTestId('sop-action-approve').count()).toBe(0);
+
+      const blocked = (await page.getByTestId('sop-publish-blocked').textContent()) ?? '';
       expect(blocked).toContain('clarification question');
 
       const questions = await page.getByTestId('sop-clarification').count();
@@ -638,29 +643,14 @@ describe('Watchtower end to end', () => {
         await page.waitForTimeout(400);
       }
 
+      // Answered, so nothing stands between this workflow and publishing but
+      // its own bindings — and no approval step was ever asked for.
       await expect
-        .poll(() => page.getByTestId('sop-action-submit_for_review').count(), { timeout: 20_000 })
-        .toBe(1);
+        .poll(() => page.getByTestId('sop-publish-blocked').count(), { timeout: 20_000 })
+        .toBe(0);
 
-      await page.getByTestId('sop-action-submit_for_review').click();
-      await expect
-        .poll(async () => (await page.getByTestId('sop-review-state').textContent()) ?? '', {
-          timeout: 20_000,
-        })
-        .toContain('In review');
-
-      // Editing is closed while a revision is under review.
-      expect(await page.getByTestId('sop-step-edit-open_portal').count()).toBe(0);
-
-      await page.getByTestId('sop-action-approve').click();
-      await expect
-        .poll(async () => (await page.getByTestId('sop-review-state').textContent()) ?? '', {
-          timeout: 20_000,
-        })
-        .toContain('Approved');
-
-      // Approval is the end of this phase: nothing here publishes or runs.
-      expect(await page.getByTestId('sop-action-approve').count()).toBe(0);
+      // The workflow is still a draft that never became executable itself.
+      expect(await page.getByTestId('sop-review-not-executable').count()).toBe(1);
 
       await page.close();
     });

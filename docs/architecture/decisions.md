@@ -622,7 +622,7 @@ Three questions followed. Where does the human confirm what was captured? How mu
 
 **The injected script marks an element and reports an event, and does nothing else.** It computes no selectors, reads no accessibility data, and makes no decisions. Everything — the role, the accessible name, the selector candidates, the verification — is derived in Node through the same first-class Playwright APIs `describeElement` uses. Anything the script derived would be a second implementation of existing logic running in the least trustworthy place available, and a page that lied about a role would change nothing: the token is looked up and the element re-derived on this side.
 
-**Two capture modes, and the difference is behavioural.** *Action* mode listens passively and lets the event through, because demonstrating a step means actually performing it. *Pick* mode intercepts the event so that choosing a value to read performs nothing — an extract step must never fire the page's own handlers just because someone pointed at a value. Mode is a variable inside the page rather than a separate script, so switching costs nothing; an earlier version re-injected and reloaded, which silently discarded whatever the human had navigated to, putting anything past a sign-in out of reach.
+**Two capture modes, and the difference is behavioural.** *Action* mode lets the interaction happen, because demonstrating a step means actually performing it. *Pick* mode intercepts the event so that choosing a value to read performs nothing — an extract step must never fire the page's own handlers just because someone pointed at a value. Mode is a variable inside the page rather than a separate script, so switching costs nothing; an earlier version re-injected and reloaded, which silently discarded whatever the human had navigated to, putting anything past a sign-in out of reach. (**Superseded in part by ADR-028**: action mode originally listened passively and let the event through untouched, which lost every interaction that navigated. It now holds the interaction, waits for derivation, and replays it. What the script derives — nothing — is unchanged.)
 
 **Selector candidates are verified, not guessed.** Each is checked to resolve to exactly one element *and* to the element the human picked — a locator count and an identity check, both deterministic, so no model is consulted. A capture with no uniquely-resolving candidate is refused rather than saved, because a binding whose selector reaches the wrong element is worse than no binding at all.
 
@@ -1042,3 +1042,53 @@ The second question is what a bound draft is then allowed to do. ADR-025 gave a 
 | Create bindings as `draft` and require a separate approval click | The demonstration is the review; a second screen confirming one's own demonstration is the ceremony ADR-025 removed. Matches `recording-service.ts`'s precedent |
 | Let a partly bound draft publish and rely on the compiler's refusal | The revision would already have been driven through approval by then, leaving a workflow approved and uncompilable, with a refusal that names nothing actionable |
 | Offer binding for every step kind | `navigate` compiles from the graph's own hint and `manual_review` routes to a person; binding either changes no compiler outcome |
+
+## ADR-028: Hold an interaction until it has been derived, and stop asking anyone to approve a workflow
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+Two things came from using the product rather than from planning it.
+
+**The recorder lost most of a real workflow.** ADR-019 made the injected script as small as it could be: it stamps the element and reports a token, and every selector and fingerprint is derived in Node through first-class Playwright APIs. Action mode "listens and lets the event through", which read as the safe, non-invasive choice. It is not, because derivation happens *after* the event and one round trip away. A click that submits a form or follows a link tears down the document, and its JavaScript execution context with it, before that round trip finishes. Playwright discards the in-flight binding call along with the dead context — so the interaction was recorded as nothing at all, and not even as a failure, because the error path lived in the context that had just died. The fill before it died the same way: `change` fires on blur during mousedown, and its derivation raced the same teardown.
+
+Every test passed. The demo portal re-renders in place and never navigates, and the one fill test called `blur()` and then waited for derivation to settle before asserting — a sequence no person performs. On a real site, the steps that submit a form or follow a link are most of a workflow, so the recorder silently captured the least important half of what it was shown.
+
+**Nobody wanted the review lifecycle.** ADR-025 had already collapsed it for recorded workflows, and ADR-027 for fully bound drafted ones, on the grounds that a demonstration is the review. What remained was a review page that still asked a person to Submit for review and then Approve — for a workflow that publishing would drive through those same states by itself, seconds later, whether they clicked or not.
+
+### Decision
+
+**Action mode intercepts, waits, and replays.** The injected script now holds a click (`preventDefault`, `stopImmediatePropagation`), waits for Node to finish deriving the element it named, and then re-issues it — guarded by a flag so the replay passes through untouched. A `submit` listener does the same for the Enter key, which produces no click at all and would otherwise lose the field just typed into. Reports are chained in order, so a click waits for the fill that preceded it, which is what keeps a typed value from being lost to the very button that makes the step worth recording.
+
+This reverses ADR-019's stated property that action mode "lets the event through". That property was chosen for non-interference and delivered silence instead: the interaction is now delayed by a few milliseconds and recorded, rather than undisturbed and lost.
+
+**The wait is bounded.** A two-second ceiling, after which the interaction proceeds regardless. Losing a capture is bad; leaving a page permanently unclickable because the binding stopped answering is worse, and a person driving a real browser must never be trapped by the thing recording them.
+
+**What the script still does not do is unchanged.** It computes no selectors, reads no accessibility data, and derives nothing. It stamps, reports, waits, and replays. ADR-019's actual containment — one file, unreachable from anything that executes an agent, everything derived in Node — is untouched, and `recording-boundary.test.ts` still proves it.
+
+**No workflow is submitted for review or approved by a person.** The review page's lifecycle buttons are gone. The state machine underneath is not: `SOP_REVISION_TRANSITIONS`, the repository guards, and ADR-017's rule that only a `draft` or `needs_clarification` revision may be edited all stand, and `publish-pipeline.ts` drives the transitions itself, so every row still records the states it actually went through. What was removed is the asking.
+
+**One precondition stays in front of a person**: an unanswered clarification question. Publishing refuses on it, and `publishBlockedReason` says so before the click rather than after it — derived from the unanswered questions directly, since no lifecycle action is offered any more to derive it from.
+
+### Consequences
+
+- A recorded workflow on a real website now contains the steps that navigate, which is most of them. This is the difference between the recorder working and appearing to.
+- A capture can still be lost if derivation exceeds two seconds, and that is now the only way it can happen. It is a bounded, stated risk rather than a silent structural one.
+- Action mode is observable to the page: the click it dispatches is untrusted (`isTrusted: false`) and arrives a few milliseconds late. A site that gates behaviour on `isTrusted` would behave differently under recording. No such site is in scope, and the alternative is not recording it at all.
+- The review page has no lifecycle controls, so a workflow's state is something publishing decides. `stateLabel` still reports what the server did.
+- `reviewActions` and `REVIEW_ACTION_LABELS` were deleted along with their tests; `transitionSopRevision` remains in the API client and the route remains live, since the transition endpoint is real API surface even with no UI caller.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Derive selectors inside the injected script | Puts the logic ADR-019 deliberately kept out of the page into the least trustworthy place available, and forks `describeElement`'s derivation in the process |
+| Report and hope, but surface the loss loudly | Honest, and still leaves the recorder unable to record a form submission — the most common step in a real workflow |
+| Snapshot the element's own HTML synchronously and derive from that later | Derivation needs the live element (`ariaSnapshot`, locator counts, bounding box); a detached copy cannot be verified to resolve to exactly one element |
+| Block navigation with `beforeunload` | Not reliable, user-visible, and does not help the in-page re-render case |
+| Wait indefinitely rather than bounding it | A page that stops responding to clicks is a worse failure than a missed capture, and it would be blamed on the site rather than on Orbit |
+| Keep the approve button "just in case" | It approves something publishing approves anyway; a control whose only effect is to do early what happens regardless teaches people it matters when it does not |
+| Remove the revision state machine as well | It is the audit trail — what a workflow went through is the product — and ADR-017's editability rule depends on it |

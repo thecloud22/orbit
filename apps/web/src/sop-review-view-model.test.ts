@@ -7,9 +7,8 @@ import {
   EDITABLE_STEP_KINDS,
   fieldsForStepKind,
   pruneEmptyFields,
-  reviewActions,
+  publishBlockedReason,
   stateLabel,
-  submitBlockedReason,
 } from './sop-review-view-model';
 
 const REVIEW: SopReviewView = {
@@ -49,67 +48,30 @@ const REVIEW: SopReviewView = {
   executable: false,
 };
 
-describe('reviewActions', () => {
-  it('labels only the actions the server offered', () => {
-    // The legal set is computed from SOP_REVISION_TRANSITIONS on the server;
-    // this file may label them and nothing else.
-    expect(reviewActions(REVIEW).map((action) => action.action)).toEqual([
-      'request_clarification',
-      'submit_for_review',
-      'reject',
-    ]);
-    expect(reviewActions(REVIEW).map((action) => action.label)).toEqual([
-      'Send back for clarification',
-      'Submit for review',
-      'Reject',
-    ]);
-  });
-
-  it('offers nothing when the server offered nothing', () => {
-    expect(reviewActions({ ...REVIEW, availableActions: [] })).toEqual([]);
-  });
-
-  it('passes through an action it has no label for rather than dropping it', () => {
-    expect(reviewActions({ ...REVIEW, availableActions: ['some_future_action'] })[0]).toEqual({
-      action: 'some_future_action',
-      label: 'some_future_action',
-      emphasis: 'secondary',
-    });
-  });
-});
-
-describe('submitBlockedReason', () => {
-  it('explains the absent action rather than leaving a gap', () => {
-    const blocked = submitBlockedReason({
-      ...REVIEW,
-      availableActions: ['request_clarification'],
-      unansweredQuestionIds: ['q1', 'q2'],
-    });
+describe('publishBlockedReason', () => {
+  it('names the outstanding questions rather than letting publishing refuse later', () => {
+    const blocked = publishBlockedReason({ ...REVIEW, unansweredQuestionIds: ['q1', 'q2'] });
 
     expect(blocked).toBe(
-      '2 clarification questions still need answers before this workflow can be reviewed.',
+      '2 clarification questions still need answers before this workflow can be published.',
     );
   });
 
   it('uses the singular for one outstanding question', () => {
-    expect(
-      submitBlockedReason({
-        ...REVIEW,
-        availableActions: [],
-        unansweredQuestionIds: ['q1'],
-      }),
-    ).toContain('One clarification question');
+    expect(publishBlockedReason({ ...REVIEW, unansweredQuestionIds: ['q1'] })).toContain(
+      'One clarification question',
+    );
   });
 
-  it('says nothing when the action is available', () => {
-    expect(submitBlockedReason(REVIEW)).toBeNull();
+  it('says nothing when every question has been answered', () => {
+    expect(publishBlockedReason(REVIEW)).toBeNull();
   });
 
-  it('says nothing when the action is absent for a reason other than questions', () => {
-    // An approved revision offers no submit action, but that is not a blocked
-    // submission and must not be reported as one.
+  it('reads the questions directly, not the lifecycle actions nobody is offered any more', () => {
+    // No lifecycle action is on offer in the UI at all now (ADR-028), so an
+    // empty `availableActions` must not by itself read as "blocked".
     expect(
-      submitBlockedReason({
+      publishBlockedReason({
         ...REVIEW,
         state: 'approved',
         availableActions: [],

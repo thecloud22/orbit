@@ -15,39 +15,20 @@ import type { ApiRequestError } from './api-client';
  * repository enforces.
  */
 
-export const REVIEW_ACTION_LABELS: Readonly<Record<string, string>> = {
-  request_clarification: 'Send back for clarification',
-  submit_for_review: 'Submit for review',
-  approve: 'Approve',
-  reject: 'Reject',
-};
-
-export interface ReviewAction {
-  readonly action: string;
-  readonly label: string;
-  /** Approve and reject end the review, so they are asked about first. */
-  readonly emphasis: 'primary' | 'secondary';
-}
-
-export function reviewActions(draft: SopReviewView): readonly ReviewAction[] {
-  return draft.availableActions.map((action) => ({
-    action,
-    label: REVIEW_ACTION_LABELS[action] ?? action,
-    emphasis: action === 'approve' || action === 'submit_for_review' ? 'primary' : 'secondary',
-  }));
-}
-
 /**
- * Why "submit for review" is not on offer.
+ * Why publishing is not available yet.
  *
- * The server withholds the action while questions are unanswered, but an
- * absent button explains nothing. This turns the absence into the reason.
+ * Nobody is asked to submit a workflow for review or to approve it — publishing
+ * drives the whole lifecycle itself (ADR-028). One precondition still belongs
+ * in front of a person rather than inside a refusal: a clarification the
+ * generator asked for and nobody answered. Publishing would refuse on it, and
+ * saying so up front is better than saying so after the click.
+ *
+ * Derived from the unanswered questions directly rather than from which
+ * lifecycle actions the server offers, because no lifecycle action is on offer
+ * here any more.
  */
-export function submitBlockedReason(review: SopReviewView): string | null {
-  if (review.availableActions.includes('submit_for_review')) {
-    return null;
-  }
-
+export function publishBlockedReason(review: SopReviewView): string | null {
   const unanswered = review.unansweredQuestionIds.length;
 
   if (unanswered === 0) {
@@ -55,8 +36,8 @@ export function submitBlockedReason(review: SopReviewView): string | null {
   }
 
   return unanswered === 1
-    ? 'One clarification question still needs an answer before this workflow can be reviewed.'
-    : `${unanswered} clarification questions still need answers before this workflow can be reviewed.`;
+    ? 'One clarification question still needs an answer before this workflow can be published.'
+    : `${unanswered} clarification questions still need answers before this workflow can be published.`;
 }
 
 export const REVIEW_STATE_LABELS: Readonly<Record<string, string>> = {

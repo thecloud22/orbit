@@ -13,7 +13,6 @@ import {
   reorderSopStep,
   startBindingSession,
   targetBindingStep,
-  transitionSopRevision,
 } from './api-client';
 import { BindingSessionPanel } from './BindingSessionPanel';
 import {
@@ -28,9 +27,8 @@ import { SopPublishPanel } from './SopPublishPanel';
 import { SopStepEditor } from './SopStepEditor';
 import {
   describeReviewFailure,
-  reviewActions,
+  publishBlockedReason,
   stateLabel,
-  submitBlockedReason,
   type ReviewFailure,
 } from './sop-review-view-model';
 import { DRAFT_NOT_EXECUTABLE_NOTICE } from './sop-draft-view-model';
@@ -171,7 +169,7 @@ export function SopReviewPage({
     );
   }
 
-  const blocked = submitBlockedReason(review);
+  const blocked = publishBlockedReason(review);
 
   return (
     <section className="flex flex-col gap-4" data-testid="sop-review">
@@ -190,29 +188,8 @@ export function SopReviewPage({
           Revision {review.revisionNumber} · {stateLabel(review.state)}
         </p>
 
-        <div className="mt-3 flex flex-wrap gap-2" data-testid="sop-lifecycle-actions">
-          {reviewActions(review).map((action) => (
-            <button
-              className={
-                action.emphasis === 'primary'
-                  ? 'rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:bg-slate-300'
-                  : 'rounded-md border border-slate-300 px-3 py-1.5 text-sm disabled:text-slate-400'
-              }
-              data-testid={`sop-action-${action.action}`}
-              disabled={busy}
-              key={action.action}
-              onClick={() =>
-                void act(() => transitionSopRevision(review.revisionId, action.action))
-              }
-              type="button"
-            >
-              {action.label}
-            </button>
-          ))}
-        </div>
-
         {blocked !== null && (
-          <p className="mt-2 text-xs text-amber-900" data-testid="sop-submit-blocked">
+          <p className="mt-2 text-xs text-amber-900" data-testid="sop-publish-blocked">
             {blocked}
           </p>
         )}

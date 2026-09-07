@@ -65,12 +65,35 @@ export interface RawCapture {
 }
 
 /**
+ * How long the page will wait for Node to finish deriving before acting anyway.
+ *
+ * A ceiling, not a delay: derivation normally resolves in a few milliseconds
+ * and the action proceeds immediately. It exists so a page can never be left
+ * permanently unclickable because the binding stopped answering — losing a
+ * capture is bad, wedging the browser somebody is working in is worse.
+ */
+const DERIVATION_BUDGET_MS = 2000;
+
+/**
  * Builds the init script for a mode.
  *
- * `action` listens and lets the event through — the click genuinely happens,
- * which is the entire point of demonstrating a step. `pick` intercepts it, so
- * choosing an element to read from performs nothing: an extract step must never
- * fire the page's own handlers just because someone pointed at a value.
+ * `action` intercepts the interaction, waits for Node to finish deriving the
+ * element it names, and then replays it. `pick` intercepts and never replays,
+ * so choosing an element to read from performs nothing: an extract step must
+ * never fire the page's own handlers just because someone pointed at a value.
+ *
+ * Action mode used to listen passively and let the event through, which was
+ * simpler and silently wrong. Derivation happens in Node, one round trip after
+ * the event; a click that submits a form or follows a link tears down the
+ * document — and its execution context — before that round trip can finish, so
+ * Playwright discarded the in-flight call and the interaction was recorded as
+ * nothing at all. Not even a failure: the error path lives in the context that
+ * just died. Every existing test passed because the demo portal re-renders in
+ * place and never navigates, while on a real site the steps that submit a form
+ * or follow a link are most of the workflow.
+ *
+ * Waiting is therefore not a nicety. It is the only point at which the element
+ * still exists to be described.
  */
 export function buildInjectedScript(mode: CaptureMode): string {
   // Serialised deliberately: this runs in the page and closes over nothing.
@@ -89,14 +112,35 @@ export function buildInjectedScript(mode: CaptureMode): string {
   let counter = 0;
   const token = () => ATTRIBUTE + '-' + (++counter) + '-' + Date.now();
 
+  /**
+   * Everything reported so far, chained in order.
+   *
+   * A click waits on this before it is allowed to proceed, so the fill that
+   * preceded it is derived before the submit it triggers can navigate away.
+   * Without the chain a typed value is lost to the very button that makes the
+   * step worth recording.
+   */
+  let pending = Promise.resolve();
+
+  /** Resolves when the promise settles or the budget expires, whichever is first. */
+  const bounded = (promise) => new Promise((resolve) => {
+    let settled = false;
+    const finish = () => { if (!settled) { settled = true; resolve(); } };
+    promise.then(finish, finish);
+    setTimeout(finish, ${DERIVATION_BUDGET_MS});
+  });
+
   const report = (element, type, typedValue, sensitive) => {
-    if (!element || typeof element.setAttribute !== 'function') { return; }
+    if (!element || typeof element.setAttribute !== 'function') { return Promise.resolve(); }
+    if (typeof window[BINDING] !== 'function') { return Promise.resolve(); }
     const value = token();
     element.setAttribute(ATTRIBUTE, value);
     const payload = { token: value, type: type };
     if (typedValue !== undefined) { payload.typedValue = typedValue; }
     if (sensitive === true) { payload.sensitive = true; }
-    if (typeof window[BINDING] === 'function') { window[BINDING](payload); }
+    const call = pending.then(() => window[BINDING](payload)).catch(() => undefined);
+    pending = call;
+    return call;
   };
 
   const reportNavigation = () => {
@@ -104,7 +148,13 @@ export function buildInjectedScript(mode: CaptureMode): string {
     window[BINDING]({ token: '', type: 'navigate', url: String(location.href) });
   };
 
+  // Set while the recorder itself is re-issuing an interaction it held back, so
+  // the replay is let through instead of being intercepted a second time.
+  let replaying = false;
+
   document.addEventListener('click', (event) => {
+    if (replaying) { return; }
+
     if (currentMode() === 'pick') {
       // Selecting a value to read must not activate the page.
       event.preventDefault();
@@ -113,7 +163,68 @@ export function buildInjectedScript(mode: CaptureMode): string {
       report(event.target, 'pick');
       return;
     }
-    report(event.target, 'click', undefined, false);
+
+    const target = event.target;
+    if (!target || typeof target.dispatchEvent !== 'function') { return; }
+
+    // Held back, not cancelled: the page must not navigate out from under the
+    // derivation that names the element this click acted on.
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    bounded(report(target, 'click', undefined, false)).then(() => {
+      replaying = true;
+      try {
+        if (typeof target.click === 'function') {
+          target.click();
+        } else {
+          target.dispatchEvent(new MouseEvent('click', {
+            bubbles: true, cancelable: true, composed: true, view: window,
+          }));
+        }
+      } finally {
+        replaying = false;
+      }
+    });
+  }, true);
+
+  // Submitting by pressing Enter never produces a click, so without this the
+  // field just typed into is lost to the navigation the form causes.
+  let resubmitting = false;
+
+  document.addEventListener('submit', (event) => {
+    if (resubmitting) { return; }
+
+    const form = event.target;
+
+    if (currentMode() === 'pick') {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      return;
+    }
+
+    if (!form || typeof form.dispatchEvent !== 'function') { return; }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    // Nothing new to report — the fields and the button already reported
+    // themselves. What this waits for is those reports finishing.
+    bounded(pending).then(() => {
+      resubmitting = true;
+      try {
+        if (typeof form.requestSubmit === 'function') {
+          form.requestSubmit();
+        } else if (typeof form.submit === 'function') {
+          form.submit();
+        }
+      } finally {
+        resubmitting = false;
+      }
+    });
   }, true);
 
   document.addEventListener('change', (event) => {

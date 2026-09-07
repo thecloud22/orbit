@@ -1,7 +1,11 @@
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+
 import { compareFingerprint } from '@orbit/execution-mapping';
 import { openRecordingSession, type RecordingSession } from '@orbit/execution-recorder';
 import { createPlaywrightExecutorFactory } from '@orbit/executor-playwright';
 import type { BrowserExecutor } from '@orbit/runtime';
+import { translateRecording, type RecordedEntry } from '@orbit/sop-recording';
 import { afterEach, describe, expect, it } from 'vitest';
 
 /**
@@ -188,5 +192,160 @@ describe('fingerprint parity with the runtime drift check', () => {
     // `read` mode: identity must agree, and the text deliberately need not —
     // that text is the value being extracted and changes every run.
     expect(compareFingerprint(capture!.fingerprint, observed, 'read')).toEqual({ matches: true });
+  });
+});
+
+/**
+ * Interactions that navigate, which is most of a real workflow.
+ *
+ * These use a throwaway local page rather than the demo portal on purpose: the
+ * portal re-renders in place and never navigates, which is exactly why the
+ * defect these cover survived every existing test. A click that submits a form
+ * or follows a link tears down the document — and the execution context
+ * derivation runs in — so a passively-observed capture was discarded before it
+ * could be derived, and the step was recorded as nothing at all.
+ */
+describe('interactions that navigate', () => {
+  const NAVIGATING_PAGE = `<!doctype html><html><body>
+    <form method="GET" action="/next">
+      <label for="q">Search term</label>
+      <input id="q" name="q" data-testid="q" />
+      <label for="dept">Department</label>
+      <select id="dept" name="dept" data-testid="dept">
+        <option value="">Choose…</option>
+        <option value="infra">Infrastructure</option>
+      </select>
+      <button type="submit" data-testid="go">Go</button>
+    </form>
+    <a href="/next" data-testid="link">Next page</a>
+  </body></html>`;
+
+  const NEXT_PAGE = `<!doctype html><html><body><h1 data-testid="done">Next</h1></body></html>`;
+
+  let server: Server | undefined;
+
+  afterEach(() => {
+    server?.close();
+    server = undefined;
+  });
+
+  async function pageServer(): Promise<string> {
+    const started = createServer((request, response) => {
+      response.writeHead(200, { 'content-type': 'text/html' });
+      response.end(request.url?.startsWith('/next') ? NEXT_PAGE : NAVIGATING_PAGE);
+    });
+    server = started;
+
+    await new Promise<void>((resolve) => started.listen(0, '127.0.0.1', resolve));
+    return `http://127.0.0.1:${(started.address() as AddressInfo).port}/`;
+  }
+
+  async function recordAt(url: string): Promise<RecordingSession> {
+    session = await openRecordingSession({ startUrl: url, mode: 'action', headless: true });
+    return session;
+  }
+
+  it('keeps the fill and the click when the submit navigates away', async () => {
+    const active = await recordAt(await pageServer());
+
+    await active.page().getByTestId('q').fill('hello');
+    await active.page().getByTestId('go').click();
+    await active.page().waitForURL(/next/);
+    await settle(active, 2);
+
+    const kinds = active.captures().map((capture) => capture.type);
+
+    expect(kinds).toContain('fill');
+    expect(kinds).toContain('click');
+    expect(active.captures().find((capture) => capture.type === 'fill')?.typedValue).toBe('hello');
+
+    // Held back, not cancelled: the navigation must still have happened.
+    expect(active.page().url()).toContain('/next');
+  });
+
+  it('keeps a link click that navigates away', async () => {
+    const active = await recordAt(await pageServer());
+
+    await active.page().getByTestId('link').click();
+    await active.page().waitForURL(/next/);
+    await settle(active);
+
+    expect(active.captures().map((capture) => capture.type)).toContain('click');
+    expect(active.page().url()).toContain('/next');
+  });
+
+  it('keeps a field submitted with the Enter key, which produces no click', async () => {
+    const active = await recordAt(await pageServer());
+
+    await active.page().getByTestId('q').fill('typed-then-enter');
+    await active.page().getByTestId('q').press('Enter');
+    await active.page().waitForURL(/next/);
+    await settle(active);
+
+    expect(active.captures().find((capture) => capture.type === 'fill')?.typedValue).toBe(
+      'typed-then-enter',
+    );
+    expect(active.page().url()).toContain('/next');
+  });
+
+  it('captures a dropdown selection as a fill of the chosen value', async () => {
+    const active = await recordAt(await pageServer());
+
+    await active.page().getByTestId('dept').selectOption('infra');
+    await settle(active);
+
+    const capture = active.captures().find((entry) => entry.type === 'fill');
+
+    expect(capture?.typedValue).toBe('infra');
+    expect(capture?.fingerprint.role).toBe('combobox');
+  });
+});
+
+/**
+ * The whole point of capturing a field: it has to survive into the agent.
+ *
+ * A capture that never becomes a `browser.fill` step is indistinguishable from
+ * not capturing it at all, so this follows one typed input through the real
+ * browser, the real translator, and the real compiler to the executable step.
+ */
+describe('a typed field reaches the compiled agent', () => {
+  it('becomes a browser.fill step carrying what was typed', async () => {
+    const active = await record();
+
+    await active.page().getByTestId('request-number-input').fill('SR-1001');
+    await active.page().getByTestId('search-request-button').click();
+    await settle(active, 2);
+
+    const entries: RecordedEntry[] = [];
+    for (const entry of active.sequence()) {
+      if (entry.type === 'navigate') {
+        entries.push({ kind: 'navigate', url: entry.url });
+      } else if (entry.type !== 'pick') {
+        entries.push({
+          kind: entry.type,
+          selectors: entry.selectors,
+          fingerprint: entry.fingerprint,
+          ...(entry.typedValue === undefined ? {} : { typedValue: entry.typedValue }),
+          ...(entry.sensitive ? { sensitive: true } : {}),
+        });
+      }
+    }
+
+    const translated = translateRecording({ title: 'Find a service request', sequence: entries });
+    expect(translated.ok).toBe(true);
+    if (!translated.ok) {
+      return;
+    }
+
+    const fillStep = translated.steps.find((step) => step.step.kind === 'fill');
+    expect(fillStep, 'the recording produced no fill step').toBeDefined();
+
+    // The binding is what makes the step executable, and it must name the field
+    // the person actually typed into.
+    expect(fillStep?.binding?.kind).toBe('fill');
+    expect(
+      JSON.stringify(fillStep?.binding).includes('request-number-input'),
+      'the fill binding does not target the field that was typed into',
+    ).toBe(true);
   });
 });
