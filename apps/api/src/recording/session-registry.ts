@@ -1,12 +1,18 @@
-import { newRequestId } from '@orbit/contracts';
 import type { OrbitDatabase } from '@orbit/db';
 import {
   openRecordingSession,
+  type CaptureMode,
   type RecordingSession,
   type SequenceEntry,
 } from '@orbit/execution-recorder';
 import { createSopRecordingService, type RecordedEntry } from '@orbit/sop-service';
 import type { SopGraphIssue } from '@orbit/sop-graph';
+
+import {
+  createSessionStore,
+  DEFAULT_IDLE_TIMEOUT_MS,
+  DEFAULT_SWEEP_INTERVAL_MS,
+} from './session-store';
 
 /**
  * Recording sessions the API is holding open.
@@ -82,7 +88,12 @@ export interface RecordingSessionRegistry {
  * is worth testing without launching Chromium for each case.
  */
 export interface RecordingSessionFactory {
-  open(startUrl: string): Promise<RecordingSession>;
+  /**
+   * `mode` defaults to `'action'`, which is what recording a workflow needs.
+   * A binding session for a read step opens in `'pick'` instead, so the page
+   * does not react while someone points at the value to read.
+   */
+  open(startUrl: string, mode?: CaptureMode): Promise<RecordingSession>;
 }
 
 export function createPlaywrightRecordingSessionFactory(
@@ -91,8 +102,12 @@ export function createPlaywrightRecordingSessionFactory(
   } = {},
 ): RecordingSessionFactory {
   return {
-    open: (startUrl) =>
-      openRecordingSession({ startUrl, mode: 'action', headless: options.headless ?? false }),
+    open: (startUrl, mode) =>
+      openRecordingSession({
+        startUrl,
+        mode: mode ?? 'action',
+        headless: options.headless ?? false,
+      }),
   };
 }
 
@@ -119,16 +134,11 @@ export interface RecordingRegistryOptions {
   readonly now?: () => Date;
 }
 
-const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
-const DEFAULT_SWEEP_INTERVAL_MS = 60 * 1000;
-
 interface OpenSession {
-  readonly sessionId: RecordingSessionId;
   readonly title: string;
   readonly startUrl: string;
   readonly startedAt: Date;
   readonly session: RecordingSession;
-  lastTouchedAt: Date;
 }
 
 /** What the page reported, as a sentence someone can read while working. */
@@ -185,26 +195,23 @@ function toRecordedEntries(sequence: readonly SequenceEntry[]): readonly Recorde
 export function createRecordingSessionRegistry(
   options: RecordingRegistryOptions,
 ): RecordingSessionRegistry {
-  const sessions = new Map<RecordingSessionId, OpenSession>();
   const now = options.now ?? (() => new Date());
-  const idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
   const recordings = createSopRecordingService({ database: options.database });
 
-  /** Closes anything nobody has looked at for a while. */
-  async function reapIdle(): Promise<void> {
-    const deadline = now().getTime() - idleTimeoutMs;
+  // Ids, idle reaping and shutdown come from the shared store, so a recording
+  // browser and a binding browser are cleaned up by one implementation rather
+  // than two that can drift (ADR-027).
+  const sessions = createSessionStore<OpenSession>({
+    idPrefix: 'rec',
+    idleTimeoutMs: options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
+    sweepIntervalMs: options.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS,
+    now,
+    close: (open) => open.session.close(),
+  });
 
-    for (const open of [...sessions.values()]) {
-      if (open.lastTouchedAt.getTime() < deadline) {
-        sessions.delete(open.sessionId);
-        await open.session.close().catch(() => undefined);
-      }
-    }
-  }
-
-  function toState(open: OpenSession): RecordingSessionState {
+  function toState(sessionId: RecordingSessionId, open: OpenSession): RecordingSessionState {
     return {
-      sessionId: open.sessionId,
+      sessionId,
       title: open.title,
       startUrl: open.startUrl,
       currentUrl: open.session.currentUrl(),
@@ -216,44 +223,25 @@ export function createRecordingSessionRegistry(
     };
   }
 
-  // Unreferenced, so a sweeper never keeps the process alive on its own: the
-  // API exits when its server does, not a minute later.
-  const sweeper = setInterval(
-    () => void reapIdle(),
-    options.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS,
-  );
-  sweeper.unref();
-
   return {
     async start(input) {
-      await reapIdle();
+      await sessions.reapIdle();
 
       const session = await options.factory.open(input.startUrl);
-      const startedAt = now();
 
       const open: OpenSession = {
-        sessionId: `rec_${newRequestId().replace(/^req_/, '')}`,
         title: input.title,
         startUrl: input.startUrl,
-        startedAt,
+        startedAt: now(),
         session,
-        lastTouchedAt: startedAt,
       };
 
-      sessions.set(open.sessionId, open);
-      return toState(open);
+      return toState(sessions.add(open), open);
     },
 
     get(sessionId) {
       const open = sessions.get(sessionId);
-
-      if (open === undefined) {
-        return null;
-      }
-
-      // Polling counts as activity: someone watching the list is not idle.
-      open.lastTouchedAt = now();
-      return toState(open);
+      return open === undefined ? null : toState(sessionId, open);
     },
 
     async finish(sessionId) {
@@ -282,8 +270,7 @@ export function createRecordingSessionRegistry(
         return { ok: false, reason: 'invalid_recording', issues: result.issues };
       }
 
-      sessions.delete(sessionId);
-      await open.session.close().catch(() => undefined);
+      await sessions.removeAndClose(sessionId);
 
       return {
         ok: true,
@@ -294,23 +281,11 @@ export function createRecordingSessionRegistry(
     },
 
     async cancel(sessionId) {
-      const open = sessions.get(sessionId);
-
-      if (open === undefined) {
-        return false;
-      }
-
-      sessions.delete(sessionId);
-      await open.session.close().catch(() => undefined);
-      return true;
+      return (await sessions.removeAndClose(sessionId)) !== undefined;
     },
 
-    async closeAll() {
-      clearInterval(sweeper);
-
-      const open = [...sessions.values()];
-      sessions.clear();
-      await Promise.all(open.map((entry) => entry.session.close().catch(() => undefined)));
+    closeAll() {
+      return sessions.closeAll();
     },
   };
 }

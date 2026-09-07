@@ -2,6 +2,7 @@ import type { SopDeclaredOutcomeView, SopPublicationView } from '@orbit/api/view
 import { useState } from 'react';
 
 import {
+  offersBoundPublish,
   offersOneClickPublish,
   publicationStage,
   publicationSummary,
@@ -21,16 +22,22 @@ const BUSINESS_OUTCOMES = ['request_found', 'request_not_found'] as const;
  * (`publish-recording-service.ts` and ADR-024 explain the line this draws and
  * why the fail-closed secret check still applies regardless).
  *
- * A workflow that was not recorded gets an honest note instead of a button:
- * nothing today can map its steps to a real page, so offering to compile it
- * would only ever fail. None of this ever touches the "draft only" notice
- * above — the SOP Graph stays non-executable by construction throughout
- * (ADR-016); publishing produces a separate artifact, not a change to this
- * one.
+ * A workflow that was not recorded gets the same one action once every step
+ * the compiler needs a binding for has an approved, up-to-date one (ADR-027).
+ * That is a technical precondition rather than a review waiver: binding each
+ * step is the same confirmation against a real page a recording gives, just
+ * assembled one step at a time. Until it is met, the panel says what is
+ * missing instead of offering a button that could only ever be refused.
+ *
+ * None of this ever touches the "draft only" notice above — the SOP Graph
+ * stays non-executable by construction throughout (ADR-016); publishing
+ * produces a separate artifact, not a change to this one.
  */
 export function SopPublishPanel(props: {
   readonly publication: SopPublicationView;
   readonly provenanceKind: string;
+  /** Every step the compiler needs a binding for has an approved, fresh one. */
+  readonly fullyBound: boolean;
   readonly declaredOutcomes: readonly SopDeclaredOutcomeView[];
   readonly isPublishing: boolean;
   readonly publishFailure: CompileFailure | null;
@@ -40,7 +47,13 @@ export function SopPublishPanel(props: {
   const stage = publicationStage(props.publication);
   const [outcomeMapping, setOutcomeMapping] = useState<Record<string, string>>({});
 
-  const oneClick = offersOneClickPublish({ provenanceKind: props.provenanceKind, stage });
+  const recorded = offersOneClickPublish({ provenanceKind: props.provenanceKind, stage });
+  const bound = offersBoundPublish({
+    provenanceKind: props.provenanceKind,
+    stage,
+    fullyBound: props.fullyBound,
+  });
+  const oneClick = recorded || bound;
   const hasOutcomes = props.declaredOutcomes.length > 0;
   const mappingComplete = props.declaredOutcomes.every(
     (outcome) => outcomeMapping[outcome.name] !== undefined,
@@ -54,7 +67,7 @@ export function SopPublishPanel(props: {
         ? stage.kind === 'cannot_validate'
           ? publicationSummary(stage)
           : 'Say what each outcome means, then publish this workflow as a runnable agent.'
-        : "This workflow needs its steps mapped to a real page before it can run, and that isn't built yet. Recording the workflow instead works today.";
+        : 'Every step of this workflow has to be bound to a real page before it can run. Bind the steps below, then publish.';
 
   return (
     <section

@@ -16,9 +16,11 @@ import {
   validSopGraphProposal,
 } from '@orbit/sop-generation/testing';
 import type { RecordedEntry } from '@orbit/sop-recording';
+import { SOP_GRAPH_SCHEMA_VERSION, type SopGraph } from '@orbit/sop-graph';
 import {
   createSopCandidateService,
   createSopDraftService,
+  createPublishBoundDocumentService,
   createPublishRecordingService,
   createSopPublishService,
   createSopRecordingService,
@@ -28,8 +30,13 @@ import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createInProcessRunDispatcher } from './dispatch';
+import { createBindingSessionRegistry } from './recording/binding-session-registry';
 import { createRecordingSessionRegistry } from './recording/session-registry';
-import { createFakeRecordingSessionFactory } from './testing/fake-recording-session';
+import {
+  createFakeRecordingSessionFactory,
+  elementCapture,
+  type FakeRecordingSessionFactory,
+} from './testing/fake-recording-session';
 import { buildServer } from './server';
 
 /**
@@ -47,9 +54,24 @@ describe('Orbit API over real persistence', () => {
   let storage: ArtifactStorage;
   let agentVersionId: AgentVersionId;
   let app: FastifyInstance;
+  /** Scripted so a binding session has something to bind, with no browser. */
+  let bindingFactory: FakeRecordingSessionFactory;
 
   beforeEach(async () => {
     artifactRoot = await createTestArtifactRoot();
+    bindingFactory = createFakeRecordingSessionFactory({
+      onOpen: (session) => {
+        session.push(
+          elementCapture({
+            type: 'fill',
+            order: 1,
+            testId: 'request-number-input',
+            name: 'Request number',
+            typedValue: 'SR-1001',
+          }),
+        );
+      },
+    });
     storage = await createLocalFilesystemArtifactStorage({ root: artifactRoot });
     agentVersionId = (await seedTestAgentVersion(getDatabase().db)).id;
 
@@ -74,11 +96,18 @@ describe('Orbit API over real persistence', () => {
         sopCandidateService: createSopCandidateService({ database: getDatabase().db }),
         sopPublishService: createSopPublishService({ database: getDatabase().db }),
         publishRecordingService: createPublishRecordingService({ database: getDatabase().db }),
+        publishBoundDocumentService: createPublishBoundDocumentService({
+          database: getDatabase().db,
+        }),
         // No browser: these tests never record, and a registry that could open
         // one would be a Chromium per test file for nothing.
         recordingSessions: createRecordingSessionRegistry({
           database: getDatabase().db,
           factory: createFakeRecordingSessionFactory(),
+        }),
+        bindingSessions: createBindingSessionRegistry({
+          database: getDatabase().db,
+          factory: bindingFactory,
         }),
       },
     });
@@ -638,6 +667,169 @@ describe('Orbit API over real persistence', () => {
 
       const outcomes = document.json().data.declaredOutcomes as { name: string; message: string }[];
       expect(outcomes.map((outcome) => outcome.name)).toContain('completed');
+    });
+  });
+
+  /**
+   * Binding a drafted workflow's steps, then publishing it — the gap this
+   * closes.
+   *
+   * A drafted workflow reached the compiler with no bindings at all and was
+   * refused. What is proven here over HTTP is the whole way out of that: bind
+   * each step against a page, and the same one-action publish a recorded
+   * workflow gets applies (ADR-027).
+   */
+  describe('binding a drafted workflow over HTTP', () => {
+    function draftedGraph() {
+      return {
+        schemaVersion: SOP_GRAPH_SCHEMA_VERSION,
+        title: 'Find a service request',
+        entryStepId: 'open_portal',
+        inputs: [
+          {
+            id: 'requestNumber',
+            label: 'Request number',
+            type: 'string',
+            required: true,
+            minLength: 1,
+          },
+        ],
+        outputs: [{ name: 'requestStatus', label: 'Status' }],
+        steps: [
+          {
+            id: 'open_portal',
+            kind: 'navigate',
+            urlHint: 'http://localhost:3001/requests',
+            purpose: 'Open the service request portal',
+          },
+          {
+            id: 'enter_request_number',
+            kind: 'fill',
+            fieldHint: 'Request number',
+            value: '${inputs.requestNumber}',
+            purpose: 'Provide the request number',
+          },
+          { id: 'search', kind: 'click', targetHint: 'Search', purpose: 'Run the search' },
+          {
+            id: 'read_status',
+            kind: 'extract',
+            fields: [{ name: 'requestStatus', labelHint: 'Status', required: true }],
+            purpose: 'Read the current status',
+          },
+          { id: 'found', kind: 'outcome', outcome: 'completed', message: 'The request was found' },
+        ],
+        assumptions: [],
+        clarificationQuestions: [],
+        risks: [],
+      } as SopGraph;
+    }
+
+    async function draftedDocument() {
+      const repositories = createRepositories(getDatabase().db);
+      const document = await repositories.sopDocuments.create({
+        title: 'Find a service request',
+        sourceText: 'Search the portal for a request and read its status.',
+      });
+
+      await repositories.sopGraphRevisions.create({
+        documentId: document.id,
+        graph: draftedGraph(),
+        provenance: { kind: 'generated', model: 'fake', provider: 'test', promptVersion: 'v1' },
+      });
+
+      return document;
+    }
+
+    /** One sitting per step, since the fake browser scripts one capture per open. */
+    async function bindStep(documentId: string, stepId: string, variable?: string) {
+      const started = await app.inject({
+        method: 'POST',
+        url: '/v1/binding-sessions',
+        payload: { documentId, stepId, startUrl: 'http://localhost:3001/requests' },
+      });
+
+      expect(started.statusCode).toBe(201);
+
+      const sessionId = started.json().data.sessionId as string;
+      const captureId = started.json().data.captures[0].captureId as string;
+
+      const bound = await app.inject({
+        method: 'POST',
+        url: `/v1/binding-sessions/${sessionId}/binding`,
+        payload: { captureId, ...(variable === undefined ? {} : { variable }) },
+      });
+
+      expect(bound.statusCode).toBe(201);
+      expect(bound.json().data.state).toBe('approved');
+
+      // Saving leaves the browser open on purpose, so the sitting is ended
+      // explicitly rather than by having saved.
+      const closed = await app.inject({
+        method: 'DELETE',
+        url: `/v1/binding-sessions/${sessionId}`,
+      });
+      expect(closed.statusCode).toBe(204);
+    }
+
+    it('binds each step and publishes the workflow, using only the HTTP surface', async () => {
+      const document = await draftedDocument();
+
+      // Nothing is bound yet, so there is nothing to publish.
+      const tooEarly = await app.inject({
+        method: 'POST',
+        url: `/v1/sop-documents/${document.id}/publish-bound`,
+        payload: { outcomeMapping: { completed: 'request_found' } },
+      });
+      expect(tooEarly.statusCode).toBe(422);
+      expect(
+        (tooEarly.json().error.details as { field: string }[]).map((detail) => detail.field),
+      ).toEqual(['enter_request_number', 'search', 'read_status']);
+
+      await bindStep(document.id, 'enter_request_number');
+      await bindStep(document.id, 'search');
+      await bindStep(document.id, 'read_status', 'requestStatus');
+
+      const bindings = await app.inject({
+        method: 'GET',
+        url: `/v1/sop-documents/${document.id}/bindings`,
+      });
+
+      expect(bindings.statusCode).toBe(200);
+      expect(bindings.json().data.summary).toMatchObject({ approved: 3, stale: 0 });
+
+      const published = await app.inject({
+        method: 'POST',
+        url: `/v1/sop-documents/${document.id}/publish-bound`,
+        payload: { outcomeMapping: { completed: 'request_found' } },
+      });
+
+      expect(published.statusCode).toBe(201);
+
+      // The workflow's own claim about itself never moved (ADR-016).
+      const review = await app.inject({
+        method: 'GET',
+        url: `/v1/sop-documents/${document.id}`,
+      });
+      expect(review.json().data.executable).toBe(false);
+      expect(review.json().data.publication.agentVersionId).toBe(
+        published.json().data.agentVersionId,
+      );
+    });
+
+    it('refuses to bind a step the compiler needs no binding for', async () => {
+      const document = await draftedDocument();
+
+      const started = await app.inject({
+        method: 'POST',
+        url: '/v1/binding-sessions',
+        payload: {
+          documentId: document.id,
+          stepId: 'open_portal',
+          startUrl: 'http://localhost:3001/requests',
+        },
+      });
+
+      expect(started.statusCode).toBe(400);
     });
   });
 });

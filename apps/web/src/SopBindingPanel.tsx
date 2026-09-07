@@ -1,7 +1,9 @@
 import type { SopBindingsView, SopReviewStepView } from '@orbit/api/views';
 
 import {
+  bindActionLabel,
   bindingRows,
+  canBindStep,
   isFullyApproved,
   summarizeBindings,
   type BindingRow,
@@ -11,6 +13,12 @@ import {
 export interface SopBindingPanelProps {
   readonly steps: readonly SopReviewStepView[];
   readonly bindings: SopBindingsView | null;
+  /** Opens a browser aimed at this step, or points an open one at it. */
+  readonly onBind: (stepId: string) => void;
+  readonly isStarting: boolean;
+  /** Where a new browser would open. Null while a session is already open. */
+  readonly startUrl: string | null;
+  readonly onStartUrlChange: (startUrl: string) => void;
 }
 
 const TONE_CLASSES: Readonly<Record<BindingTone, string>> = {
@@ -22,15 +30,27 @@ const TONE_CLASSES: Readonly<Record<BindingTone, string>> = {
 };
 
 /**
- * Which steps have been mapped to a real page, and how far each one got.
+ * Which steps have been mapped to a real page, how far each one got, and how
+ * to map one that has not been.
  *
- * Read-only, and it will stay that way. Recording a binding means a person
- * demonstrating a step in a browser, which a web page cannot witness — so
- * creating, confirming and approving one all happen in the recorder CLI
- * (ADR-019). This panel exists so that someone reviewing the workflow can at
- * least see whether that work has been done, which until now they could not.
+ * Binding a step means a person demonstrating it in a real browser. There are
+ * two ways to do that and neither is the other's fallback: the recorder CLI
+ * (ADR-019), and a binding session started from here, which opens the browser
+ * on the machine running Orbit (ADR-027).
+ *
+ * What this panel still offers no way to do is approve or reject somebody
+ * else's binding, or bind a step that routes to a person. The first is review
+ * this phase does not have a surface for; the second is not a thing a browser
+ * can perform.
  */
-export function SopBindingPanel({ steps, bindings }: SopBindingPanelProps) {
+export function SopBindingPanel({
+  steps,
+  bindings,
+  onBind,
+  isStarting,
+  startUrl,
+  onStartUrlChange,
+}: SopBindingPanelProps) {
   const rows = bindingRows(steps, bindings);
 
   if (rows.length === 0) {
@@ -63,20 +83,44 @@ export function SopBindingPanel({ steps, bindings }: SopBindingPanelProps) {
       )}
 
       <p className="mt-1 text-xs text-slate-500">
-        Bindings are recorded with <span className="font-mono">pnpm record:binding</span>. They
-        cannot be created or changed from here.
+        Bind a step here, or from a terminal with{' '}
+        <span className="font-mono">pnpm record:binding</span>. Either way, a person demonstrates
+        the step in a real browser. Approving or turning down someone else's binding is not done
+        from here.
       </p>
+
+      {startUrl !== null && (
+        <label className="mt-3 flex flex-col gap-1 text-xs text-slate-700">
+          <span>Where the browser opens</span>
+          <input
+            className="w-full max-w-lg rounded-md border border-slate-300 px-2 py-1 text-sm"
+            data-testid="binding-start-url"
+            onChange={(event) => {
+              onStartUrlChange(event.target.value);
+            }}
+            value={startUrl}
+          />
+        </label>
+      )}
 
       <ul className="mt-3 flex flex-col gap-2">
         {rows.map((row) => (
-          <BindingRowItem key={row.stepId} row={row} />
+          <BindingRowItem isStarting={isStarting} key={row.stepId} onBind={onBind} row={row} />
         ))}
       </ul>
     </section>
   );
 }
 
-function BindingRowItem({ row }: { readonly row: BindingRow }) {
+function BindingRowItem({
+  row,
+  onBind,
+  isStarting,
+}: {
+  readonly row: BindingRow;
+  readonly onBind: (stepId: string) => void;
+  readonly isStarting: boolean;
+}) {
   return (
     <li
       className="rounded-md border border-slate-200 p-3 transition-colors hover:border-slate-300"
@@ -99,6 +143,20 @@ function BindingRowItem({ row }: { readonly row: BindingRow }) {
       <p className="mt-1 text-xs text-slate-600" data-testid="sop-binding-detail">
         {row.status.detail}
       </p>
+
+      {canBindStep(row) ? (
+        <button
+          className="mt-2 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-900 transition-colors hover:border-slate-400 disabled:text-slate-400"
+          data-testid={`sop-binding-bind-${row.stepId}`}
+          disabled={isStarting}
+          onClick={() => {
+            onBind(row.stepId);
+          }}
+          type="button"
+        >
+          {isStarting ? 'Opening a browser…' : bindActionLabel(row)}
+        </button>
+      ) : null}
 
       {row.binding.supersededCount > 0 && (
         <p className="mt-1 text-xs text-slate-500" data-testid="sop-binding-history">

@@ -2,9 +2,12 @@ import type { SopBindingsView, SopReviewStepView, SopStepBindingView } from '@or
 import { describe, expect, it } from 'vitest';
 
 import {
+  bindActionLabel,
   bindingRows,
+  canBindStep,
   describeBindingStatus,
   isFullyApproved,
+  isFullyBoundForPublish,
   summarizeBindings,
 } from './sop-binding-view-model';
 
@@ -183,5 +186,95 @@ describe('isFullyApproved', () => {
 
   it('is false when bindings could not be loaded', () => {
     expect(isFullyApproved(null)).toBe(false);
+  });
+});
+
+describe('canBindStep', () => {
+  function row(overrides: Partial<SopStepBindingView> = {}) {
+    const [first] = bindingRows(
+      [reviewStep({ id: overrides.stepId ?? 'sign_in', kind: overrides.kind ?? 'click' })],
+      bindings([entry(overrides)]),
+    );
+
+    if (first === undefined) {
+      throw new Error('the fixture should produce one row');
+    }
+
+    return first;
+  }
+
+  it('offers binding for a step nobody has demonstrated', () => {
+    expect(canBindStep(row())).toBe(true);
+    expect(bindActionLabel(row())).toBe('Bind this step');
+  });
+
+  it('offers binding again for an approved binding whose step has since changed', () => {
+    // "Approved" and "usable" are different facts, and this is the case where
+    // they differ: a stale binding is approved and must not be run.
+    expect(canBindStep(row({ status: 'approved', stale: true }))).toBe(true);
+    expect(bindActionLabel(row({ status: 'approved', stale: true }))).toBe('Bind this step again');
+  });
+
+  it('offers nothing more for an approved, up-to-date binding', () => {
+    expect(canBindStep(row({ status: 'approved' }))).toBe(false);
+  });
+
+  it('offers binding for a recorded binding that has not been approved', () => {
+    expect(canBindStep(row({ status: 'draft' }))).toBe(true);
+  });
+
+  it('offers nothing for a step a browser cannot perform', () => {
+    expect(canBindStep(row({ kind: 'manual_review', bindable: false }))).toBe(false);
+    // Not a refusal about automation — a navigate step compiles from the
+    // workflow's own URL, and an outcome step is not compiled at all today.
+    expect(canBindStep(row({ kind: 'navigate' }))).toBe(false);
+    expect(canBindStep(row({ kind: 'outcome' }))).toBe(false);
+  });
+});
+
+describe('isFullyBoundForPublish', () => {
+  it('is true when every step the compiler needs a binding for has a usable one', () => {
+    expect(
+      isFullyBoundForPublish(
+        bindings([
+          entry({ stepId: 'sign_in', kind: 'click', status: 'approved' }),
+          entry({ stepId: 'enter_request_number', kind: 'fill', status: 'approved' }),
+          // Neither of these needs a binding, and neither may block publishing.
+          entry({ stepId: 'open_portal', kind: 'navigate', status: null }),
+          entry({ stepId: 'escalate', kind: 'manual_review', bindable: false, status: null }),
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  it('is false while one required step is unbound, stale, or unapproved', () => {
+    const cases: readonly Partial<SopStepBindingView>[] = [
+      { status: null },
+      { status: 'draft' },
+      { status: 'approved', stale: true },
+      { status: 'approved', issues: [{ code: 'UNDECLARED_VARIABLE', message: 'no such name' }] },
+    ];
+
+    for (const overrides of cases) {
+      expect(
+        isFullyBoundForPublish(
+          bindings([
+            entry({ stepId: 'sign_in', kind: 'click', status: 'approved' }),
+            entry({ stepId: 'enter_request_number', kind: 'fill', ...overrides }),
+          ]),
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it('is false for a workflow with nothing the compiler needs bound', () => {
+    // "Nothing to do" is not the same claim as "ready to publish".
+    expect(isFullyBoundForPublish(bindings([entry({ kind: 'navigate', status: null })]))).toBe(
+      false,
+    );
+  });
+
+  it('is false when bindings could not be loaded', () => {
+    expect(isFullyBoundForPublish(null)).toBe(false);
   });
 });

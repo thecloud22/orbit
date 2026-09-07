@@ -146,6 +146,60 @@ export function summarizeBindings(bindings: SopBindingsView | null): string | nu
   return `${parts.join(', ')}.`;
 }
 
+/**
+ * The step kinds a binding session will map, which is exactly the set the
+ * compiler requires a binding for.
+ *
+ * A `navigate` step compiles from the graph's own URL hint, a `manual_review`
+ * step routes to a person, and `decision`/`outcome` steps are not compiled
+ * today. Offering to bind any of them would be offering work that changes
+ * nothing.
+ */
+export const WATCHTOWER_BINDABLE_KINDS: readonly string[] = ['fill', 'click', 'extract'];
+
+/**
+ * Whether this step can be bound from here, and is worth binding.
+ *
+ * An approved binding whose step has since changed still offers re-binding:
+ * "approved" and "usable" are different facts (see `describeBindingStatus`),
+ * and a stale binding is the case where they differ.
+ */
+export function canBindStep(row: BindingRow): boolean {
+  if (!WATCHTOWER_BINDABLE_KINDS.includes(row.kind)) {
+    return false;
+  }
+
+  return row.binding.status !== 'approved' || row.binding.stale;
+}
+
+/** "Bind" the first time, "Bind again" when replacing something. */
+export function bindActionLabel(row: BindingRow): string {
+  return row.binding.status === null ? 'Bind this step' : 'Bind this step again';
+}
+
+/**
+ * Whether every step the compiler needs a binding for has a usable one.
+ *
+ * Derived from the rows the panel already has rather than from
+ * `summary.bindable`, which counts every kind that *could* take a binding —
+ * including `navigate` and `outcome`, which the compiler does not require one
+ * for. This has to agree with the server's own gate
+ * (`publish-bound-document-service.ts`) or the button would offer a publish the
+ * API refuses.
+ */
+export function isFullyBoundForPublish(bindings: SopBindingsView | null): boolean {
+  if (bindings === null) {
+    return false;
+  }
+
+  const required = bindings.steps.filter((step) => WATCHTOWER_BINDABLE_KINDS.includes(step.kind));
+
+  return (
+    required.length > 0 &&
+    required.every((step) => step.status === 'approved' && !step.stale && step.issues.length === 0)
+  );
+}
+
 /** Whether the workflow is fully mapped, which is not the same as fully bound. */
 export function isFullyApproved(bindings: SopBindingsView | null): boolean {
   return (

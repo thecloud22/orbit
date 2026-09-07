@@ -261,6 +261,16 @@ export function App() {
             ← Back to workflows
           </button>
           <SopReviewPage
+            bindingSessionId={view.bindingSessionId ?? null}
+            onBindingSessionChange={(sessionId) => {
+              // Reflected in the URL so a reload reattaches to the open
+              // browser rather than orphaning the window it opened.
+              navigate(
+                sessionId === null
+                  ? { kind: 'review', documentId: view.documentId }
+                  : { kind: 'review', documentId: view.documentId, bindingSessionId: sessionId },
+              );
+            }}
             onOpenAgent={(agentVersionId) => {
               navigate({ kind: 'agents', agentVersionId });
             }}

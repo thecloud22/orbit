@@ -58,7 +58,12 @@ describe('recording a binding', () => {
     revisionId = revision.id;
   });
 
-  function create(input: { step: SopStep; body: BindingBody; parentBindingId?: string }) {
+  function create(input: {
+    step: SopStep;
+    body: BindingBody;
+    parentBindingId?: string;
+    confirmedByDemonstration?: { reviewNote: string };
+  }) {
     return createBinding({
       database: getDatabase().db,
       documentId,
@@ -69,6 +74,9 @@ describe('recording a binding', () => {
       ...(input.parentBindingId === undefined
         ? {}
         : { parentBindingId: input.parentBindingId as never }),
+      ...(input.confirmedByDemonstration === undefined
+        ? {}
+        : { confirmedByDemonstration: input.confirmedByDemonstration }),
     });
   }
 
@@ -197,5 +205,122 @@ describe('assembleBinding', () => {
 
     expect(binding.schemaVersion).toBe('0.1');
     expect(binding.stepId).toBe('sign_in');
+  });
+});
+
+/**
+ * A binding demonstrated against a real page, which lands approved.
+ *
+ * Not a bypass of the lifecycle but a drive through it: the repository refuses
+ * draft -> approved, so a binding that reaches `approved` did so by being
+ * created, submitted and approved — the same sequence `recording-service.ts`
+ * performs for a whole recorded workflow, and for the same reason (ADR-027).
+ */
+describe('a binding confirmed by demonstration', () => {
+  const getDatabase = useTestDatabase();
+
+  let documentId: SopDocumentId;
+  let revisionId: SopRevisionId;
+
+  beforeEach(async () => {
+    const repositories = createRepositories(getDatabase().db);
+    const document = await repositories.sopDocuments.create({
+      title: 'Escalation review',
+      sourceText: 'Sign in and review the escalation.',
+    });
+    const revision = await repositories.sopGraphRevisions.create({
+      documentId: document.id,
+      graph: GRAPH,
+      provenance: { kind: 'generated', model: 'fake', provider: 'test', promptVersion: 'v1' },
+    });
+    documentId = document.id;
+    revisionId = revision.id;
+  });
+
+  function demonstrate(parentBindingId?: string) {
+    return createBinding({
+      database: getDatabase().db,
+      documentId,
+      revisionId,
+      graph: GRAPH,
+      step: step('sign_in'),
+      body: clickBody(),
+      ...(parentBindingId === undefined ? {} : { parentBindingId: parentBindingId as never }),
+      confirmedByDemonstration: { reviewNote: 'Approved by demonstrating the step.' },
+    });
+  }
+
+  it('lands approved, with the note saying how it was approved', async () => {
+    const result = await demonstrate();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.binding.state).toBe('approved');
+    expect(result.binding.reviewNote).toContain('demonstrating');
+  });
+
+  it('supersedes the binding it replaces when a step is bound again', async () => {
+    const first = await demonstrate();
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    const second = await demonstrate(first.binding.id);
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+
+    const repositories = createRepositories(getDatabase().db);
+    const replaced = await repositories.executionBindings.findById(first.binding.id);
+    const current = await repositories.executionBindings.findCurrent(documentId, 'sign_in');
+
+    expect(replaced?.state).toBe('superseded');
+    expect(current?.id).toBe(second.binding.id);
+    expect(current?.state).toBe('approved');
+  });
+
+  it('writes nothing at all when the step cannot be bound', async () => {
+    const manual = GRAPH.steps.find((candidate) => candidate.kind === 'manual_review');
+
+    const result = await createBinding({
+      database: getDatabase().db,
+      documentId,
+      revisionId,
+      graph: GRAPH,
+      step: manual!,
+      body: clickBody(),
+      confirmedByDemonstration: { reviewNote: 'Approved by demonstrating the step.' },
+    });
+
+    expect(result.ok).toBe(false);
+
+    const stored = await createRepositories(getDatabase().db).executionBindings.listByDocument(
+      documentId,
+    );
+    expect(stored).toHaveLength(0);
+  });
+
+  it('writes nothing when the binding does not validate against the graph', async () => {
+    const result = await createBinding({
+      database: getDatabase().db,
+      documentId,
+      revisionId,
+      graph: GRAPH,
+      step: step('enter_request_number'),
+      body: {
+        kind: 'fill',
+        target: { selectors: SELECTORS, fingerprint: buttonFingerprint() },
+        valueSource: { kind: 'sop_variable', name: 'nothingDeclaresThis' },
+      },
+      confirmedByDemonstration: { reviewNote: 'Approved by demonstrating the step.' },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('invalid');
+
+    const stored = await createRepositories(getDatabase().db).executionBindings.listByDocument(
+      documentId,
+    );
+    expect(stored).toHaveLength(0);
   });
 });

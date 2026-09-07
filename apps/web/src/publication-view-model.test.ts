@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { ApiRequestError } from './api-client';
 import {
   describePublishRecordingFailure,
+  offersBoundPublish,
   offersOneClickPublish,
   publicationStage,
   publicationSummary,
@@ -131,5 +132,49 @@ describe('describePublishRecordingFailure', () => {
     );
 
     expect(failure.refusals).toEqual([]);
+  });
+});
+
+describe('offersBoundPublish', () => {
+  it('offers the same one action to a drafted workflow once every step is bound', () => {
+    expect(
+      offersBoundPublish({
+        provenanceKind: 'generated',
+        stage: publicationStage(publication()),
+        fullyBound: true,
+      }),
+    ).toBe(true);
+  });
+
+  it('offers nothing while a drafted workflow is still partly bound', () => {
+    // The line ADR-025 drew is unchanged: nothing has confirmed these steps
+    // against a real page yet, so there is no button to offer.
+    expect(
+      offersBoundPublish({
+        provenanceKind: 'generated',
+        stage: publicationStage(publication()),
+        fullyBound: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('leaves a recorded workflow to the recorded path', () => {
+    expect(
+      offersBoundPublish({
+        provenanceKind: 'recorded',
+        stage: publicationStage(publication()),
+        fullyBound: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('has nothing left to offer once the workflow is published', () => {
+    const stage = publicationStage(
+      publication({ agentVersionId: 'agentv_1', agentVersion: '0.1.0' }),
+    );
+
+    expect(offersBoundPublish({ provenanceKind: 'generated', stage, fullyBound: true })).toBe(
+      false,
+    );
   });
 });

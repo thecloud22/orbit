@@ -1,6 +1,7 @@
 import type { ArtifactService } from '@orbit/artifact-service';
 import type { OrbitRepositories } from '@orbit/db';
 import type {
+  PublishBoundDocumentService,
   PublishRecordingService,
   SopCandidateService,
   SopDraftService,
@@ -8,6 +9,7 @@ import type {
   SopRevisionService,
 } from '@orbit/sop-service';
 
+import type { BindingSessionRegistry } from './recording/binding-session-registry';
 import type { RecordingSessionRegistry } from './recording/session-registry';
 
 import type { RunDispatcher } from './dispatch';
@@ -39,6 +41,8 @@ export interface ApiContext {
   readonly sopPublishService: SopPublishService;
   /** Approve, compile, approve and publish a recorded workflow in one call. */
   readonly publishRecordingService: PublishRecordingService;
+  /** The same, for a drafted workflow whose every step has been bound (ADR-027). */
+  readonly publishBoundDocumentService: PublishBoundDocumentService;
   /**
    * Recording sessions the API is holding open.
    *
@@ -46,4 +50,11 @@ export interface ApiContext {
    * confined to `src/recording/` (ADR-020).
    */
   readonly recordingSessions: RecordingSessionRegistry;
+  /**
+   * Binding sessions the API is holding open.
+   *
+   * The second member backed by a live browser, and confined to the same one
+   * directory for the same reason (ADR-020, ADR-027).
+   */
+  readonly bindingSessions: BindingSessionRegistry;
 }

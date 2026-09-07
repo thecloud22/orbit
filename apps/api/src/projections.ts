@@ -19,9 +19,12 @@ import {
 } from '@orbit/sop-graph';
 import type { ArtifactLink, ArtifactMetadata, EventEnvelope } from '@orbit/contracts';
 
+import type { BindingSessionState } from './recording/binding-session-registry';
 import {
   artifactUrl,
   redactPayload,
+  type BindingSessionView,
+  type SavedBindingView,
   type AgentVersionView,
   type CandidateActionView,
   type PublishedAgentVersionView,
@@ -437,5 +440,52 @@ export function toSopBindingsView(input: {
       approved: bindableSteps.filter((step) => step.status === 'approved').length,
       stale: bindableSteps.filter((step) => step.stale).length,
     },
+  };
+}
+
+/**
+ * A binding session, as the panel polling it needs it.
+ *
+ * A near-copy of the registry's own state, and deliberately still a projection:
+ * the registry type is API-internal, and the wire shape is a contract the web
+ * app compiles against. A typed value never appears in either — it exists to
+ * prove the right field was hit and goes no further than the browser it was
+ * typed in.
+ */
+export function toBindingSessionView(state: BindingSessionState): BindingSessionView {
+  return {
+    sessionId: state.sessionId,
+    documentId: state.documentId,
+    startUrl: state.startUrl,
+    currentUrl: state.currentUrl,
+    startedAt: state.startedAt,
+    step: {
+      stepId: state.step.stepId,
+      kind: state.step.kind,
+      summary: state.step.summary,
+      mode: state.step.mode,
+      declaredValue: state.step.declaredValue,
+      sensitive: state.step.sensitive,
+      fields: state.step.fields,
+    },
+    captures: state.captures.map((capture) => ({
+      captureId: capture.captureId,
+      kind: capture.kind,
+      description: capture.description,
+      sensitive: capture.sensitive,
+    })),
+    failures: state.failures.map((failure) => ({ reason: failure.reason, url: failure.url })),
+  };
+}
+
+export function toSavedBindingView(input: {
+  readonly binding: ExecutionBindingRecord;
+  readonly state: BindingSessionState;
+}): SavedBindingView {
+  return {
+    bindingId: input.binding.id,
+    stepId: input.binding.stepId,
+    state: input.binding.state,
+    session: toBindingSessionView(input.state),
   };
 }

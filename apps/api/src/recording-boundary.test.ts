@@ -126,6 +126,24 @@ describe('the run-dispatch path cannot reach the recorder', () => {
     expect(importsRecorder(dispatch)).toBe(false);
   });
 
+  it('keeps the second browser-holding registry inside the same one directory', () => {
+    // Binding a step from Watchtower needs a browser too (ADR-027). The ban is
+    // narrowed no further than it already was: the new registry lives in the
+    // same permitted directory, and the confinement scan above covers it
+    // without an exception being added for it.
+    const bindingRegistry = join(SOURCE_ROOT, 'recording', 'binding-session-registry.ts');
+
+    expect(existsSync(bindingRegistry)).toBe(true);
+    expect(importsRecorder(bindingRegistry)).toBe(true);
+    expect(relative(SOURCE_ROOT, bindingRegistry).startsWith('recording/')).toBe(true);
+  });
+
+  it('keeps the shared session store free of the recorder entirely', () => {
+    // Ids, idle reaping and shutdown are plumbing both registries share. It
+    // holds what it is given and closes it; it knows nothing about a browser.
+    expect(importsRecorder(join(SOURCE_ROOT, 'recording', 'session-store.ts'))).toBe(false);
+  });
+
   it('keeps recording out of the worker the dispatcher runs agents through', () => {
     // The dispatcher executes in-process (ADR-011), so its graph is the real
     // boundary — but the separate worker entry point has its own guard in

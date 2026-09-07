@@ -22,7 +22,12 @@ export type View =
   /** One run's status, timeline and evidence, reopened by id. */
   | { readonly kind: 'run'; readonly runId: string }
   | { readonly kind: 'documents' }
-  | { readonly kind: 'review'; readonly documentId: string }
+  /**
+   * One workflow's review page. `bindingSessionId` is present while a browser
+   * is open for it, so a reload reattaches to that session rather than
+   * orphaning the window it opened.
+   */
+  | { readonly kind: 'review'; readonly documentId: string; readonly bindingSessionId?: string }
   | { readonly kind: 'recording'; readonly sessionId: string };
 
 export const DOCUMENTS_VIEW = 'documents';
@@ -43,7 +48,11 @@ export function viewFromSearch(search: string): View {
 
   const documentId = params.get('documentId');
   if (documentId !== null && documentId !== '') {
-    return { kind: 'review', documentId };
+    const bindingSessionId = params.get('bindingSessionId');
+
+    return bindingSessionId === null || bindingSessionId === ''
+      ? { kind: 'review', documentId }
+      : { kind: 'review', documentId, bindingSessionId };
   }
 
   const runId = params.get('runId');
@@ -92,7 +101,11 @@ export function searchForView(view: View): string {
     case 'documents':
       return `?view=${DOCUMENTS_VIEW}`;
     case 'review':
-      return `?documentId=${encodeURIComponent(view.documentId)}`;
+      return view.bindingSessionId === undefined
+        ? `?documentId=${encodeURIComponent(view.documentId)}`
+        : `?documentId=${encodeURIComponent(view.documentId)}&bindingSessionId=${encodeURIComponent(
+            view.bindingSessionId,
+          )}`;
     case 'recording':
       return `?recordingSessionId=${encodeURIComponent(view.sessionId)}`;
   }

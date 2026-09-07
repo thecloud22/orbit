@@ -1,10 +1,5 @@
-import {
-  comparisonModeFor,
-  isBindableStepKind,
-  type BindingBody,
-  type ReadMethod,
-  type ValueSource,
-} from '@orbit/execution-mapping';
+import { isBindableStepKind, type ReadMethod, type ValueSource } from '@orbit/execution-mapping';
+import { captureModeForStepKind, declaredNames } from '@orbit/sop-service';
 import { describeStep, type SopGraph, type SopStep } from '@orbit/sop-graph';
 
 /**
@@ -87,9 +82,15 @@ export function suggestedStartUrl(step: SopStep): string | undefined {
   return step.kind === 'navigate' ? step.urlHint : undefined;
 }
 
-/** Whether the human demonstrates the step or points at a value to read. */
+/**
+ * Whether the human demonstrates the step or points at a value to read.
+ *
+ * Delegated rather than decided here: Watchtower's binding sessions need the
+ * same answer, and one definition in @orbit/sop-service is what keeps the
+ * terminal and the web page capturing the same way (ADR-027).
+ */
 export function captureModeForStep(step: SopStep): 'action' | 'pick' {
-  return comparisonModeFor(step.kind as BindingBody['kind']) === 'action' ? 'action' : 'pick';
+  return captureModeForStepKind(step.kind);
 }
 
 export type ValueSourceChoice =
@@ -120,29 +121,16 @@ export function resolveValueSource(
   return { kind: 'literal', value: typedValue ?? '' };
 }
 
-/** Names a fill may reference: the graph's declared inputs and produced variables. */
-export function declaredNames(graph: SopGraph): readonly string[] {
-  const names = new Set<string>();
-
-  for (const input of graph.inputs) {
-    names.add(input.id);
-  }
-
-  for (const step of graph.steps) {
-    if (step.kind === 'extract') {
-      for (const field of step.fields) {
-        names.add(field.name);
-      }
-    }
-    if (step.kind === 'decision') {
-      for (const produced of step.produces ?? []) {
-        names.add(produced.name);
-      }
-    }
-  }
-
-  return [...names].sort();
-}
+/**
+ * Names a fill may reference: the graph's declared inputs and produced
+ * variables.
+ *
+ * Re-exported from @orbit/sop-service rather than computed again here. The
+ * write path must offer exactly the names the read path validates against, and
+ * two implementations of "what does this graph declare" would eventually
+ * disagree about one.
+ */
+export { declaredNames };
 
 export const READ_METHODS: readonly ReadMethod['kind'][] = ['text', 'attribute', 'checked'];
 

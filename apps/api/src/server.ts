@@ -7,9 +7,11 @@ import { registerAgentVersionRoutes } from './routes/agent-versions';
 import { registerArtifactRoutes } from './routes/artifacts';
 import { registerRunRoutes } from './routes/runs';
 import { registerRecordingRoutes } from './routes/recording';
+import { registerBindingSessionRoutes } from './routes/binding-sessions';
 import { registerCandidateRoutes } from './routes/candidates';
 import { registerPublishingRoutes } from './routes/publishing';
 import { registerPublishRecordingRoutes } from './routes/publish-recording';
+import { registerPublishBoundRoutes } from './routes/publish-bound';
 import { registerSopBindingRoutes } from './routes/sop-bindings';
 import { registerSopDraftRoutes } from './routes/sop-drafts';
 import { registerSopRevisionRoutes } from './routes/sop-revisions';
@@ -38,12 +40,14 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
   registerRunRoutes(app, options.context);
   registerCandidateRoutes(app, options.context);
   registerPublishRecordingRoutes(app, options.context);
+  registerPublishBoundRoutes(app, options.context);
   registerPublishingRoutes(app, options.context);
   registerArtifactRoutes(app, options.context);
   registerSopDraftRoutes(app, options.context);
   registerSopRevisionRoutes(app, options.context);
   registerSopBindingRoutes(app, options.context);
   registerRecordingRoutes(app, options.context);
+  registerBindingSessionRoutes(app, options.context);
 
   app.setNotFoundHandler((_request, reply) => {
     const error = new ApiError({

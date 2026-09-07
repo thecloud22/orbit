@@ -8,10 +8,20 @@ import {
   editSopStep,
   getSopBindings,
   getSopReview,
+  publishBoundDocument,
   publishRecording,
   reorderSopStep,
+  startBindingSession,
+  targetBindingStep,
   transitionSopRevision,
 } from './api-client';
+import { BindingSessionPanel } from './BindingSessionPanel';
+import {
+  describeBindingSessionFailure,
+  suggestedStartUrl,
+  type BindingFailure,
+} from './binding-session-view-model';
+import { isFullyBoundForPublish } from './sop-binding-view-model';
 import { describePublishRecordingFailure, type CompileFailure } from './publication-view-model';
 import { SopBindingPanel } from './SopBindingPanel';
 import { SopPublishPanel } from './SopPublishPanel';
@@ -29,6 +39,9 @@ export interface SopReviewPageProps {
   readonly documentId: string;
   /** Navigates to the agent publishing produced. The document itself is unchanged. */
   readonly onOpenAgent: (agentVersionId: string) => void;
+  /** The open binding session, from the URL, so a reload reattaches to it. */
+  readonly bindingSessionId: string | null;
+  readonly onBindingSessionChange: (sessionId: string | null) => void;
 }
 
 /**
@@ -39,7 +52,12 @@ export interface SopReviewPageProps {
  * — the revision id the page was showing has just been superseded, and
  * continuing to edit against it would be editing history.
  */
-export function SopReviewPage({ documentId, onOpenAgent }: SopReviewPageProps) {
+export function SopReviewPage({
+  documentId,
+  onOpenAgent,
+  bindingSessionId,
+  onBindingSessionChange,
+}: SopReviewPageProps) {
   const [review, setReview] = useState<SopReviewView | null>(null);
   const [bindings, setBindings] = useState<SopBindingsView | null>(null);
   const [failure, setFailure] = useState<ReviewFailure | null>(null);
@@ -50,6 +68,9 @@ export function SopReviewPage({ documentId, onOpenAgent }: SopReviewPageProps) {
   const [publishRecordingFailure, setPublishRecordingFailure] = useState<CompileFailure | null>(
     null,
   );
+  const [isStartingBinding, setIsStartingBinding] = useState(false);
+  const [bindingFailure, setBindingFailure] = useState<BindingFailure | null>(null);
+  const [startUrl, setStartUrl] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     // Loaded alongside the review, and deliberately not fatal: binding
@@ -76,6 +97,49 @@ export function SopReviewPage({ documentId, onOpenAgent }: SopReviewPageProps) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Suggested once from the workflow's own navigate step, then left alone: a
+  // person who corrected it must not have their correction overwritten by the
+  // next reload.
+  useEffect(() => {
+    if (review !== null && startUrl === null) {
+      setStartUrl(suggestedStartUrl(review.steps));
+    }
+  }, [review, startUrl]);
+
+  /**
+   * Opens a browser aimed at one step, or points an already-open one at it.
+   *
+   * A sitting rather than a session per step: binding a workflow means binding
+   * several steps in sequence, and each starts where the last left the page.
+   */
+  async function bindStep(stepId: string) {
+    setIsStartingBinding(true);
+    setBindingFailure(null);
+
+    try {
+      const session =
+        bindingSessionId === null
+          ? await startBindingSession({
+              documentId,
+              stepId,
+              startUrl: startUrl ?? '',
+            })
+          : await targetBindingStep(bindingSessionId, stepId);
+
+      onBindingSessionChange(session.sessionId);
+    } catch (caught) {
+      setBindingFailure(
+        describeBindingSessionFailure(
+          caught instanceof ApiRequestError
+            ? caught
+            : new ApiRequestError({ status: 0, message: 'The API could not be reached.' }),
+        ),
+      );
+    } finally {
+      setIsStartingBinding(false);
+    }
+  }
 
   /** Runs a write, then reloads — the revision on screen no longer exists. */
   async function act(work: () => Promise<unknown>) {
@@ -232,13 +296,17 @@ export function SopReviewPage({ documentId, onOpenAgent }: SopReviewPageProps) {
 
       <SopPublishPanel
         declaredOutcomes={review.declaredOutcomes}
+        fullyBound={isFullyBoundForPublish(bindings)}
         isPublishing={isPublishingRecording}
         onOpenAgent={onOpenAgent}
         onPublish={(outcomeMapping) => {
           setIsPublishingRecording(true);
           setPublishRecordingFailure(null);
 
-          void publishRecording(documentId, outcomeMapping)
+          const publish =
+            review.provenance.kind === 'recorded' ? publishRecording : publishBoundDocument;
+
+          void publish(documentId, outcomeMapping)
             .then(() => load())
             .catch((error: unknown) => {
               setPublishRecordingFailure(
@@ -256,7 +324,35 @@ export function SopReviewPage({ documentId, onOpenAgent }: SopReviewPageProps) {
         publishFailure={publishRecordingFailure}
       />
 
-      <SopBindingPanel bindings={bindings} steps={review.steps} />
+      <SopBindingPanel
+        bindings={bindings}
+        isStarting={isStartingBinding}
+        onBind={(stepId) => void bindStep(stepId)}
+        onStartUrlChange={setStartUrl}
+        startUrl={bindingSessionId === null ? (startUrl ?? '') : null}
+        steps={review.steps}
+      />
+
+      {bindingFailure !== null && (
+        <section
+          className="rounded border border-rose-300 bg-rose-50 p-4"
+          data-testid="binding-start-failure"
+        >
+          <h3 className="text-sm font-semibold text-rose-900">{bindingFailure.title}</h3>
+          <p className="mt-1 text-sm text-rose-900">{bindingFailure.message}</p>
+        </section>
+      )}
+
+      {bindingSessionId !== null && (
+        <BindingSessionPanel
+          onClosed={() => {
+            onBindingSessionChange(null);
+            void load();
+          }}
+          onSaved={() => void load()}
+          sessionId={bindingSessionId}
+        />
+      )}
 
       {review.clarifications.length > 0 && (
         <section

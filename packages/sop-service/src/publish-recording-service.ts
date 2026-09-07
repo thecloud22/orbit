@@ -2,9 +2,7 @@ import type { CompileRefusal, OutcomeMapping } from '@orbit/agent-ir-compiler';
 import type { SopDocumentId } from '@orbit/contracts';
 import { createRepositories, type AgentVersionRecord, type OrbitDatabase } from '@orbit/db';
 
-import { createSopCandidateService } from './candidate-service';
-import { createSopPublishService } from './publish-service';
-import { createSopRevisionService } from './revision-service';
+import { createPublishPipeline } from './publish-pipeline';
 
 /**
  * Publishing a recorded workflow in one action, rather than five.
@@ -25,9 +23,11 @@ import { createSopRevisionService } from './revision-service';
  * fail-closed secret gate still runs inside `compileDocument` exactly as it
  * always has. What is removed is asking a person to confirm, one screen at a
  * time, a sequence of actions they just finished performing. It is scoped to
- * `provenance.kind === 'recorded'` specifically: an AI-drafted workflow has no
- * demonstrated interaction behind it, so the business-judgement question is
- * still open and still needs an actual human review.
+ * `provenance.kind === 'recorded'` specifically: a workflow nobody
+ * demonstrated has to have been confirmed against a real page some other way
+ * before it gets a one-click path — which is what
+ * `publish-bound-document-service.ts` covers, step by step instead of all at
+ * once (ADR-027).
  *
  * The one thing this does not skip: what a reached outcome *means* in business
  * terms. Nothing about a recording answers whether finishing at a given point
@@ -62,9 +62,7 @@ export interface PublishRecordingService {
 export function createPublishRecordingService(options: {
   readonly database: OrbitDatabase;
 }): PublishRecordingService {
-  const revisions = createSopRevisionService(options);
-  const candidates = createSopCandidateService(options);
-  const publisher = createSopPublishService(options);
+  const pipeline = createPublishPipeline(options);
   const repositories = createRepositories(options.database);
 
   return {
@@ -80,76 +78,15 @@ export function createPublishRecordingService(options: {
       }
 
       // The guard that keeps this path from ever standing in for real review:
-      // only a demonstrated workflow gets the fast path. An AI-authored draft
-      // has no interaction behind it, so its business intent is still
-      // unreviewed and this refuses rather than treating a draft as approved.
+      // only a demonstrated workflow gets *this* fast path. A workflow that was
+      // drafted rather than recorded is not refused automation forever — it is
+      // refused it here, until every one of its steps has been confirmed
+      // against a real page one at a time.
       if (revision.provenance.kind !== 'recorded') {
         return { ok: false, reason: 'not_recorded' };
       }
 
-      // Drive only the transition actually needed, so this works whether a
-      // person already clicked through part of the review page by hand or
-      // never touched it at all.
-      if (revision.state === 'draft' || revision.state === 'needs_clarification') {
-        const submitted = await revisions.transition({
-          revisionId: revision.id,
-          action: 'submit_for_review',
-        });
-
-        if (!submitted.ok) {
-          return submitted.reason === 'questions_unanswered'
-            ? {
-                ok: false,
-                reason: 'questions_unanswered',
-                unansweredQuestionIds: submitted.unansweredQuestionIds,
-              }
-            : { ok: false, reason: 'revision_not_publishable', state: revision.state };
-        }
-
-        const approved = await revisions.transition({ revisionId: revision.id, action: 'approve' });
-        if (!approved.ok) {
-          return { ok: false, reason: 'revision_not_publishable', state: 'in_review' };
-        }
-      } else if (revision.state === 'in_review') {
-        const approved = await revisions.transition({ revisionId: revision.id, action: 'approve' });
-        if (!approved.ok) {
-          return { ok: false, reason: 'revision_not_publishable', state: 'in_review' };
-        }
-      } else if (revision.state !== 'approved') {
-        // rejected or superseded: nothing this action can do about either.
-        return { ok: false, reason: 'revision_not_publishable', state: revision.state };
-      }
-
-      const compiled = await candidates.compileDocument({ documentId, outcomeMapping });
-
-      if (!compiled.ok) {
-        if (compiled.reason === 'refused') {
-          return { ok: false, reason: 'refused', refusals: compiled.refusals };
-        }
-        // `not_found` and `no_approved_revision` are unreachable here — the
-        // document and an approved revision were just confirmed above — and
-        // `revision_not_approved` cannot recur immediately after the approval
-        // this function just drove. Reported plainly rather than assumed away.
-        return { ok: false, reason: 'revision_not_publishable', state: compiled.reason };
-      }
-
-      const approvedCandidate = await candidates.approve(compiled.candidate.id);
-
-      if (!approvedCandidate.ok) {
-        return approvedCandidate.reason === 'not_ready'
-          ? { ok: false, reason: 'not_ready', sandboxState: approvedCandidate.sandboxState }
-          : { ok: false, reason: 'revision_not_publishable', state: approvedCandidate.reason };
-      }
-
-      const published = await publisher.publish(approvedCandidate.candidate.id);
-
-      if (!published.ok) {
-        return published.reason === 'already_published'
-          ? { ok: false, reason: 'already_published', agentVersionId: published.agentVersionId }
-          : { ok: false, reason: 'revision_not_publishable', state: published.reason };
-      }
-
-      return { ok: true, agentVersion: published.agentVersion };
+      return pipeline.run({ documentId, revision, outcomeMapping });
     },
   };
 }
