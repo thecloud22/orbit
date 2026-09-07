@@ -66,7 +66,7 @@ describe('publishing a recorded workflow in one action', () => {
   it('goes from a freshly recorded draft to a published agent in one call', async () => {
     const recorded = await recordedDocument();
 
-    const result = await service().publish(recorded.document.id, { completed: 'request_found' });
+    const result = await service().publish(recorded.document.id);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -88,7 +88,6 @@ describe('publishing a recorded workflow in one action', () => {
     const candidates = createSopCandidateService({ database });
     const compiled = await candidates.compileDocument({
       documentId: manual.document.id,
-      outcomeMapping: { completed: 'request_found' },
     });
     if (!compiled.ok) throw new Error('expected a candidate');
     const approvedCandidate = await candidates.approve(compiled.candidate.id);
@@ -100,7 +99,7 @@ describe('publishing a recorded workflow in one action', () => {
     if (!manualPublish.ok) throw new Error('expected a published version');
 
     const fast = await recordedDocument();
-    const fastPublish = await service().publish(fast.document.id, { completed: 'request_found' });
+    const fastPublish = await service().publish(fast.document.id);
     if (!fastPublish.ok) throw new Error('expected a published version');
 
     expect(fastPublish.agentVersion.agentIr.steps).toEqual(
@@ -114,14 +113,24 @@ describe('publishing a recorded workflow in one action', () => {
     );
   });
 
-  it('still asks what the outcome means — nothing decides that for you', async () => {
+  it('publishes without asking what the outcome means, and keeps its name', async () => {
+    // This used to refuse until somebody mapped the recorder's appended
+    // outcome onto one of two names inherited from the Phase 1 demo. The
+    // business outcome is now the workflow's own declared name (ADR-030), so
+    // there is nothing to ask and nothing to mistranslate — and what the
+    // published agent will record is the name the workflow already carried.
     const recorded = await recordedDocument();
 
-    const result = await service().publish(recorded.document.id, {});
+    const outcome = recorded.revision.graph.steps.find((step) => step.kind === 'outcome');
+    expect(outcome?.kind === 'outcome' ? outcome.outcome : null).toBe('completed');
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.reason).toBe('refused');
+    const result = await service().publish(recorded.document.id);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const complete = result.agentVersion.agentIr.steps.at(-1);
+    expect(complete?.type === 'complete' ? complete.outcome : null).toBe('completed');
   });
 
   it('still fails closed on a secret the fast path cannot resolve', async () => {
@@ -129,7 +138,7 @@ describe('publishing a recorded workflow in one action', () => {
     // one: nothing here may make a candidate needing a secret publishable.
     const recorded = await recordedDocument(SIGN_IN);
 
-    const result = await service().publish(recorded.document.id, { completed: 'request_found' });
+    const result = await service().publish(recorded.document.id);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -151,7 +160,7 @@ describe('publishing a recorded workflow in one action', () => {
 
     if (!draft.ok) throw new Error('expected a draft');
 
-    const result = await service(database).publish(draft.document.id, {});
+    const result = await service(database).publish(draft.document.id);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -170,31 +179,27 @@ describe('publishing a recorded workflow in one action', () => {
       action: 'submit_for_review',
     });
 
-    const result = await service(database).publish(recorded.document.id, {
-      completed: 'request_found',
-    });
+    const result = await service(database).publish(recorded.document.id);
 
     expect(result.ok).toBe(true);
   });
 
   it('says plainly when there is no such document', async () => {
-    const result = await service().publish('sopdoc_missing' as never, {});
+    const result = await service().publish('sopdoc_missing' as never);
 
     expect(result.ok ? null : result.reason).toBe('not_found');
   });
 
   it('reports an already-published recording rather than minting a second agent', async () => {
     const recorded = await recordedDocument();
-    const first = await service().publish(recorded.document.id, { completed: 'request_found' });
+    const first = await service().publish(recorded.document.id);
     expect(first.ok).toBe(true);
 
     // Recompiling supersedes the prior candidate, so the second attempt
     // compiles and approves a fresh one rather than colliding on the first —
     // this asserts that this path, not the direct one, at least still
     // produces a second usable version rather than silently doing nothing.
-    const second = await service().publish(recorded.document.id, {
-      completed: 'request_not_found',
-    });
+    const second = await service().publish(recorded.document.id);
     expect(second.ok).toBe(true);
   });
 });

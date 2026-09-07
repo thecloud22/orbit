@@ -1,5 +1,4 @@
 import type { SopDeclaredOutcomeView, SopPublicationView } from '@orbit/api/views';
-import { useState } from 'react';
 
 import {
   offersBoundPublish,
@@ -9,24 +8,13 @@ import {
   type CompileFailure,
 } from './publication-view-model';
 
-const BUSINESS_OUTCOMES = ['request_found', 'request_not_found'] as const;
-
-/**
- * What a workflow's single conclusion means, when it only has one.
- *
- * `request_found` is Agent IR's "the workflow reached its intended end"
- * (`terminalBusinessOutcomeSchema`), and its name is inherited from the seeded
- * Phase 1 agent rather than chosen to describe workflows generally. That is a
- * contract-level wart, not a UI one, so this defaults around it instead of
- * asking a person to pick a word that does not describe what they recorded.
- */
-const DEFAULT_OUTCOME = 'request_found';
-
 /**
  * Turning a workflow into a runnable agent, on the review page.
  *
- * A recorded workflow gets one action: answer what each outcome means, then
- * publish. Everything else — approving the revision, compiling it, approving
+ * A recorded workflow gets one action: publish. There is no longer a question
+ * attached to it — a business outcome is the name the workflow's own outcome
+ * step already carries (ADR-030), so there is nothing for anybody to map it
+ * onto and nothing to get wrong. Everything else — approving the revision, compiling it, approving
  * the candidate — happens in one call rather than one screen each, because a
  * person demonstrated every action personally and asking them to separately
  * confirm a sequence they just finished performing is ceremony, not review
@@ -52,11 +40,10 @@ export function SopPublishPanel(props: {
   readonly declaredOutcomes: readonly SopDeclaredOutcomeView[];
   readonly isPublishing: boolean;
   readonly publishFailure: CompileFailure | null;
-  readonly onPublish: (outcomeMapping: Readonly<Record<string, string>>) => void;
+  readonly onPublish: () => void;
   readonly onOpenAgent: (agentVersionId: string) => void;
 }): React.JSX.Element {
   const stage = publicationStage(props.publication);
-  const [outcomeMapping, setOutcomeMapping] = useState<Record<string, string>>({});
 
   const recorded = offersOneClickPublish({ provenanceKind: props.provenanceKind, stage });
   const bound = offersBoundPublish({
@@ -67,23 +54,6 @@ export function SopPublishPanel(props: {
   const oneClick = recorded || bound;
   const hasOutcomes = props.declaredOutcomes.length > 0;
 
-  /**
-   * What each outcome means, asked only when it is genuinely a question.
-   *
-   * A workflow that reaches exactly one conclusion has nothing to disambiguate:
-   * it either finished or it did not, and the recorder appends precisely one
-   * such outcome. Asking anyway meant answering an obvious question in
-   * vocabulary borrowed from the seeded Phase 1 agent, which does not describe
-   * most workflows at all. Two or more outcomes is a real branch, and there a
-   * person still has to say which conclusion is which.
-   */
-  const asksAboutOutcomes = props.declaredOutcomes.length > 1;
-  const effectiveMapping = asksAboutOutcomes
-    ? outcomeMapping
-    : Object.fromEntries(props.declaredOutcomes.map((outcome) => [outcome.name, DEFAULT_OUTCOME]));
-  const mappingComplete = props.declaredOutcomes.every(
-    (outcome) => effectiveMapping[outcome.name] !== undefined,
-  );
   const showForm = oneClick && stage.kind !== 'cannot_validate';
 
   const summary =
@@ -92,9 +62,7 @@ export function SopPublishPanel(props: {
       : oneClick
         ? stage.kind === 'cannot_validate'
           ? publicationSummary(stage)
-          : asksAboutOutcomes
-            ? 'This workflow can end more than one way. Say which is which, then publish it as a runnable agent.'
-            : 'Publish this workflow as a runnable agent.'
+          : 'Publish this workflow as a runnable agent.'
         : 'Every step of this workflow has to be bound to a real page before it can run. Bind the steps below, then publish.';
 
   return (
@@ -114,44 +82,30 @@ export function SopPublishPanel(props: {
       ) : null}
 
       {showForm && hasOutcomes ? (
-        <div className="mt-3 flex flex-col gap-3" data-testid="outcome-mapping-form">
-          {(asksAboutOutcomes ? props.declaredOutcomes : []).map((outcome) => (
-            <label className="flex flex-col gap-1 text-sm text-slate-800" key={outcome.name}>
-              <span>
-                <span className="font-medium">{outcome.name}</span> — {outcome.message}
-              </span>
-              <select
-                className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-                data-testid={`outcome-mapping-${outcome.name}`}
-                onChange={(event) => {
-                  const { value } = event.target;
-                  setOutcomeMapping((current) => {
-                    if (value === '') {
-                      return Object.fromEntries(
-                        Object.entries(current).filter(([name]) => name !== outcome.name),
-                      );
-                    }
-                    return { ...current, [outcome.name]: value };
-                  });
-                }}
-                value={outcomeMapping[outcome.name] ?? ''}
-              >
-                <option value="">Choose what this means…</option>
-                {BUSINESS_OUTCOMES.map((businessOutcome) => (
-                  <option key={businessOutcome} value={businessOutcome}>
-                    {businessOutcome}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ))}
+        <div className="mt-3 flex flex-col gap-3" data-testid="publish-form">
+          {/*
+            Shown, not asked about. These are the conclusions the agent will
+            record verbatim (ADR-030), so the useful thing is to let a person
+            check the list against what they meant before they publish it.
+          */}
+          <ul
+            className="flex flex-col gap-1 text-sm text-slate-800"
+            data-testid="declared-outcomes"
+          >
+            {props.declaredOutcomes.map((outcome) => (
+              <li key={outcome.name}>
+                <span className="font-mono text-xs font-medium">{outcome.name}</span> —{' '}
+                {outcome.message}
+              </li>
+            ))}
+          </ul>
 
           <button
             className="w-fit rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:bg-slate-300"
             data-testid="publish-recording-button"
-            disabled={props.isPublishing || !mappingComplete}
+            disabled={props.isPublishing}
             onClick={() => {
-              props.onPublish(effectiveMapping);
+              props.onPublish();
             }}
             type="button"
           >

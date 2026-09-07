@@ -1,11 +1,7 @@
 import { createLocalFilesystemArtifactStorage, type ArtifactStorage } from '@orbit/artifacts';
 import { createTestArtifactRoot, removeTestArtifactRoot } from '@orbit/artifacts/testing';
 import type { AgentIr } from '@orbit/agent-ir';
-import {
-  BORROW_OR_HOLD_OUTCOME_MAPPING,
-  borrowOrHoldBindings,
-  borrowOrHoldGraph,
-} from '@orbit/agent-ir-compiler/testing';
+import { borrowOrHoldBindings, borrowOrHoldGraph } from '@orbit/agent-ir-compiler/testing';
 import { compileCandidate } from '@orbit/agent-ir-compiler';
 import { publishedDocumentFor } from '@orbit/sop-service';
 import { createRepositories } from '@orbit/db';
@@ -96,7 +92,6 @@ describe('a branching workflow against the real library portal', () => {
     const compiled = compileCandidate({
       graph: borrowOrHoldGraph(),
       bindings: borrowOrHoldBindings(),
-      outcomeMapping: BORROW_OR_HOLD_OUTCOME_MAPPING,
       agentId: 'agent_borrow_or_hold',
       version: '0.1.0',
       sopId: 'sop_borrow_or_hold',
@@ -151,7 +146,9 @@ describe('a branching workflow against the real library portal', () => {
     const { run: record, decision, ranStepIds } = await run(AVAILABLE_ISBN);
 
     expect(record?.status).toBe('succeeded');
-    expect(record?.businessOutcome).toBe('request_found');
+    // The workflow's own word, recorded verbatim (ADR-030). It used to be
+    // stored as `request_found`: the right branch under a borrowed name.
+    expect(record?.businessOutcome).toBe('borrowed');
 
     // The decision resolved to alternative 0 — the Borrow button — which is the
     // whole claim: the runtime chose by what was on screen, not by step order.
@@ -171,7 +168,7 @@ describe('a branching workflow against the real library portal', () => {
     const { run: record, decision, ranStepIds } = await run(ON_LOAN_ISBN);
 
     expect(record?.status).toBe('succeeded');
-    expect(record?.businessOutcome).toBe('request_not_found');
+    expect(record?.businessOutcome).toBe('held');
 
     expect(decision?.output).toMatchObject({
       selectedAlternativeIndex: 1,

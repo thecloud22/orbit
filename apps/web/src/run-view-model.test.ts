@@ -114,17 +114,21 @@ describe('describeRunStatus', () => {
     expect(description.isTerminal).toBe(true);
   });
 
-  it('describes succeeded + request_not_found as an attention state, never a failure', () => {
-    const description = describeRunStatus({
-      status: 'succeeded',
-      businessOutcome: 'request_not_found',
-    });
+  it('reports a business outcome without judging it, and never as a failure', () => {
+    // This used to single out `request_not_found` as an "attention" state. An
+    // outcome is now whatever the workflow's own outcome step declares
+    // (ADR-030), so Watchtower names it and stops there — deciding which of a
+    // stranger's business conclusions deserves a warning colour would be a
+    // guess, and a succeeded run is a succeeded run either way.
+    for (const outcome of ['request_not_found', 'held', 'escalated_to_a_person']) {
+      const description = describeRunStatus({ status: 'succeeded', businessOutcome: outcome });
 
-    expect(description.tone).toBe('attention');
-    expect(description.tone).not.toBe('failure');
-    expect(description.isTerminal).toBe(true);
-    expect(description.detail).toContain('business outcome');
-    expect(description.detail).toContain('not a failure');
+      expect(description.tone).toBe('success');
+      expect(description.tone).not.toBe('failure');
+      expect(description.isTerminal).toBe(true);
+      expect(description.label).toContain(outcome.replaceAll('_', ' '));
+      expect(description.detail).toContain(outcome);
+    }
   });
 
   it('describes succeeded + none as a plain success', () => {

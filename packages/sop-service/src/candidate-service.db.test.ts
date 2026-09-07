@@ -82,7 +82,6 @@ describe('compiling a document into a candidate agent', () => {
 
     const result = await service().compileDocument({
       documentId: recorded.document.id,
-      outcomeMapping: { completed: 'request_found' },
     });
 
     return { recorded, result };
@@ -114,7 +113,6 @@ describe('compiling a document into a candidate agent', () => {
 
     const stillDraft = await service().compileDocument({
       documentId: recorded.document.id,
-      outcomeMapping: { completed: 'request_found' },
     });
 
     expect(stillDraft.ok).toBe(false);
@@ -133,7 +131,6 @@ describe('compiling a document into a candidate agent', () => {
 
     const inReview = await service().compileDocument({
       documentId: recorded.document.id,
-      outcomeMapping: { completed: 'request_found' },
     });
 
     expect(inReview.ok).toBe(false);
@@ -151,7 +148,6 @@ describe('compiling a document into a candidate agent', () => {
 
     const second = await service().compileDocument({
       documentId: recorded.document.id,
-      outcomeMapping: { completed: 'request_not_found' },
     });
 
     expect(second.ok).toBe(true);
@@ -187,7 +183,6 @@ describe('compiling a document into a candidate agent', () => {
 
     const second = await service().compileDocument({
       documentId: recorded.document.id,
-      outcomeMapping: { completed: 'request_not_found' },
     });
 
     expect(second.ok).toBe(true);
@@ -204,24 +199,37 @@ describe('compiling a document into a candidate agent', () => {
 
   it('reports a refusal as a refusal rather than throwing', async () => {
     const recorded = await recordDocument();
-    await approveRevision(getDatabase().db, recorded.revision.id);
 
-    const result = await service().compileDocument({
-      documentId: recorded.document.id,
-      // The recorder names its appended outcome `completed`; leaving it unmapped
-      // is an ordinary state of affairs, not a fault.
-      outcomeMapping: {},
+    // `none` is reserved for a run that has reached no business conclusion
+    // (ADR-030), so a workflow cannot declare it as an outcome. Renaming the
+    // recorder's appended outcome to it is an ordinary mistake a person could
+    // make in the step editor, not a fault in the system.
+    const outcome = recorded.revision.graph.steps.find((step) => step.kind === 'outcome');
+    if (outcome === undefined || outcome.kind !== 'outcome') {
+      throw new Error('the recording should append an outcome step');
+    }
+
+    const edited = await createSopRevisionService({ database: getDatabase().db }).editStep({
+      revisionId: recorded.revision.id,
+      stepId: outcome.id,
+      step: { ...outcome, outcome: 'none' },
     });
+    if (!edited.ok) throw new Error(`the edit should be accepted: ${JSON.stringify(edited)}`);
+
+    await approveRevision(getDatabase().db, edited.revision.id);
+
+    const result = await service().compileDocument({ documentId: recorded.document.id });
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toBe('refused');
+    if (result.reason !== 'refused') return;
+    expect(result.refusals.map((entry) => entry.code)).toEqual(['unusable_outcome_name']);
   });
 
   it('says plainly when there is no such document', async () => {
     const result = await service().compileDocument({
       documentId: 'sopdoc_missing' as never,
-      outcomeMapping: {},
     });
 
     expect(result.ok ? null : result.reason).toBe('not_found');
@@ -245,7 +253,6 @@ describe('the separate technical approval', () => {
     const service = createSopCandidateService({ database });
     const result = await service.compileDocument({
       documentId: recorded.document.id,
-      outcomeMapping: { completed: 'request_found' },
     });
 
     if (!result.ok) throw new Error(`expected a candidate: ${JSON.stringify(result)}`);

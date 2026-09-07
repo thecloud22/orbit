@@ -6,6 +6,13 @@
 
 ---
 
+> **Amended after the original plan was written, before go-ahead.** Two requirements came out of a
+> later design conversation and are folded into §3: a judged decision **must** declare an
+> "insufficient evidence" alternative (compiler-enforced), and a judged decision classifies into a
+> **partition**, whose overlapping-category failure the compiler cannot detect and which therefore
+> belongs in authoring guidance and the ADR. Both are in §3; §6 carries the limitation. No code for
+> this task has been written — it is still awaiting go-ahead.
+
 ## 0. One correction before anything else
 
 The brief says this task crosses a boundary "deterministic branching already crossed once."
@@ -144,6 +151,51 @@ or budget exhausted → **the run halts** with a typed error naming which. It ne
 default branch, never retries into a different answer, never picks the first alternative. A test
 exists for each refusal path, and the fake judge can produce each one.
 
+### A judged decision must declare an "insufficient evidence" alternative
+
+**Compiler-enforced, not advisory.** A judged step whose alternatives are `senior | professional |
+standard` forces a confident answer for a record carrying no evidence either way — and `standard`,
+returned because nothing else fit, is indistinguishable in the run's evidence from `standard` returned
+because it was right. The whole fail-closed argument above is about the plumbing around the
+classification; this applies it to the classification itself.
+
+So the compiler refuses a judged decision that does not declare an alternative meaning *the evidence
+does not settle this*, and the judge is instructed to choose it rather than guess. Where that
+alternative leads is the author's business decision — a `manual_review` step is the obvious
+destination, and nothing forces it.
+
+This is a refusal, not a warning. A judged step with no escape hatch is the shape that produces
+confident wrong answers at scale, and it must not compile.
+
+### A judged decision classifies into a partition, and the compiler cannot check that it is one
+
+A pick-one node returns exactly one alternative, so its alternatives must be **mutually exclusive and
+jointly exhaustive** over the cases the workflow will meet. A 70-year-old doctor is both "senior" and
+"professional"; asking a judge to pick one is asking it to break a tie the SOP never explained, and
+whichever it picks will look like an answer.
+
+**The compiler cannot detect this.** Overlap is a fact about the author's business meanings, not about
+the graph, and nothing in the schema distinguishes `senior | professional` from `available | on_loan`.
+So it belongs in authoring guidance and in the ADR, stated as a limitation rather than pretended away.
+The three ways out are all business decisions the author has to make:
+
+| Way out | What it looks like | When it fits |
+|---|---|---|
+| Separate decisions per attribute | One judged step per axis: age band, then occupation | The attributes are genuinely independent and both matter |
+| Enumerated combinations | `senior_professional`, `senior_other`, … as distinct alternatives | Few attributes, and the combinations really do behave differently |
+| A policy ranking | One decision whose alternatives are ordered, with the SOP stating which wins | There is a real precedence rule the business already applies |
+
+Guidance must say plainly that picking none of these — and leaving overlapping categories on a
+pick-one node — is the failure mode, because it produces a workflow that runs, never errors, and is
+quietly wrong on every overlapping case.
+
+**Proposed follow-up, not built here.** The drafting flow's clarification questions are the natural
+place to force these questions into the open for a plain-English SOP: where the evidence for this
+judgement comes from, what the unclear case should do, whether any two categories can be true at once,
+and any number the prose implies but never states ("recent", "large", "senior"). That is a change to
+draft generation rather than to the runtime, so it is recorded here as a follow-up and is explicitly
+outside this task.
+
 ### Full audit trail
 
 Nothing calls a model during execution today, so this is new evidence, not an extension:
@@ -232,6 +284,10 @@ call, costs money, needs the permission). Watchtower shows which, and the defaul
   that is a real risk, reduced to a bounded one, not eliminated.
 - **Trust tier.** Phase 1 is Tier 0, read-only. A judged decision is still read-only, but it is
   judgement, so ADR-013's tiers should say where this sits rather than leaving it unstated.
+- **Overlapping categories cannot be expressed by a pick-one node, and nothing detects the mistake.**
+  If two of a judged step's alternatives can be true of the same record, the judge will still return
+  exactly one and the run will look correct. This is a property of the author's business meanings, so
+  no schema check can catch it — only guidance and review (§3).
 - **Task 8's open limitation is unchanged**: `expect_one_of` still does not re-verify fingerprints at
   run time. Adjacent, not fixed here.
 

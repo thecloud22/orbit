@@ -143,7 +143,7 @@ describe('publishing a fully bound drafted workflow in one action', () => {
   it('goes from a drafted, fully bound workflow to a published agent in one call', async () => {
     const drafted = await draftedDocument(ALL_BOUND);
 
-    const result = await service().publish(drafted.document.id, { completed: 'request_found' });
+    const result = await service().publish(drafted.document.id);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -161,7 +161,6 @@ describe('publishing a fully bound drafted workflow in one action', () => {
     const candidates = createSopCandidateService({ database });
     const compiled = await candidates.compileDocument({
       documentId: manual.document.id,
-      outcomeMapping: { completed: 'request_found' },
     });
 
     expect(compiled.ok).toBe(true);
@@ -176,7 +175,7 @@ describe('publishing a fully bound drafted workflow in one action', () => {
     if (!published.ok) return;
 
     const fast = await draftedDocument(ALL_BOUND);
-    const viaFastPath = await service().publish(fast.document.id, { completed: 'request_found' });
+    const viaFastPath = await service().publish(fast.document.id);
 
     expect(viaFastPath.ok).toBe(true);
     if (!viaFastPath.ok) return;
@@ -191,7 +190,7 @@ describe('publishing a fully bound drafted workflow in one action', () => {
   it('refuses a workflow with a step still unbound, and names it', async () => {
     const drafted = await draftedDocument(['enter_request_number', 'search']);
 
-    const result = await service().publish(drafted.document.id, { completed: 'request_found' });
+    const result = await service().publish(drafted.document.id);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -205,7 +204,7 @@ describe('publishing a fully bound drafted workflow in one action', () => {
     // not be walked through approval on the way to finding that out.
     const drafted = await draftedDocument(['enter_request_number']);
 
-    await service().publish(drafted.document.id, { completed: 'request_found' });
+    await service().publish(drafted.document.id);
 
     const revision = await createRepositories(getDatabase().db).sopGraphRevisions.findCurrent(
       drafted.document.id,
@@ -228,7 +227,7 @@ describe('publishing a fully bound drafted workflow in one action', () => {
 
     expect(edited.ok).toBe(true);
 
-    const result = await service().publish(drafted.document.id, { completed: 'request_found' });
+    const result = await service().publish(drafted.document.id);
 
     expect(result.ok).toBe(false);
     if (result.ok || result.reason !== 'not_fully_bound') return;
@@ -236,9 +235,7 @@ describe('publishing a fully bound drafted workflow in one action', () => {
   });
 
   it('is a not_found for a document that does not exist', async () => {
-    const result = await service().publish('sopdoc_01hzz0000000000000000000' as never, {
-      completed: 'request_found',
-    });
+    const result = await service().publish('sopdoc_01hzz0000000000000000000' as never);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;

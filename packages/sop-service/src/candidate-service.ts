@@ -2,7 +2,6 @@ import {
   assessSandboxReadiness,
   compileCandidate,
   type CompileRefusal,
-  type OutcomeMapping,
 } from '@orbit/agent-ir-compiler';
 import type { AgentIrCandidateId, SopDocumentId } from '@orbit/contracts';
 import {
@@ -43,7 +42,6 @@ export type CompileDocumentResult =
 
 export interface CompileDocumentInput {
   readonly documentId: SopDocumentId;
-  readonly outcomeMapping: OutcomeMapping;
 }
 
 export type ApproveCandidateResult =
@@ -148,7 +146,6 @@ export function createSopCandidateService(options: {
       const compiled = compileCandidate({
         graph: revision.graph,
         bindings: bindings.map((record) => record.binding),
-        outcomeMapping: input.outcomeMapping,
         agentId: agentIdForDocument(input.documentId),
         // Thrown away entirely at publish, which allocates the real number per
         // agent (ADR-023) — never shown to a reviewer and never meant to be.
@@ -169,7 +166,6 @@ export function createSopCandidateService(options: {
         documentId: input.documentId,
         revisionId: revision.id,
         agentIr: compiled.agentIr,
-        outcomeMapping: input.outcomeMapping,
         compiledFromBindingIds: bindings.map((record) => record.id),
         secretInputIds: compiled.secretInputIds,
         sandboxState: readiness.ok ? 'ready' : 'cannot_validate',

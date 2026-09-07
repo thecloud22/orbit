@@ -62,10 +62,7 @@ describe('publishing produces something the existing runtime will execute', () =
     await approveRevision(database, recorded.revision.id);
 
     const candidates = createSopCandidateService({ database });
-    const compiled = await candidates.compileDocument({
-      documentId: recorded.document.id,
-      outcomeMapping: { completed: 'request_found' },
-    });
+    const compiled = await candidates.compileDocument({ documentId: recorded.document.id });
     if (!compiled.ok) throw new Error(`expected a candidate: ${JSON.stringify(compiled)}`);
 
     const approvedCandidate = await candidates.approve(compiled.candidate.id);
@@ -105,7 +102,6 @@ describe('publishing produces something the existing runtime will execute', () =
 
     const compiled = await createSopCandidateService({ database }).compileDocument({
       documentId: recorded.document.id,
-      outcomeMapping: { completed: 'request_found' },
     });
     if (!compiled.ok) throw new Error('expected a candidate');
     expect(compiled.candidate.agentIr.lifecycle.status).toBe('draft');
@@ -139,10 +135,7 @@ describe('containment survives publication (ADR-022)', () => {
     await approveRevision(database, recorded.revision.id);
 
     const candidates = createSopCandidateService({ database });
-    const compiled = await candidates.compileDocument({
-      documentId: recorded.document.id,
-      outcomeMapping: { completed: 'request_found' },
-    });
+    const compiled = await candidates.compileDocument({ documentId: recorded.document.id });
     if (!compiled.ok) throw new Error('expected a candidate');
 
     const approvedCandidate = await candidates.approve(compiled.candidate.id);

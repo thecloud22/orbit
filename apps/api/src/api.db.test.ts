@@ -594,7 +594,7 @@ describe('Orbit API over real persistence', () => {
       const tooEarly = await app.inject({
         method: 'POST',
         url: `/v1/sop-documents/${recorded.document.id}/candidates`,
-        payload: { outcomeMapping: { completed: 'request_found' } },
+        payload: {},
       });
       expect(tooEarly.statusCode).toBe(400);
       expect(tooEarly.json().error.message).toContain('draft');
@@ -617,7 +617,7 @@ describe('Orbit API over real persistence', () => {
       const compiled = await app.inject({
         method: 'POST',
         url: `/v1/sop-documents/${recorded.document.id}/candidates`,
-        payload: { outcomeMapping: { completed: 'request_found' } },
+        payload: {},
       });
       expect(compiled.statusCode).toBe(201);
       expect(compiled.json().data.sandboxState).toBe('ready');
@@ -782,7 +782,7 @@ describe('Orbit API over real persistence', () => {
       const tooEarly = await app.inject({
         method: 'POST',
         url: `/v1/sop-documents/${document.id}/publish-bound`,
-        payload: { outcomeMapping: { completed: 'request_found' } },
+        payload: {},
       });
       expect(tooEarly.statusCode).toBe(422);
       expect(
@@ -804,7 +804,7 @@ describe('Orbit API over real persistence', () => {
       const published = await app.inject({
         method: 'POST',
         url: `/v1/sop-documents/${document.id}/publish-bound`,
-        payload: { outcomeMapping: { completed: 'request_found' } },
+        payload: {},
       });
 
       expect(published.statusCode).toBe(201);

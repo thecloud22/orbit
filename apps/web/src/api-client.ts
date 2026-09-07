@@ -208,6 +208,25 @@ export async function editSopStep(
   });
 }
 
+/**
+ * Adding a step. Like every other write here, it creates the next revision.
+ *
+ * No id is sent: one is generated on the server, because branches name their
+ * targets by it and the step editor refuses to change one.
+ */
+export async function insertSopStep(
+  revisionId: string,
+  index: number,
+  step: Record<string, unknown>,
+  note?: string,
+): Promise<{ revisionId: string; revisionNumber: number; stepId: string }> {
+  return send(`/v1/sop-revisions/${revisionId}/steps`, 'POST', {
+    index,
+    step,
+    ...(note === undefined ? {} : { note }),
+  });
+}
+
 export async function reorderSopStep(
   revisionId: string,
   stepId: string,
@@ -319,13 +338,8 @@ export async function cancelRecording(sessionId: string): Promise<void> {
 }
 
 /** Compiles an approved revision and its approved bindings into a candidate agent. */
-export async function compileDocument(
-  documentId: string,
-  outcomeMapping: Readonly<Record<string, string>>,
-): Promise<CandidateActionView> {
-  return send<CandidateActionView>(`/v1/sop-documents/${documentId}/candidates`, 'POST', {
-    outcomeMapping,
-  });
+export async function compileDocument(documentId: string): Promise<CandidateActionView> {
+  return send<CandidateActionView>(`/v1/sop-documents/${documentId}/candidates`, 'POST', {});
 }
 
 /** The separate technical approval a candidate needs before it can be published. */
@@ -354,26 +368,22 @@ export async function publishCandidate(candidateId: string): Promise<PublishedAg
  * workflow against a real page all at once, binding confirms it one step at a
  * time, and once every step is bound the same one action applies (ADR-027).
  */
-export async function publishBoundDocument(
-  documentId: string,
-  outcomeMapping: Readonly<Record<string, string>>,
-): Promise<PublishedAgentVersionView> {
-  return send<PublishedAgentVersionView>(`/v1/sop-documents/${documentId}/publish-bound`, 'POST', {
-    outcomeMapping,
-  });
+export async function publishBoundDocument(documentId: string): Promise<PublishedAgentVersionView> {
+  return send<PublishedAgentVersionView>(
+    `/v1/sop-documents/${documentId}/publish-bound`,
+    'POST',
+    {},
+  );
 }
 
 /**
  * Publishes a recorded workflow in one call: approve, compile, approve,
  * publish, without the separate screens each of those normally takes.
  */
-export async function publishRecording(
-  documentId: string,
-  outcomeMapping: Readonly<Record<string, string>>,
-): Promise<PublishedAgentVersionView> {
+export async function publishRecording(documentId: string): Promise<PublishedAgentVersionView> {
   return send<PublishedAgentVersionView>(
     `/v1/sop-documents/${documentId}/publish-recording`,
     'POST',
-    { outcomeMapping },
+    {},
   );
 }

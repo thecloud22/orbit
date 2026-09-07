@@ -30,7 +30,8 @@ export function agentIrCandidateRecord(
     candidateNumber: 1,
     agentIr,
     agentIrSha256: 'a'.repeat(64),
-    outcomeMapping: { request_found: 'request_found' },
+    // Historical only; empty for anything compiled since ADR-030.
+    outcomeMapping: {},
     compiledFromBindingIds: [],
     secretInputIds: [],
     sandboxState: 'ready',

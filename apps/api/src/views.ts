@@ -328,14 +328,17 @@ export interface SopReviewView {
    */
   readonly publication: SopPublicationView;
   /**
-   * The business outcomes this workflow can declare, as compiling it needs to
-   * know how each maps to `request_found` / `request_not_found`.
+   * The business outcomes this workflow declares.
    *
-   * Computed here rather than left to the client to derive from raw step JSON:
-   * an `outcome` step's `outcome` field is business vocabulary the compiler
-   * cannot resolve on its own (ADR-023), and a reviewer choosing the mapping is
-   * the whole reason a candidate is a proposal rather than a foregone
-   * conclusion.
+   * These are what a run of the published agent will record verbatim: an
+   * outcome is the workflow's own declared name rather than a translation of
+   * it (ADR-030). Nobody is asked to map them onto anything any more, so this
+   * is now shown for confirmation — a person can check the list says what they
+   * meant before publishing — and used to tell a workflow that has no outcome
+   * step yet that there is nothing to publish.
+   *
+   * Still computed here rather than left to the client to derive from raw step
+   * JSON, for the same reason it always was.
    */
   readonly declaredOutcomes: readonly SopDeclaredOutcomeView[];
   readonly editable: boolean;

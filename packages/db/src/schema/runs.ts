@@ -1,10 +1,11 @@
-import type {
-  AgentVersionId,
-  OrbitError,
-  RunId,
-  RunInputs,
-  RunOutputs,
-  RunTrigger,
+import {
+  BUSINESS_OUTCOME_PATTERN,
+  type AgentVersionId,
+  type OrbitError,
+  type RunId,
+  type RunInputs,
+  type RunOutputs,
+  type RunTrigger,
 } from '@orbit/contracts';
 import { check, index, integer, jsonb, pgTable, text } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
@@ -14,7 +15,15 @@ import { createdAt, inValues, opaqueId, timestamptz, updatedAt } from './columns
 
 export const RUN_STATUSES = ['queued', 'running', 'succeeded', 'failed', 'cancelled'] as const;
 
-export const BUSINESS_OUTCOMES = ['request_found', 'request_not_found', 'none'] as const;
+/**
+ * A business outcome is a declared identifier, so the column is checked for
+ * *format* rather than against a list of names (ADR-030). The pattern is the
+ * contract's own, so the database and `businessOutcomeSchema` cannot disagree
+ * about what the column may hold.
+ */
+function isBusinessOutcome(column: unknown) {
+  return sql`${column} ~ ${sql.raw(`'${BUSINESS_OUTCOME_PATTERN.source}'`)}`;
+}
 
 /**
  * One execution of one exact Agent Version.
@@ -39,10 +48,7 @@ export const runs = pgTable(
       // that produced it.
       .references(() => agentVersions.id, { onDelete: 'restrict' }),
     status: text('status').$type<(typeof RUN_STATUSES)[number]>().notNull().default('queued'),
-    businessOutcome: text('business_outcome')
-      .$type<(typeof BUSINESS_OUTCOMES)[number]>()
-      .notNull()
-      .default('none'),
+    businessOutcome: text('business_outcome').notNull().default('none'),
     trigger: jsonb('trigger').$type<RunTrigger>().notNull(),
     inputs: jsonb('inputs').$type<RunInputs>().notNull(),
     outputs: jsonb('outputs').$type<RunOutputs>(),
@@ -60,7 +66,7 @@ export const runs = pgTable(
     index('runs_status_idx').on(table.status),
     index('runs_queued_at_idx').on(table.queuedAt),
     check('runs_status_check', inValues(table.status, RUN_STATUSES)),
-    check('runs_business_outcome_check', inValues(table.businessOutcome, BUSINESS_OUTCOMES)),
+    check('runs_business_outcome_check', isBusinessOutcome(table.businessOutcome)),
     // A terminal run always records when it finished.
     check(
       'runs_terminal_finished_at_check',

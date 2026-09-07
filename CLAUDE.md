@@ -72,7 +72,10 @@ If a document conflicts with this file, stop and clearly identify the conflict r
   - `fail`
 - Controlled outcomes:
   - run status: `queued`, `running`, `succeeded`, `failed`, `cancelled`
-  - business outcomes: `request_found`, `request_not_found`, `none`
+  - business outcomes: a declared identifier the workflow's own outcome step carries
+    (`^[a-z][a-z0-9_]{0,63}$`), with `none` reserved for a run that has reached no
+    business conclusion. Phase 1's `request_found` and `request_not_found` are ordinary
+    names under that rule, not a closed vocabulary — see **ADR-030**.
 - PostgreSQL persistence for Agent versions, runs, steps, events, and artifact metadata.
 - Local filesystem storage for screenshot, DOM snapshot, and Playwright trace bytes, behind an interface.
 - Structured events and typed error taxonomy.

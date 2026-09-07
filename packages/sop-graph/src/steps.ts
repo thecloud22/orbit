@@ -132,6 +132,59 @@ export const sopStepSchema = z.discriminatedUnion('kind', [
 export type SopStep = z.infer<typeof sopStepSchema>;
 export type SopStepKind = SopStep['kind'];
 
+/**
+ * A step being added, before it has an identity.
+ *
+ * Ids are generated rather than typed by a person (`generateStepId`), so the
+ * shape that arrives from an editor is every step field except `id`. Built by
+ * omitting from the real schemas rather than restated, so a field added to a
+ * step kind cannot be silently missing here.
+ */
+export const sopStepDraftSchema = z.discriminatedUnion('kind', [
+  navigateStepSchema.omit({ id: true }),
+  fillStepSchema.omit({ id: true }),
+  clickStepSchema.omit({ id: true }),
+  extractStepSchema.omit({ id: true }),
+  decisionStepSchema.omit({ id: true }),
+  outcomeStepSchema.omit({ id: true }),
+  manualReviewStepSchema.omit({ id: true }),
+]);
+export type SopStepDraft = z.infer<typeof sopStepDraftSchema>;
+
+/**
+ * A readable, unique id for a newly inserted step.
+ *
+ * Generated, never asked for. A step id is workflow-local naming rather than a
+ * persisted entity id, but branches name their targets by it and the step
+ * editor refuses to change one, so a person choosing badly here is a mistake
+ * they cannot undo. The same reasoning made `agentIdForDocument` derived rather
+ * than entered (ADR-024).
+ *
+ * Named after the kind and numbered from the count of that kind, so a graph
+ * reads as `click_1`, `click_2`. The suffix is a *starting guess* and the loop
+ * is what guarantees uniqueness: a step called `click_2` may already exist
+ * because an earlier one was deleted, or because a person wrote that name by
+ * hand in a fixture.
+ */
+export function generateStepId(existingIds: Iterable<string>, kind: SopStepKind): string {
+  const taken = new Set(existingIds);
+
+  let suffix = 1;
+  for (const id of taken) {
+    if (id === kind || id.startsWith(`${kind}_`)) {
+      suffix += 1;
+    }
+  }
+
+  let candidate = `${kind}_${String(suffix)}`;
+  while (taken.has(candidate)) {
+    suffix += 1;
+    candidate = `${kind}_${String(suffix)}`;
+  }
+
+  return candidate;
+}
+
 export const SOP_STEP_KINDS = [
   'navigate',
   'fill',

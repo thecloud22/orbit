@@ -4,8 +4,6 @@ import { EXECUTION_BINDING_SCHEMA_VERSION } from '@orbit/execution-mapping';
 import { borrowOrHoldGraph } from '@orbit/sop-graph/testing';
 import type { SopGraph } from '@orbit/sop-graph';
 
-import type { OutcomeMapping } from '../compile';
-
 /**
  * The branching demo: the borrow-or-hold workflow, and the bindings a person
  * would produce by demonstrating it against `apps/library-portal`.
@@ -146,17 +144,14 @@ export function borrowOrHoldBindings(): readonly ExecutionBinding[] {
 }
 
 /**
- * What each outcome means in business terms.
+ * The outcomes this demo reaches, and they are its own words.
  *
- * Agent IR still declares Phase 1's two terminal business outcomes, so
- * "borrowed" and "held" are mapped onto them. That is a genuine mismatch and it
- * is stated here rather than hidden: widening the business-outcome vocabulary
- * is its own change to a frozen contract and is not part of this task.
+ * They used to be mapped onto Phase 1's `request_found` / `request_not_found`,
+ * which recorded the right branch under the wrong name. A business outcome is
+ * now the declared name itself (ADR-030), so a run of this workflow records
+ * "borrowed" or "held" — exactly what happened.
  */
-export const BORROW_OR_HOLD_OUTCOME_MAPPING: OutcomeMapping = {
-  borrowed: 'request_found',
-  held: 'request_not_found',
-};
+export const BORROW_OR_HOLD_OUTCOMES = ['borrowed', 'held'] as const;
 
 export { borrowOrHoldGraph };
 export type { SopGraph };

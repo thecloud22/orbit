@@ -15,9 +15,7 @@ import { createStubContext } from '../testing/stub-context';
  */
 const DOCUMENT_ID = 'sopdoc_01hzz0000000000000000000';
 
-function server(
-  publish: (documentId: string, mapping: unknown) => Promise<PublishRecordingResult>,
-) {
+function server(publish: (documentId: string) => Promise<PublishRecordingResult>) {
   return buildServer({
     context: createStubContext({ publishRecordingService: { publish: publish as never } }),
     logLevel: 'silent',
@@ -32,7 +30,7 @@ describe('POST /v1/sop-documents/:documentId/publish-recording', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/publish-recording`,
-      payload: { outcomeMapping: { completed: 'request_found' } },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(201);
@@ -47,7 +45,7 @@ describe('POST /v1/sop-documents/:documentId/publish-recording', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/publish-recording`,
-      payload: { outcomeMapping: {} },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(400);
@@ -64,7 +62,7 @@ describe('POST /v1/sop-documents/:documentId/publish-recording', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/publish-recording`,
-      payload: { outcomeMapping: {} },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(400);
@@ -85,7 +83,7 @@ describe('POST /v1/sop-documents/:documentId/publish-recording', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/publish-recording`,
-      payload: { outcomeMapping: {} },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(400);
@@ -102,7 +100,7 @@ describe('POST /v1/sop-documents/:documentId/publish-recording', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/publish-recording`,
-      payload: { outcomeMapping: {} },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(400);
@@ -123,7 +121,7 @@ describe('POST /v1/sop-documents/:documentId/publish-recording', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/publish-recording`,
-      payload: { outcomeMapping: {} },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(409);
@@ -138,7 +136,7 @@ describe('POST /v1/sop-documents/:documentId/publish-recording', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/publish-recording`,
-      payload: { outcomeMapping: {} },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(404);
@@ -154,6 +152,8 @@ describe('POST /v1/sop-documents/:documentId/publish-recording', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/publish-recording`,
+      // Publishing takes no body now (ADR-030). A caller still sending the
+      // retired field is told, rather than having it silently ignored.
       payload: { outcomeMapping: { completed: 'something_else' } },
     });
 

@@ -3,7 +3,6 @@ import type {
   ArtifactId,
   ArtifactKind,
   ArtifactLinkRole,
-  BusinessOutcome,
   EventId,
   EventType,
   OrbitError,
@@ -12,6 +11,7 @@ import type {
   RunOutputs,
   RunStepId,
   RunTrigger,
+  TerminalBusinessOutcome,
   AgentVersionId,
 } from '@orbit/contracts';
 
@@ -168,7 +168,16 @@ export interface RunRecorder {
 }
 
 export interface CompleteRunInput {
-  readonly businessOutcome: Exclude<BusinessOutcome, 'none'>;
+  /**
+   * The workflow's own declared outcome name (ADR-030).
+   *
+   * `TerminalBusinessOutcome` rather than `Exclude<BusinessOutcome, 'none'>`:
+   * an outcome is now an identifier rather than a two-name enum, so that
+   * `Exclude` had quietly become a no-op over `string` and stated a rule it no
+   * longer enforced. The reservation of `none` is enforced by the schema at the
+   * boundary, where it can actually be checked.
+   */
+  readonly businessOutcome: TerminalBusinessOutcome;
   readonly outputs: RunOutputs;
 }
 

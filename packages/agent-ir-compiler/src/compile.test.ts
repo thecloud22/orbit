@@ -117,7 +117,6 @@ function compile(overrides: Partial<CompileInput> = {}): CompileResult {
   return compileCandidate({
     graph,
     bindings: overrides.bindings ?? bindingsFor(graph),
-    outcomeMapping: overrides.outcomeMapping ?? { request_found: 'request_found' },
     ...IDS,
     ...overrides,
   });
@@ -258,11 +257,38 @@ describe('refusals', () => {
     expect(refusalCodes(result)).toEqual(['stale_binding']);
   });
 
-  it('refuses an outcome nobody has mapped to a business result', () => {
+  it('refuses an outcome name that cannot be a business outcome', () => {
+    // An outcome is now the workflow's own declared name (ADR-030), so there is
+    // nothing left to map — but `none` is reserved for a run that reached no
+    // conclusion, and a graph may declare an outcome name longer than the run
+    // contract allows. Both are refused here, naming the step, rather than
+    // reaching a CHECK constraint violation at run time.
     const graph = findServiceRequestGraph();
-    const result = compile({ graph, outcomeMapping: {} });
 
-    expect(refusalCodes(result)).toEqual(['unmapped_outcome']);
+    for (const name of ['none', 'a'.repeat(65)]) {
+      const steps = graph.steps.map((step) =>
+        step.kind === 'outcome' ? { ...step, outcome: name } : step,
+      );
+
+      expect(refusalCodes(compile({ graph: { ...graph, steps } }))).toEqual([
+        'unusable_outcome_name',
+      ]);
+    }
+  });
+
+  it("carries the outcome step's own name through to the compiled agent", () => {
+    const graph = findServiceRequestGraph();
+    const result = compile({ graph });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const complete = result.agentIr.steps.find((step) => step.type === 'complete');
+    const outcomeStep = graph.steps.find((step) => step.kind === 'outcome');
+
+    expect(complete?.type === 'complete' ? complete.outcome : null).toBe(
+      outcomeStep?.kind === 'outcome' ? outcomeStep.outcome : null,
+    );
   });
 
   it('refuses to compile half of a multi-value read', () => {
@@ -364,17 +390,12 @@ describe('refusals', () => {
 
   it('collects every problem at once rather than stopping at the first', () => {
     const graph = findServiceRequestGraph();
-    const result = compile({ graph, bindings: [], outcomeMapping: {} });
+    const result = compile({ graph, bindings: [] });
 
     // Somebody fixing a recorded workflow wants the whole list, not to
     // rediscover the next problem after each edit.
     // Three, not four: a navigate names a destination rather than an element,
     // so it needs no mapping.
-    expect(refusalCodes(result)).toEqual([
-      'missing_binding',
-      'missing_binding',
-      'missing_binding',
-      'unmapped_outcome',
-    ]);
+    expect(refusalCodes(result)).toEqual(['missing_binding', 'missing_binding', 'missing_binding']);
   });
 });

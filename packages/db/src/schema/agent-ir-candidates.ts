@@ -94,7 +94,16 @@ export const agentIrCandidates = pgTable(
     candidateNumber: integer('candidate_number').notNull(),
     agentIr: jsonb('agent_ir').$type<AgentIr>().notNull(),
     agentIrSha256: text('agent_ir_sha256').notNull(),
-    /** SOP outcome name to business outcome, chosen by a person at compile time. */
+    /**
+     * Historical only, and empty for anything compiled since ADR-030.
+     *
+     * A business outcome used to be one of two inherited names, so a person had
+     * to say which of them each of their workflow's own outcomes meant, and that
+     * answer was recorded here. Outcomes are now the workflow's own declared
+     * names and the mapping is the identity, so there is nothing left to record.
+     * The column is kept rather than dropped because the rows written before the
+     * change hold a real answer a person gave, and dropping it would destroy that.
+     */
     outcomeMapping: jsonb('outcome_mapping').$type<Record<string, string>>().notNull(),
     /** The exact binding ids that went in, so approval names a fixed set. */
     compiledFromBindingIds: jsonb('compiled_from_binding_ids').$type<readonly string[]>().notNull(),

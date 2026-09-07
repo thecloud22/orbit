@@ -1,5 +1,11 @@
 import type { ArtifactView, RunDetailView } from '@orbit/api/views';
-import type { BusinessOutcome, OrbitError, RunOutputs, RunStatus } from '@orbit/contracts';
+import {
+  NO_BUSINESS_OUTCOME,
+  type BusinessOutcome,
+  type OrbitError,
+  type RunOutputs,
+  type RunStatus,
+} from '@orbit/contracts';
 
 /**
  * Every state decision Watchtower makes, as pure functions.
@@ -35,11 +41,24 @@ export function isTerminalStatus(status: RunStatus): boolean {
   return TERMINAL_STATUSES.includes(status);
 }
 
+/** An outcome identifier as prose: `request_not_found` reads "request not found". */
+export function outcomeLabel(outcome: BusinessOutcome): string {
+  return outcome.replaceAll('_', ' ');
+}
+
 /**
  * Technical status and business outcome are separate (ADR-006), and the UI must
  * not blur them: a run that correctly established the request does not exist is
- * a *successful* run with an outcome of `request_not_found`. It is shown as an
- * attention state, never as a failure.
+ * a *successful* run whose outcome happens to be `request_not_found`. It is
+ * never shown as a failure.
+ *
+ * The outcome is reported, not interpreted. It used to be one of two names
+ * inherited from the Phase 1 demo, so this could special-case `request_not_found`
+ * into an "attention" state and write a sentence about service requests. An
+ * outcome is now whatever the workflow's own outcome step declares (ADR-030) —
+ * `borrowed`, `held`, `escalated` — and Watchtower has no basis for deciding
+ * which of a stranger's business conclusions deserves a warning colour. Naming
+ * it is the honest thing this can do; judging it would be guessing.
  */
 export function describeRunStatus(run: {
   readonly status: RunStatus;
@@ -63,19 +82,16 @@ export function describeRunStatus(run: {
         isTerminal,
       };
     case 'succeeded':
-      if (run.businessOutcome === 'request_not_found') {
-        return {
-          label: 'Succeeded — request not found',
-          tone: 'attention',
-          detail:
-            'The agent ran correctly and established that no matching service request exists. This is a business outcome, not a failure.',
-          isTerminal,
-        };
-      }
       return {
-        label: run.businessOutcome === 'request_found' ? 'Succeeded — request found' : 'Succeeded',
+        label:
+          run.businessOutcome === NO_BUSINESS_OUTCOME
+            ? 'Succeeded'
+            : `Succeeded — ${outcomeLabel(run.businessOutcome)}`,
         tone: 'success',
-        detail: 'The agent completed the procedure and recorded its evidence.',
+        detail:
+          run.businessOutcome === NO_BUSINESS_OUTCOME
+            ? 'The agent completed the procedure and recorded its evidence.'
+            : `The agent completed the procedure and reached the outcome "${run.businessOutcome}". This is the workflow's own conclusion, not a judgement about it.`,
         isTerminal,
       };
     case 'failed':

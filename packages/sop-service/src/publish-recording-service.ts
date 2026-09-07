@@ -1,4 +1,4 @@
-import type { CompileRefusal, OutcomeMapping } from '@orbit/agent-ir-compiler';
+import type { CompileRefusal } from '@orbit/agent-ir-compiler';
 import type { SopDocumentId } from '@orbit/contracts';
 import { createRepositories, type AgentVersionRecord, type OrbitDatabase } from '@orbit/db';
 
@@ -53,10 +53,7 @@ export type PublishRecordingResult =
   | { readonly ok: false; readonly reason: 'already_published'; readonly agentVersionId: string };
 
 export interface PublishRecordingService {
-  publish(
-    documentId: SopDocumentId,
-    outcomeMapping: OutcomeMapping,
-  ): Promise<PublishRecordingResult>;
+  publish(documentId: SopDocumentId): Promise<PublishRecordingResult>;
 }
 
 export function createPublishRecordingService(options: {
@@ -66,7 +63,7 @@ export function createPublishRecordingService(options: {
   const repositories = createRepositories(options.database);
 
   return {
-    async publish(documentId, outcomeMapping) {
+    async publish(documentId) {
       const document = await repositories.sopDocuments.findById(documentId);
       if (document === null) {
         return { ok: false, reason: 'not_found' };
@@ -86,7 +83,7 @@ export function createPublishRecordingService(options: {
         return { ok: false, reason: 'not_recorded' };
       }
 
-      return pipeline.run({ documentId, revision, outcomeMapping });
+      return pipeline.run({ documentId, revision });
     },
   };
 }

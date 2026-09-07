@@ -25,8 +25,8 @@ export const COMPILE_REFUSAL_CODES = [
   'stale_binding',
   /** An extract step declares more fields than its one binding can cover. */
   'extract_coverage_gap',
-  /** A reachable outcome name with no entry in the candidate's mapping. */
-  'unmapped_outcome',
+  /** An outcome step whose name cannot be a business outcome (ADR-030). */
+  'unusable_outcome_name',
   /** An input whose declared type Agent IR cannot yet express. */
   'unsupported_input_type',
   /** A fill whose value source cannot produce a value Agent IR accepts. */

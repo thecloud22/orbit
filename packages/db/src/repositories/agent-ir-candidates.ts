@@ -28,7 +28,6 @@ export interface CreateAgentIrCandidateInput {
   readonly documentId: SopDocumentId;
   readonly revisionId: SopRevisionId;
   readonly agentIr: AgentIr;
-  readonly outcomeMapping: Readonly<Record<string, string>>;
   readonly compiledFromBindingIds: readonly string[];
   readonly secretInputIds: readonly string[];
   readonly sandboxState: CandidateSandboxState;
@@ -140,7 +139,8 @@ export function createAgentIrCandidateRepository(executor: Executor): AgentIrCan
             candidateNumber: (previous?.number ?? 0) + 1,
             agentIr: document,
             agentIrSha256: sha256Of(document),
-            outcomeMapping: input.outcomeMapping,
+            // Always empty now: an outcome is the workflow's own name (ADR-030).
+            outcomeMapping: {},
             compiledFromBindingIds: input.compiledFromBindingIds,
             secretInputIds: input.secretInputIds,
             sandboxState: input.sandboxState,

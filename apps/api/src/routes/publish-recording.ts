@@ -1,5 +1,4 @@
-import { sopDocumentIdSchema, terminalBusinessOutcomeSchema } from '@orbit/contracts';
-import { outcomeNameSchema } from '@orbit/sop-graph';
+import { sopDocumentIdSchema } from '@orbit/contracts';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -41,9 +40,17 @@ function unprocessable(message: string, details?: readonly { field: string; mess
   });
 }
 
-const bodySchema = z.strictObject({
-  outcomeMapping: z.record(outcomeNameSchema, terminalBusinessOutcomeSchema),
-});
+/**
+ * Publishing takes no body.
+ *
+ * It used to carry an outcome mapping, because a business outcome was one of
+ * two names inherited from the Phase 1 demo and somebody had to say which of
+ * them each of their workflow's own outcomes meant. Outcomes are now the
+ * workflow's own declared names (ADR-030), so there is nothing left to ask.
+ * Kept strict rather than dropped so a caller still sending the old field is
+ * told, instead of having it silently ignored.
+ */
+const bodySchema = z.strictObject({});
 
 export function registerPublishRecordingRoutes(app: FastifyInstance, context: ApiContext): void {
   app.post<{ Params: { documentId: string } }>(
@@ -54,7 +61,7 @@ export function registerPublishRecordingRoutes(app: FastifyInstance, context: Ap
 
       if (!body.success) {
         throw badRequest(
-          'This needs an outcome mapping.',
+          "Publishing this workflow takes no options. An outcome is the workflow's own declared name.",
           body.error.issues.map((issue) => ({
             field: issue.path.join('.') || 'body',
             message: issue.message,
@@ -62,10 +69,7 @@ export function registerPublishRecordingRoutes(app: FastifyInstance, context: Ap
         );
       }
 
-      const result = await context.publishRecordingService.publish(
-        documentId as never,
-        body.data.outcomeMapping,
-      );
+      const result = await context.publishRecordingService.publish(documentId as never);
 
       if (!result.ok) {
         switch (result.reason) {

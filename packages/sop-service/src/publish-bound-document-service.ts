@@ -1,7 +1,6 @@
 import {
   BINDABLE_KINDS as COMPILER_BINDABLE_KINDS,
   type CompileRefusal,
-  type OutcomeMapping,
 } from '@orbit/agent-ir-compiler';
 import type { SopDocumentId } from '@orbit/contracts';
 import {
@@ -61,10 +60,7 @@ export type PublishBoundDocumentResult =
   | { readonly ok: false; readonly reason: 'already_published'; readonly agentVersionId: string };
 
 export interface PublishBoundDocumentService {
-  publish(
-    documentId: SopDocumentId,
-    outcomeMapping: OutcomeMapping,
-  ): Promise<PublishBoundDocumentResult>;
+  publish(documentId: SopDocumentId): Promise<PublishBoundDocumentResult>;
 }
 
 /**
@@ -124,7 +120,7 @@ export function createPublishBoundDocumentService(options: {
   const repositories = createRepositories(options.database);
 
   return {
-    async publish(documentId, outcomeMapping) {
+    async publish(documentId) {
       const document = await repositories.sopDocuments.findById(documentId);
       if (document === null) {
         return { ok: false, reason: 'not_found' };
@@ -145,7 +141,7 @@ export function createPublishBoundDocumentService(options: {
         return { ok: false, reason: 'not_fully_bound', unboundStepIds };
       }
 
-      return pipeline.run({ documentId, revision, outcomeMapping });
+      return pipeline.run({ documentId, revision });
     },
   };
 }

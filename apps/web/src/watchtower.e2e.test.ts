@@ -253,7 +253,11 @@ describe('Watchtower end to end', () => {
     expect(label).toContain('request not found');
     expect(await page.getByTestId('run-business-outcome').textContent()).toBe('request_not_found');
     expect(await page.getByTestId('run-error').count()).toBe(0);
-    expect(await page.getByTestId('run-status-detail').textContent()).toContain('business outcome');
+    // Named, not judged (ADR-030): a succeeded run is a succeeded run, and
+    // Watchtower reports the workflow's own conclusion rather than ranking it.
+    expect(await page.getByTestId('run-status-detail').textContent()).toContain(
+      'request_not_found',
+    );
 
     await page.close();
   });
@@ -609,6 +613,62 @@ describe('Watchtower end to end', () => {
 
       const summaries = await page.getByTestId('sop-review-step-summary').allTextContents();
       expect(summaries).toContain('Open the corrected portal sign-in page');
+
+      await page.close();
+    });
+
+    it('adds a step at a chosen position, as a new revision', async () => {
+      const page = await open();
+      await openReview(page);
+
+      const before = await page.getByTestId('sop-review-step-summary').allTextContents();
+
+      // Position 1: after the first step rather than in front of it, so this
+      // exercises the ordinary case without also moving the entry step.
+      await page.getByTestId('sop-step-insert-1').click();
+      await page.getByTestId('sop-insert-kind').selectOption('click');
+      await page.getByTestId('field-targetHint').fill('Escalate');
+      await page.getByTestId('field-purpose').fill('Escalate the request to the on-call team');
+      await page.getByTestId('sop-insert-note').fill('The desk escalates before searching.');
+      await page.getByTestId('sop-insert-save').click();
+
+      await expect
+        .poll(
+          async () => (await page.getByTestId('sop-review-step-summary').allTextContents()).length,
+          {
+            timeout: 20_000,
+          },
+        )
+        .toBe(before.length + 1);
+
+      const after = await page.getByTestId('sop-review-step-summary').allTextContents();
+      expect(after[0]).toBe(before[0]);
+      expect(after.join(' ')).toContain('Escalate');
+
+      await page.close();
+    });
+
+    it('refuses an insert that would break the workflow, and saves nothing', async () => {
+      const page = await open();
+      await openReview(page);
+
+      const revision = (await page.getByTestId('sop-review-state').textContent()) ?? '';
+      const before = await page.getByTestId('sop-review-step-summary').allTextContents();
+
+      // A click appended after the workflow's terminal step leaves it no longer
+      // ending on an outcome — invisible from the step itself, which is exactly
+      // why the whole graph is re-validated on the server.
+      await page.getByTestId(`sop-step-insert-${String(before.length)}`).click();
+      await page.getByTestId('sop-insert-kind').selectOption('click');
+      await page.getByTestId('field-targetHint').fill('Something after the end');
+      await page.getByTestId('field-purpose').fill('This cannot come last');
+      await page.getByTestId('sop-insert-save').click();
+
+      await expect
+        .poll(() => page.getByTestId('sop-review-failure').count(), { timeout: 20_000 })
+        .toBe(1);
+      expect((await page.getByTestId('sop-review-state').textContent()) ?? '').toBe(revision);
+      expect(await page.getByTestId('sop-review-step-summary').allTextContents()).toEqual(before);
 
       await page.close();
     });
@@ -1101,7 +1161,10 @@ describe('Watchtower end to end', () => {
       await page
         .getByTestId('publish-recording-button')
         .waitFor({ state: 'visible', timeout: 20_000 });
+      // The mapping form is gone entirely: an outcome is the workflow's own
+      // declared name, so publishing has no question attached (ADR-030).
       expect(await page.getByTestId('outcome-mapping-completed').count()).toBe(0);
+      expect(await page.getByTestId('outcome-mapping-form').count()).toBe(0);
       await page.getByTestId('publish-recording-button').click();
 
       await expect

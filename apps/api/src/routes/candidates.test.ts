@@ -42,7 +42,7 @@ describe('POST /v1/sop-documents/:documentId/candidates', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/candidates`,
-      payload: { outcomeMapping: { request_found: 'request_found' } },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(201);
@@ -65,7 +65,7 @@ describe('POST /v1/sop-documents/:documentId/candidates', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/candidates`,
-      payload: { outcomeMapping: {} },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(400);
@@ -81,7 +81,7 @@ describe('POST /v1/sop-documents/:documentId/candidates', () => {
         reason: 'refused',
         refusals: [
           { code: 'missing_binding', stepId: 'search', message: 'not mapped yet' },
-          { code: 'unmapped_outcome', message: 'no mapping for "completed"' },
+          { code: 'unusable_outcome_name', message: '"none" is reserved' },
         ],
       }),
     );
@@ -89,14 +89,14 @@ describe('POST /v1/sop-documents/:documentId/candidates', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/candidates`,
-      payload: { outcomeMapping: {} },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(400);
     const details = response.json().error.details as { field: string; message: string }[];
     expect(details).toHaveLength(2);
     expect(details[0]?.field).toBe('search');
-    expect(details[1]?.message).toContain('unmapped_outcome');
+    expect(details[1]?.message).toContain('unusable_outcome_name');
 
     await app.close();
   });
@@ -107,7 +107,7 @@ describe('POST /v1/sop-documents/:documentId/candidates', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/candidates`,
-      payload: { outcomeMapping: {} },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(404);
@@ -123,6 +123,8 @@ describe('POST /v1/sop-documents/:documentId/candidates', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/candidates`,
+      // Publishing takes no body now (ADR-030). A caller still sending the
+      // retired field is told, rather than having it silently ignored.
       payload: { outcomeMapping: { completed: 'something_else' } },
     });
 
@@ -139,7 +141,7 @@ describe('POST /v1/sop-documents/:documentId/candidates', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/v1/sop-documents/not-an-orbit-id/candidates',
-      payload: { outcomeMapping: {} },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(400);

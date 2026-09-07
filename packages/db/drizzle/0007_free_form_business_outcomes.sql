@@ -1,0 +1,2 @@
+ALTER TABLE "runs" DROP CONSTRAINT "runs_business_outcome_check";--> statement-breakpoint
+ALTER TABLE "runs" ADD CONSTRAINT "runs_business_outcome_check" CHECK ("runs"."business_outcome" ~ '^[a-z][a-z0-9_]{0,63}$');

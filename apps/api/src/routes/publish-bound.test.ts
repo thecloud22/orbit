@@ -14,9 +14,7 @@ import { createStubContext } from '../testing/stub-context';
  */
 const DOCUMENT_ID = 'sopdoc_01hzz0000000000000000000';
 
-function server(
-  publish: (documentId: string, mapping: unknown) => Promise<PublishBoundDocumentResult>,
-) {
+function server(publish: (documentId: string) => Promise<PublishBoundDocumentResult>) {
   return buildServer({
     context: createStubContext({ publishBoundDocumentService: { publish: publish as never } }),
     logLevel: 'silent',
@@ -31,7 +29,7 @@ describe('POST /v1/sop-documents/:documentId/publish-bound', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/publish-bound`,
-      payload: { outcomeMapping: { completed: 'request_found' } },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(201);
@@ -52,7 +50,7 @@ describe('POST /v1/sop-documents/:documentId/publish-bound', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/publish-bound`,
-      payload: { outcomeMapping: {} },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(422);
@@ -70,7 +68,7 @@ describe('POST /v1/sop-documents/:documentId/publish-bound', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/publish-bound`,
-      payload: { outcomeMapping: {} },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(404);
@@ -92,7 +90,7 @@ describe('POST /v1/sop-documents/:documentId/publish-bound', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/publish-bound`,
-      payload: { outcomeMapping: {} },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(400);
@@ -109,7 +107,7 @@ describe('POST /v1/sop-documents/:documentId/publish-bound', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/v1/sop-documents/${DOCUMENT_ID}/publish-bound`,
-      payload: { outcomeMapping: {} },
+      payload: {},
     });
 
     expect(response.statusCode).toBe(409);
@@ -118,10 +116,10 @@ describe('POST /v1/sop-documents/:documentId/publish-bound', () => {
     await app.close();
   });
 
-  it('rejects a request with no outcome mapping at all', async () => {
-    const app = server(() => {
-      throw new Error('the service should not be reached');
-    });
+  it('accepts an empty body, because publishing asks nothing', async () => {
+    // The route used to require an outcome mapping. An outcome is now the
+    // workflow's own declared name (ADR-030), so there is nothing to send.
+    const app = server(() => Promise.resolve({ ok: true, agentVersion: agentVersionRecord() }));
 
     const response = await app.inject({
       method: 'POST',
@@ -129,7 +127,7 @@ describe('POST /v1/sop-documents/:documentId/publish-bound', () => {
       payload: {},
     });
 
-    expect(response.statusCode).toBe(400);
+    expect(response.statusCode).not.toBe(400);
 
     await app.close();
   });

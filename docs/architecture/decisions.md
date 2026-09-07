@@ -1174,3 +1174,61 @@ All three are checked before **each** call, and the **most restrictive** one tha
 | Fetch real prices from the provider | It would make an estimate look like a bill, and put a network call on a path that has no need of one |
 | Cost an unpriced model at zero | The one answer that is certainly wrong, and the one nobody would question |
 | Enforce the cap in the UI by disabling the button | A gate a client owns is not a gate. The button reflects the budget; the server enforces it |
+
+## ADR-030: Let a workflow declare its own business outcomes, and let a reviewer add a step
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+Two changes to the same review-and-publish path, decided together.
+
+**A recorded workflow could never become a branching one.** `packages/sop-recording`'s translator deliberately refuses to invent a branch nobody demonstrated, which is right: a recording is evidence of what a person did, and a decision they never made is not in it. But the review editor had `editStep` and `reorderStep` and no way to *add* a step. So the only routes to a `decision` step were the AI drafting flow and a hand-written fixture. A person who recorded a workflow, then realised it needed to branch, had nowhere to say so.
+
+**Every agent had to lie about what it concluded.** `terminalBusinessOutcomeSchema` was `z.enum(['request_found', 'request_not_found'])` — two names inherited from the Phase 1 "Find Service Request" demo and never chosen to describe workflows in general. Every compiled agent had to map its real outcomes onto those two, and a person was asked at publish time to pick which. The seeded library demo published `borrowed → request_found` and `held → request_not_found`. The branch taken was exact and the evidence was complete; the *name* recorded against the run was wrong. `docs/demo/branching-library-demo.md` carried this as a known limitation, and the UI had grown a comment apologising for the vocabulary while defaulting around it.
+
+That is worse than an untidy name. Watchtower's whole claim is that a run's evidence reconstructs what happened. A run that concluded "this book is on loan, so I placed a hold" recorded `request_not_found`.
+
+### Decision
+
+**A business outcome is a declared identifier — the name the workflow's own outcome step already carries.** `borrowed` is the outcome. There is no mapping, and the mapping concept is gone: `OutcomeMapping`, the `outcomeMapping` body field on the three publish/compile routes, and the whole mapping form in `SopPublishPanel`. Publishing is now a button with no question attached, for every workflow.
+
+The grammar is `^[a-z][a-z0-9_]{0,63}$` — the same shape as the SOP Graph's own `outcomeNameSchema`, with a length bound the graph does not impose, stated once in `BUSINESS_OUTCOME_PATTERN` and used by both the Zod schema and the database CHECK constraint so the two cannot disagree.
+
+**`none` stays reserved** for a run that has reached no business conclusion. Reserved rather than merely conventional, because it is the column default: a workflow able to declare an outcome called `none` would make "no conclusion yet" and "the conclusion is none" the same stored value. The compiler refuses it by name, at the step, rather than letting it reach a constraint violation at run time.
+
+**Technical run status stays separate from business outcome**, exactly as ADR-006 says. A free-form outcome influences neither `succeeded` nor `failed`.
+
+**A reviewer can insert a step at a chosen position**, through `insertStep` on `SopRevisionService` and `POST /v1/sop-revisions/:revisionId/steps`. It follows the shape `editStep` already uses: a new revision rather than a mutation, only from an editable state (ADR-017), the whole resulting graph re-validated through the normal parse path, and a typed refusal rather than a throw for every expected case. **Step ids are generated, never asked for** — the same reasoning that made `agentIdForDocument` derived in ADR-024, and sharper here, because branches name their targets by step id and the step editor refuses to change one, so a name chosen badly could not be undone.
+
+**Deleting a step is deliberately not part of this.** Removing a step can strand a branch that targets it, and the honest handling of that is its own decision.
+
+### Consequences
+
+- **No data migration, and that is a property rather than a lucky escape.** `request_found` and `request_not_found` satisfy the new grammar exactly as they satisfied the old enum, so every existing `runs` row, the seeded Phase 1 agent, its fixture and `verify:phase1` keep working untouched. A test asserts this against the real CHECK constraint rather than assuming it.
+- The migration (`0007_free_form_business_outcomes`) swaps one CHECK for another: a value list becomes a format check. It touches no row.
+- The library demo's outcomes are `borrowed` and `held` for real. Its runtime test asserts those names end to end, which is the proof the change actually reached a run's evidence.
+- **Watchtower reports an outcome without judging it.** `describeRunStatus` used to single out `request_not_found` as an "attention" state with a sentence about service requests. An outcome is now whatever a stranger's workflow declares, and Watchtower has no basis for deciding which business conclusion deserves a warning colour. A succeeded run is shown as succeeded, named by its outcome. This is a deliberate loss of a UI affordance whose premise was a closed vocabulary.
+- **An inserted step has no binding, so it correctly blocks publishing.** It shows as "Not recorded" until somebody demonstrates it on a real page. That is the system working, not a gap: an unbound step is a claim about a page that nothing has confirmed (ADR-025, ADR-027), and a step typed into a form is precisely the case that must not bypass that. It is worth saying plainly so nobody later "fixes" it.
+- **Inserting in front of the entry step moves `entryStepId`.** The graph names its entry explicitly rather than meaning "whatever is first", so without this the inserted step would be silently unreachable and the workflow would still start where it always did. The condition is the index of the entry step, not index 0, because that — not the head of the list — is the only position where fall-through puts a new step before the workflow's beginning.
+- `agent_ir_candidates.outcome_mapping` is **kept but no longer written**: new candidates record `{}`. The rows written before this change hold a real answer a person gave, and dropping the column would destroy that. Retiring it is a separate, destructive change and is not smuggled into this one.
+- `CompleteRunInput.businessOutcome` is now `TerminalBusinessOutcome` rather than `Exclude<BusinessOutcome, 'none'>`. That `Exclude` had quietly become a no-op over `string` and stated a rule it no longer enforced; the reservation is enforced by the schema at the boundary, where it can be checked.
+- The three publish/compile routes now take an empty body, kept strict so a caller still sending `outcomeMapping` is told rather than silently ignored.
+- `packages/runtime` and `packages/executor-playwright` needed **no change**: the runtime carries the outcome value through and never switched on the specific names. Only the now-vacuous type annotation above was tightened.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Keep the enum and add more names to it | Every new customer workflow would be a change to a frozen contract, and the vocabulary would still be Orbit's rather than theirs |
+| Keep the mapping but let a person type a free-form target | The same question, still asked, with the answer now also unvalidated. The mapping was the thing with no purpose |
+| Let a workflow declare `none` as an outcome | It is the column default, so "no conclusion yet" and "the conclusion is none" would become the same stored value |
+| Migrate existing rows to new names | There is nothing to migrate to. `request_found` is a perfectly good name for the Phase 1 agent's outcome, and it is what that agent actually declares |
+| Drop `outcome_mapping` from the candidates table in this task | It destroys the record of an answer a person gave, for a column that is merely inert. A destructive migration deserves its own decision |
+| Keep `request_not_found` as an "attention" state in Watchtower | It only reads as attention-worthy if you already know the Phase 1 demo. Applied to `held` or `escalated` it would be a guess presented as a judgement |
+| Let the caller supply the new step's id | Branches name their targets by step id and the editor refuses to change one, so a bad name would be permanent |
+| Validate only the inserted step | An insert can strand the step it displaced, read a value produced after it, or leave a path that never reaches an outcome — none of which is visible from the step alone |
+| Add delete alongside insert | Deleting can strand a branch that targets the deleted step. Handling that honestly is a separate decision, and a half-answer would be worse than the current absence |
+| Make the inserted step publishable without a binding | It would let a step nothing has confirmed against a real page reach a running agent, which is the line ADR-025 and ADR-027 draw |

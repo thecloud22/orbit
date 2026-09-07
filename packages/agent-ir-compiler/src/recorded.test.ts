@@ -75,9 +75,6 @@ describe('a recorded workflow', () => {
     const result = compileCandidate({
       graph: recording.graph,
       bindings: bindingsFrom(recording),
-      // `completed` is what the recorder names its appended outcome, and it is
-      // not a business outcome Agent IR knows. The mapping is the bridge.
-      outcomeMapping: { completed: 'request_found' },
       ...IDS,
     });
 
@@ -93,22 +90,25 @@ describe('a recorded workflow', () => {
     expect(result.secretInputIds).toEqual([]);
   });
 
-  it('refuses when the recorder-appended outcome has not been mapped', () => {
+  it('records the recorder-appended outcome under its own name', () => {
     if (!recording.ok) throw new Error('the recording should translate');
 
-    // Without this refusal a recorded workflow would compile to an outcome
-    // nobody chose, which is a business claim the compiler is not entitled to
-    // make on its own.
+    // `completed` is what the recorder names its appended outcome. It used to
+    // need mapping onto one of two names inherited from the Phase 1 demo, and
+    // compiling was refused until somebody chose one. It is now the business
+    // outcome itself (ADR-030), so there is nothing to choose and nothing to
+    // refuse.
     const result = compileCandidate({
       graph: recording.graph,
       bindings: bindingsFrom(recording),
-      outcomeMapping: {},
       ...IDS,
     });
 
-    expect(result.ok ? [] : result.refusals.map((entry) => entry.code)).toEqual([
-      'unmapped_outcome',
-    ]);
+    expect(result.ok ? [] : result.refusals).toEqual([]);
+    if (!result.ok) return;
+
+    const complete = result.agentIr.steps.at(-1);
+    expect(complete?.type === 'complete' ? complete.outcome : null).toBe('completed');
   });
 });
 
@@ -125,7 +125,6 @@ describe('the escalation-review reference workflow', () => {
     const result = compileCandidate({
       graph,
       bindings: [],
-      outcomeMapping: {},
       ...IDS,
     });
 

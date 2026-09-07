@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 
 import type { SopBindingsView, SopReviewView } from '@orbit/api/views';
 
@@ -8,6 +8,7 @@ import {
   editSopStep,
   getSopBindings,
   getSopReview,
+  insertSopStep,
   publishBoundDocument,
   publishRecording,
   reorderSopStep,
@@ -25,6 +26,7 @@ import { describePublishRecordingFailure, type CompileFailure } from './publicat
 import { SopBindingPanel } from './SopBindingPanel';
 import { SopPublishPanel } from './SopPublishPanel';
 import { SopStepEditor } from './SopStepEditor';
+import { SopStepInserter } from './SopStepInserter';
 import {
   describeReviewFailure,
   publishBlockedReason,
@@ -61,6 +63,8 @@ export function SopReviewPage({
   const [failure, setFailure] = useState<ReviewFailure | null>(null);
   const [busy, setBusy] = useState(false);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  /** The position an "Add a step" form is open at, or null when none is. */
+  const [insertingAt, setInsertingAt] = useState<number | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isPublishingRecording, setIsPublishingRecording] = useState(false);
   const [publishRecordingFailure, setPublishRecordingFailure] = useState<CompileFailure | null>(
@@ -147,6 +151,7 @@ export function SopReviewPage({
     try {
       await work();
       setEditingStepId(null);
+      setInsertingAt(null);
       await load();
     } catch (caught) {
       setFailure(
@@ -166,6 +171,47 @@ export function SopReviewPage({
       <p className="text-sm text-slate-600">Loading the workflow…</p>
     ) : (
       <FailureNotice failure={failure} />
+    );
+  }
+
+  /**
+   * The "Add a step" affordance, offered before the first step and after each.
+   *
+   * A position rather than a step: what a person is choosing is where the new
+   * step goes, and position 0 is the one that matters most — it is the only
+   * place that changes where the workflow begins, which the server handles by
+   * moving `entryStepId` (ADR-030).
+   */
+  // Read out of the narrowed value rather than off `review` inside the closure:
+  // TypeScript does not carry the null check above into a function body.
+  const { editable, revisionId } = review;
+
+  function insertSlot(index: number) {
+    if (!editable) {
+      return null;
+    }
+
+    return (
+      <li data-testid={`sop-step-insert-slot-${String(index)}`}>
+        {insertingAt === index ? (
+          <SopStepInserter
+            index={index}
+            isSaving={busy}
+            onCancel={() => setInsertingAt(null)}
+            onInsert={(step, note) => void act(() => insertSopStep(revisionId, index, step, note))}
+          />
+        ) : (
+          <button
+            className="rounded-md border border-dashed border-slate-300 px-2 py-1 text-xs text-slate-500 transition-colors hover:border-indigo-400 hover:text-indigo-700"
+            data-testid={`sop-step-insert-${String(index)}`}
+            disabled={busy}
+            onClick={() => setInsertingAt(index)}
+            type="button"
+          >
+            + Add a step here
+          </button>
+        )}
+      </li>
     );
   }
 
@@ -200,74 +246,77 @@ export function SopReviewPage({
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="text-sm font-semibold text-slate-900">Steps</h3>
         <ol className="mt-2 flex flex-col gap-2" data-testid="sop-review-steps">
-          {review.steps.map((step) => (
-            <li
-              className="rounded-md border border-slate-200 p-3 transition-colors hover:border-slate-300"
-              data-testid="sop-review-step"
-              key={step.id}
-            >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm text-slate-900">
-                    <span className="mr-2 text-xs text-slate-500">{step.position}.</span>
-                    <span className="mr-2 font-mono text-xs text-slate-500">{step.kind}</span>
-                    <span data-testid="sop-review-step-summary">{step.summary}</span>
-                  </p>
-                  {step.produces.length > 0 && (
-                    <p className="mt-1 text-xs text-slate-500">
-                      Produces: {step.produces.join(', ')}
+          {review.steps.map((step, position) => (
+            <Fragment key={step.id}>
+              {insertSlot(position)}
+              <li
+                className="rounded-md border border-slate-200 p-3 transition-colors hover:border-slate-300"
+                data-testid="sop-review-step"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm text-slate-900">
+                      <span className="mr-2 text-xs text-slate-500">{step.position}.</span>
+                      <span className="mr-2 font-mono text-xs text-slate-500">{step.kind}</span>
+                      <span data-testid="sop-review-step-summary">{step.summary}</span>
                     </p>
+                    {step.produces.length > 0 && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Produces: {step.produces.join(', ')}
+                      </p>
+                    )}
+                  </div>
+
+                  {review.editable && (
+                    <div className="flex gap-1">
+                      <button
+                        className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:text-slate-300"
+                        data-testid={`sop-step-move-up-${step.id}`}
+                        disabled={busy || !step.canMoveUp}
+                        onClick={() =>
+                          void act(() => reorderSopStep(review.revisionId, step.id, 'up'))
+                        }
+                        type="button"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:text-slate-300"
+                        data-testid={`sop-step-move-down-${step.id}`}
+                        disabled={busy || !step.canMoveDown}
+                        onClick={() =>
+                          void act(() => reorderSopStep(review.revisionId, step.id, 'down'))
+                        }
+                        type="button"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                        data-testid={`sop-step-edit-${step.id}`}
+                        onClick={() => setEditingStepId(editingStepId === step.id ? null : step.id)}
+                        type="button"
+                      >
+                        Edit
+                      </button>
+                    </div>
                   )}
                 </div>
 
-                {review.editable && (
-                  <div className="flex gap-1">
-                    <button
-                      className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:text-slate-300"
-                      data-testid={`sop-step-move-up-${step.id}`}
-                      disabled={busy || !step.canMoveUp}
-                      onClick={() =>
-                        void act(() => reorderSopStep(review.revisionId, step.id, 'up'))
-                      }
-                      type="button"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:text-slate-300"
-                      data-testid={`sop-step-move-down-${step.id}`}
-                      disabled={busy || !step.canMoveDown}
-                      onClick={() =>
-                        void act(() => reorderSopStep(review.revisionId, step.id, 'down'))
-                      }
-                      type="button"
-                    >
-                      ↓
-                    </button>
-                    <button
-                      className="rounded-md border border-slate-300 px-2 py-1 text-xs"
-                      data-testid={`sop-step-edit-${step.id}`}
-                      onClick={() => setEditingStepId(editingStepId === step.id ? null : step.id)}
-                      type="button"
-                    >
-                      Edit
-                    </button>
-                  </div>
+                {editingStepId === step.id && (
+                  <SopStepEditor
+                    isSaving={busy}
+                    onCancel={() => setEditingStepId(null)}
+                    onSave={(edited, note) =>
+                      void act(() => editSopStep(review.revisionId, step.id, edited, note))
+                    }
+                    step={step}
+                  />
                 )}
-              </div>
-
-              {editingStepId === step.id && (
-                <SopStepEditor
-                  isSaving={busy}
-                  onCancel={() => setEditingStepId(null)}
-                  onSave={(edited, note) =>
-                    void act(() => editSopStep(review.revisionId, step.id, edited, note))
-                  }
-                  step={step}
-                />
-              )}
-            </li>
+              </li>
+            </Fragment>
           ))}
+          {insertSlot(review.steps.length)}
         </ol>
       </section>
 
@@ -276,14 +325,14 @@ export function SopReviewPage({
         fullyBound={isFullyBoundForPublish(bindings)}
         isPublishing={isPublishingRecording}
         onOpenAgent={onOpenAgent}
-        onPublish={(outcomeMapping) => {
+        onPublish={() => {
           setIsPublishingRecording(true);
           setPublishRecordingFailure(null);
 
           const publish =
             review.provenance.kind === 'recorded' ? publishRecording : publishBoundDocument;
 
-          void publish(documentId, outcomeMapping)
+          void publish(documentId)
             .then(() => load())
             .catch((error: unknown) => {
               setPublishRecordingFailure(

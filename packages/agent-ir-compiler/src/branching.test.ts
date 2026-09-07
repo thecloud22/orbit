@@ -4,7 +4,7 @@ import type { SopGraph } from '@orbit/sop-graph';
 import { describe, expect, it } from 'vitest';
 
 import { compileCandidate, type CompileResult } from './compile';
-import { BORROW_OR_HOLD_OUTCOME_MAPPING, borrowOrHoldBindings, borrowOrHoldGraph } from './testing';
+import { borrowOrHoldBindings, borrowOrHoldGraph } from './testing';
 
 /**
  * Compiling a branching workflow.
@@ -32,7 +32,6 @@ function compile(
   return compileCandidate({
     graph: overrides.graph ?? borrowOrHoldGraph(),
     bindings: overrides.bindings ?? borrowOrHoldBindings(),
-    outcomeMapping: BORROW_OR_HOLD_OUTCOME_MAPPING,
     ...IDS,
   });
 }

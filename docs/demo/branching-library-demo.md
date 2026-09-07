@@ -84,10 +84,11 @@ Abandoning a half-demonstrated decision leaves nothing behind.
 
 ## Limitations
 
-- **The business outcome vocabulary is still Phase 1's.** Agent IR declares only `request_found` and
-  `request_not_found`, so this demo maps `borrowed → request_found` and `held → request_not_found`.
-  The run status and the branch it took are exact; the *name* of the business outcome is a
-  placeholder. Widening that vocabulary is a change to a frozen contract and was out of scope here.
+- ~~**The business outcome vocabulary is still Phase 1's.**~~ **Fixed in sub-phase 2.10 (ADR-030).**
+  A business outcome is now a declared identifier rather than one of two names inherited from the
+  Phase 1 demo, so this workflow records `borrowed` and `held` — its own words, and exactly what
+  happened. There is no mapping left to get wrong. `docs/demo/branching-library-demo.md` previously
+  described the mapping as a placeholder; it is gone.
 - **The decision's fingerprints are not re-verified at run time.** The runtime's drift check runs
   before an action or a read; `browser.expect_one_of` resolves by visibility and does not call it. A
   branch locator that has drifted onto a different element would be selected rather than refused. The

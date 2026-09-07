@@ -14,6 +14,7 @@ import {
 } from '@orbit/db';
 import type { createRepositories } from '@orbit/db';
 import {
+  generateStepId,
   parseSopGraphDocument,
   ReorderError,
   validateReorder,
@@ -21,6 +22,7 @@ import {
   type SopGraph,
   type SopGraphIssue,
   type SopStep,
+  type SopStepDraft,
 } from '@orbit/sop-graph';
 
 /**
@@ -151,6 +153,17 @@ export type EditStepResult =
       readonly issues: readonly SopGraphIssue[];
     };
 
+export type InsertStepResult =
+  | { readonly ok: true; readonly revision: SopGraphRevisionRecord; readonly stepId: string }
+  | { readonly ok: false; readonly reason: 'not_found' }
+  | { readonly ok: false; readonly reason: 'not_editable'; readonly state: SopRevisionState }
+  | { readonly ok: false; readonly reason: 'out_of_range'; readonly explanation: string }
+  | {
+      readonly ok: false;
+      readonly reason: 'invalid_graph';
+      readonly issues: readonly SopGraphIssue[];
+    };
+
 export type ReorderResultOfRevision =
   | { readonly ok: true; readonly revision: SopGraphRevisionRecord }
   | { readonly ok: false; readonly reason: 'not_found' }
@@ -194,6 +207,21 @@ export interface SopRevisionService {
     readonly step: SopStep;
     readonly note?: string;
   }): Promise<EditStepResult>;
+  /**
+   * Adds a step at a chosen position, as a new revision.
+   *
+   * The only way a recorded workflow can become a branching one. The recording
+   * translator deliberately refuses to invent a branch nobody demonstrated, so
+   * without this a `decision` step could only ever come from the drafting flow
+   * or a fixture.
+   */
+  insertStep(input: {
+    readonly revisionId: SopRevisionId;
+    /** Where the step lands: 0 puts it first, `steps.length` puts it last. */
+    readonly index: number;
+    readonly step: SopStepDraft;
+    readonly note?: string;
+  }): Promise<InsertStepResult>;
   reorderStep(input: {
     readonly revisionId: SopRevisionId;
     readonly move: ReorderMove;
@@ -407,6 +435,69 @@ export function createSopRevisionService(options: SopRevisionServiceOptions): So
 
         return {
           ok: true,
+          revision: await supersedeWith(repositories, revision, parsed.graph, input.note),
+        };
+      });
+    },
+
+    async insertStep(input) {
+      return withTransaction(database, async (repositories) => {
+        const revision = await repositories.sopGraphRevisions.findById(input.revisionId);
+
+        if (revision === null) {
+          return { ok: false, reason: 'not_found' };
+        }
+
+        if (!isEditableState(revision.state)) {
+          return { ok: false, reason: 'not_editable', state: revision.state };
+        }
+
+        const previous = revision.graph.steps;
+
+        // `steps.length` is a legal index: it means "put it at the end".
+        if (!Number.isInteger(input.index) || input.index < 0 || input.index > previous.length) {
+          return {
+            ok: false,
+            reason: 'out_of_range',
+            explanation: `A step can be added anywhere from position 1 to ${String(previous.length + 1)}.`,
+          };
+        }
+
+        // Generated, not supplied: see `generateStepId`. Uniqueness is checked
+        // against the graph's own ids, so the result always satisfies the id
+        // grammar and never collides with a branch target.
+        const stepId = generateStepId(
+          previous.map((step) => step.id),
+          input.step.kind,
+        );
+        const step = { ...input.step, id: stepId } as SopStep;
+
+        const steps = [...previous];
+        steps.splice(input.index, 0, step);
+
+        // The trap. `entryStepId` names the entry step explicitly rather than
+        // meaning "whatever is first", so inserting in front of the entry step
+        // without moving it leaves the new step silently unreachable and the
+        // workflow still starting where it always did. The condition is the
+        // index of the *entry step* rather than 0, because that — not the head
+        // of the list — is the only position where fall-through puts the new
+        // step before the workflow's current beginning.
+        const entryIndex = previous.findIndex((entry) => entry.id === revision.graph.entryStepId);
+        const entryStepId = input.index === entryIndex ? stepId : revision.graph.entryStepId;
+
+        // The whole graph is re-validated, exactly as an edit is. An inserted
+        // step can strand the step it displaced, read a value produced after
+        // it, or leave a path that never reaches an outcome — none of which is
+        // visible from the step alone.
+        const parsed = parseSopGraphDocument({ ...revision.graph, entryStepId, steps });
+
+        if (!parsed.ok) {
+          return { ok: false, reason: 'invalid_graph', issues: parsed.issues };
+        }
+
+        return {
+          ok: true,
+          stepId,
           revision: await supersedeWith(repositories, revision, parsed.graph, input.note),
         };
       });

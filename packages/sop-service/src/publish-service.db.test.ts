@@ -63,7 +63,6 @@ describe('publishing an approved candidate', () => {
     const candidates = createSopCandidateService({ database });
     const compiled = await candidates.compileDocument({
       documentId: recorded.document.id,
-      outcomeMapping: { completed: 'request_found' },
     });
 
     if (!compiled.ok) throw new Error(`expected a candidate: ${JSON.stringify(compiled)}`);
@@ -183,7 +182,6 @@ describe('refusals', () => {
 
     const compiled = await createSopCandidateService({ database }).compileDocument({
       documentId: recorded.document.id,
-      outcomeMapping: { completed: 'request_found' },
     });
     if (!compiled.ok) throw new Error('expected a candidate');
 
@@ -217,7 +215,6 @@ describe('refusals', () => {
     const candidates = createSopCandidateService({ database });
     const compiled = await candidates.compileDocument({
       documentId: recorded.document.id,
-      outcomeMapping: { completed: 'request_found' },
     });
     if (!compiled.ok) throw new Error('expected a candidate');
 

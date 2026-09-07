@@ -8,7 +8,7 @@ import {
   isUniqueViolation,
   violatedConstraint,
 } from '../errors';
-import { runSteps } from '../schema';
+import { runs as runsTable, runSteps } from '../schema';
 import {
   FOUND_INPUTS,
   FOUND_OUTPUTS,
@@ -80,6 +80,65 @@ describe('runs', () => {
     expect(completed.startedAt).toBeInstanceOf(Date);
     expect(completed.finishedAt).toBeInstanceOf(Date);
     expect(completed.error).toBeNull();
+  });
+
+  it('accepts a business outcome the workflow named itself, whatever that is', async () => {
+    // ADR-030 widened the column from two inherited names to an identifier
+    // grammar, so a workflow records its own vocabulary rather than a
+    // translation of it.
+    const { db } = testDatabase();
+    const repositories = createRepositories(db);
+    const agentVersion = await seedTestAgentVersion(db);
+
+    for (const outcome of ['borrowed', 'held', 'escalated_to_a_person', 'tier_2']) {
+      const created = await createTestRun(db, agentVersion.id);
+      await repositories.runs.markRunning(created.id);
+      const completed = await repositories.runs.complete(created.id, {
+        businessOutcome: outcome,
+        outputs: {},
+      });
+
+      expect(completed.businessOutcome).toBe(outcome);
+      expect(completed.status).toBe('succeeded');
+    }
+  });
+
+  it('still accepts the Phase 1 names, so no existing run needed migrating', async () => {
+    // The whole reason widening the contract required no data migration: the
+    // names every existing row already holds satisfy the new grammar exactly
+    // as they satisfied the old enum. This asserts it against the real CHECK
+    // constraint rather than assuming it.
+    const { db } = testDatabase();
+    const repositories = createRepositories(db);
+    const agentVersion = await seedTestAgentVersion(db);
+
+    for (const outcome of ['request_found', 'request_not_found', 'none']) {
+      const created = await createTestRun(db, agentVersion.id);
+      expect(created.businessOutcome).toBe('none');
+
+      await db
+        .update(runsTable)
+        .set({ businessOutcome: outcome })
+        .where(eq(runsTable.id, created.id));
+
+      const reread = await repositories.runs.findById(created.id);
+      expect(reread?.businessOutcome).toBe(outcome);
+    }
+  });
+
+  it('refuses a business outcome the contract could never mean', async () => {
+    // The database is the last line, not the only one: the compiler refuses
+    // these by name at publish. Checked here because a CHECK constraint that
+    // silently accepts anything is indistinguishable from no constraint.
+    const { db } = testDatabase();
+    const agentVersion = await seedTestAgentVersion(db);
+    const created = await createTestRun(db, agentVersion.id);
+
+    for (const invalid of ['Request Found', 'request-found', '1st', '', 'a'.repeat(65)]) {
+      await expect(
+        db.update(runsTable).set({ businessOutcome: invalid }).where(eq(runsTable.id, created.id)),
+      ).rejects.toThrow();
+    }
   });
 
   it('treats a not-found request as a successful run, not a failure', async () => {

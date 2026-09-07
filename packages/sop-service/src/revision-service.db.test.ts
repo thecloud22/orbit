@@ -229,6 +229,143 @@ describe('SOP revision review', () => {
     });
   });
 
+  describe('inserting a step', () => {
+    const CLICK = {
+      kind: 'click',
+      targetHint: 'Escalate',
+      purpose: 'Escalate the request',
+    } as const;
+
+    it('adds the step at the chosen position, as a new revision', async () => {
+      const before = await countRevisions();
+      const originalIds = revision.graph.steps.map((step) => step.id);
+
+      const result = await service().insertStep({
+        revisionId: revision.id,
+        index: 1,
+        step: CLICK,
+        note: 'The desk escalates before searching.',
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      // A write never changes the revision on screen; it supersedes it.
+      expect(await countRevisions()).toBe(before + 1);
+      expect(result.revision.id).not.toBe(revision.id);
+      expect(result.revision.graph.steps.map((step) => step.id)).toEqual([
+        originalIds[0],
+        result.stepId,
+        ...originalIds.slice(1),
+      ]);
+    });
+
+    it('generates the id rather than taking one from the caller', async () => {
+      const result = await service().insertStep({
+        revisionId: revision.id,
+        index: 1,
+        step: CLICK,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.stepId).toMatch(/^[a-z][a-z0-9_]*$/);
+      expect(revision.graph.steps.map((step) => step.id)).not.toContain(result.stepId);
+    });
+
+    it('makes a step inserted before the entry the new entry step', async () => {
+      // The trap this test exists for. `entryStepId` names the entry step
+      // explicitly rather than meaning "whatever is first", so without moving
+      // it the inserted step would be silently unreachable and the workflow
+      // would still start exactly where it did before.
+      const original = revision.graph.entryStepId;
+      const entryIndex = revision.graph.steps.findIndex((step) => step.id === original);
+      expect(entryIndex).toBe(0);
+
+      const result = await service().insertStep({
+        revisionId: revision.id,
+        index: 0,
+        step: { kind: 'navigate', purpose: 'Open the queue first', urlHint: 'https://example.com' },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.revision.graph.entryStepId).toBe(result.stepId);
+      expect(result.revision.graph.steps[0]?.id).toBe(result.stepId);
+      // And the step that used to start the workflow is still in it.
+      expect(result.revision.graph.steps.map((step) => step.id)).toContain(original);
+    });
+
+    it('leaves the entry step alone when inserting anywhere else', async () => {
+      const original = revision.graph.entryStepId;
+
+      const result = await service().insertStep({
+        revisionId: revision.id,
+        index: 2,
+        step: CLICK,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.revision.graph.entryStepId).toBe(original);
+    });
+
+    it('validates the whole graph, not just the step', async () => {
+      // A click appended after the workflow's terminal step leaves the workflow
+      // no longer ending on an outcome. That is invisible from the step itself.
+      const before = await countRevisions();
+
+      const result = await service().insertStep({
+        revisionId: revision.id,
+        index: revision.graph.steps.length,
+        step: CLICK,
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.reason).toBe('invalid_graph');
+      if (result.reason !== 'invalid_graph') return;
+      expect(result.issues.length).toBeGreaterThan(0);
+      // Nothing was written: a refused insert is not a revision.
+      expect(await countRevisions()).toBe(before);
+    });
+
+    it('refuses a position outside the workflow', async () => {
+      const result = await service().insertStep({
+        revisionId: revision.id,
+        index: revision.graph.steps.length + 1,
+        step: CLICK,
+      });
+
+      expect(result.ok ? null : result.reason).toBe('out_of_range');
+    });
+
+    it('refuses to insert into a revision that can no longer be edited', async () => {
+      await answerEveryQuestion();
+      await service().transition({ revisionId: revision.id, action: 'submit_for_review' });
+
+      const result = await service().insertStep({
+        revisionId: revision.id,
+        index: 1,
+        step: CLICK,
+      });
+
+      expect(result.ok ? null : result.reason).toBe('not_editable');
+    });
+
+    it('says plainly when the revision does not exist', async () => {
+      const result = await service().insertStep({
+        revisionId: 'soprev_01hzz0000000000000000000' as never,
+        index: 0,
+        step: CLICK,
+      });
+
+      expect(result.ok ? null : result.reason).toBe('not_found');
+    });
+  });
+
   describe('reordering', () => {
     it('supersedes with a new revision when the move is valid', async () => {
       const result = await service().reorderStep({

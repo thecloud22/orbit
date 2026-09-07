@@ -1,4 +1,4 @@
-import type { CompileRefusal, OutcomeMapping } from '@orbit/agent-ir-compiler';
+import type { CompileRefusal } from '@orbit/agent-ir-compiler';
 import type { SopDocumentId } from '@orbit/contracts';
 import type { AgentVersionRecord, OrbitDatabase, SopGraphRevisionRecord } from '@orbit/db';
 
@@ -44,7 +44,6 @@ export interface PublishPipeline {
   run(input: {
     readonly documentId: SopDocumentId;
     readonly revision: SopGraphRevisionRecord;
-    readonly outcomeMapping: OutcomeMapping;
   }): Promise<PublishPipelineResult>;
 }
 
@@ -56,7 +55,7 @@ export function createPublishPipeline(options: {
   const publisher = createSopPublishService(options);
 
   return {
-    async run({ documentId, revision, outcomeMapping }) {
+    async run({ documentId, revision }) {
       // Drive only the transition actually needed, so this works whether a
       // person already clicked through part of the review page by hand or
       // never touched it at all.
@@ -90,7 +89,7 @@ export function createPublishPipeline(options: {
         return { ok: false, reason: 'revision_not_publishable', state: revision.state };
       }
 
-      const compiled = await candidates.compileDocument({ documentId, outcomeMapping });
+      const compiled = await candidates.compileDocument({ documentId });
 
       if (!compiled.ok) {
         if (compiled.reason === 'refused') {

@@ -58,7 +58,7 @@ export function SopStepEditor({ step, isSaving, onSave, onCancel }: SopStepEdito
 
       <div className="mt-3 flex flex-col gap-3">
         {specs.map((spec) => (
-          <Field
+          <StepField
             key={spec.name}
             spec={spec}
             value={values[spec.name]}
@@ -103,7 +103,15 @@ export function SopStepEditor({ step, isSaving, onSave, onCancel }: SopStepEdito
   );
 }
 
-function Field({
+/**
+ * One field of one step kind.
+ *
+ * Exported so `SopStepInserter` renders the same controls the editor does. A
+ * second form for adding a step would be seven kinds' worth of fields to keep
+ * in step with `fieldsForStepKind`, and the only real difference between adding
+ * and editing is a kind picker and the absence of existing values.
+ */
+export function StepField({
   spec,
   value,
   onChange,

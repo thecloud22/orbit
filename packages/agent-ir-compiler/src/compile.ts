@@ -6,6 +6,7 @@ import {
   type InputDeclaration as IrInputDeclaration,
   type Locator,
 } from '@orbit/agent-ir';
+import { isDeclarableBusinessOutcome, NO_BUSINESS_OUTCOME } from '@orbit/contracts';
 import { stepChecksum } from '@orbit/db/checksum';
 import type { ExecutionBinding, SelectorChain } from '@orbit/execution-mapping';
 import {
@@ -33,14 +34,10 @@ import { refusal, type CompileRefusal } from './refusals';
  * step, never a candidate that silently does less than the document says.
  */
 
-/** Maps a SOP outcome name onto the business outcome Agent IR can express. */
-export type OutcomeMapping = Readonly<Record<string, 'request_found' | 'request_not_found'>>;
-
 export interface CompileInput {
   readonly graph: SopGraph;
   /** The approved bindings for this document, at most one per step. */
   readonly bindings: readonly ExecutionBinding[];
-  readonly outcomeMapping: OutcomeMapping;
   readonly agentId: string;
   readonly version: string;
   readonly sopId: string;
@@ -254,18 +251,24 @@ export function compileCandidate(input: CompileInput): CompileResult {
     }
 
     if (step.kind === 'outcome') {
-      const outcome = input.outcomeMapping[step.outcome];
-
-      if (outcome === undefined) {
+      // The outcome name passes straight through: a business outcome is the
+      // workflow's own declared name, not a translation of it (ADR-030). The
+      // graph's `outcomeNameSchema` is looser than the run contract's — it sets
+      // no length bound — so this re-checks rather than assumes, and refuses
+      // here where the step can be named rather than at run time in a CHECK
+      // constraint violation.
+      if (!isDeclarableBusinessOutcome(step.outcome)) {
         refusals.push(
           refusal(
-            'unmapped_outcome',
-            `Outcome "${step.outcome}" has no business outcome mapped to it.`,
+            'unusable_outcome_name',
+            `Outcome "${step.outcome}" cannot be a business outcome: a name must start with a lowercase letter, use only lowercase letters, digits and underscores, be at most 64 characters, and must not be "${NO_BUSINESS_OUTCOME}", which is reserved for a run that has reached no conclusion.`,
             step.id,
           ),
         );
         continue;
       }
+
+      const outcome = step.outcome;
 
       const outputs: Record<string, string> = {};
       for (const returned of step.returns ?? []) {

@@ -13,6 +13,7 @@ export interface AgentIrCandidateRecord {
   /** Re-validated on every read; never returned as an unchecked JSON blob. */
   readonly agentIr: AgentIr;
   readonly agentIrSha256: string;
+  /** Historical only; empty for anything compiled since ADR-030. */
   readonly outcomeMapping: Readonly<Record<string, string>>;
   readonly compiledFromBindingIds: readonly string[];
   readonly secretInputIds: readonly string[];

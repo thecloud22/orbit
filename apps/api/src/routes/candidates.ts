@@ -1,9 +1,4 @@
-import {
-  agentIrCandidateIdSchema,
-  sopDocumentIdSchema,
-  terminalBusinessOutcomeSchema,
-} from '@orbit/contracts';
-import { outcomeNameSchema } from '@orbit/sop-graph';
+import { agentIrCandidateIdSchema, sopDocumentIdSchema } from '@orbit/contracts';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -46,11 +41,15 @@ function parseCandidateId(params: unknown): string {
   return parsed.data.candidateId;
 }
 
-const compileBodySchema = z.strictObject({
-  // Keys are the SOP Graph's own outcome-step vocabulary; values are the
-  // closed Phase 1 enum the runtime can actually declare (ADR-023).
-  outcomeMapping: z.record(outcomeNameSchema, terminalBusinessOutcomeSchema),
-});
+/**
+ * Compiling takes no body.
+ *
+ * It used to carry an outcome mapping onto a closed two-name enum. A business
+ * outcome is now the workflow's own declared name (ADR-030), so the compiler
+ * reads it off the outcome step and there is nothing to ask. Kept strict so a
+ * caller still sending the old field is told rather than ignored.
+ */
+const compileBodySchema = z.strictObject({});
 
 const approveBodySchema = z.strictObject({
   note: z.string().trim().min(1).max(2000).optional(),
@@ -65,7 +64,7 @@ export function registerCandidateRoutes(app: FastifyInstance, context: ApiContex
 
       if (!body.success) {
         throw badRequest(
-          'A compile request needs an outcome mapping.',
+          "Compiling this workflow takes no options. An outcome is the workflow's own declared name.",
           body.error.issues.map((issue) => ({
             field: issue.path.join('.') || 'body',
             message: issue.message,
@@ -75,7 +74,6 @@ export function registerCandidateRoutes(app: FastifyInstance, context: ApiContex
 
       const result = await context.sopCandidateService.compileDocument({
         documentId: documentId as never,
-        outcomeMapping: body.data.outcomeMapping,
       });
 
       if (!result.ok) {

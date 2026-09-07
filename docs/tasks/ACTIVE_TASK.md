@@ -35,8 +35,8 @@ silently.
 checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
-**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5, 2.6, 2.7 and 2.8** are
-complete.
+**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5, 2.6, 2.7, 2.8 and
+2.10** are complete.
 `@orbit/sop-graph` provides the non-executable graph contract and its validation;
 `@orbit/sop-generation` turns free text into a proposed graph; `@orbit/sop-service` persists drafts
 and drives review; `@orbit/execution-mapping` defines the Execution Binding and the runtime verifies
@@ -172,6 +172,33 @@ estimate from configured rates and says so on every surface. Ceilings default to
 unlimited, and are configurable per scope. The server is the gate; the Generate button reflects it.
 A repair refused mid-request returns the draft's own validation issues alongside the budget reason —
 never a silent half-result.
+
+**Sub-phase 2.10 is complete: a workflow declares its own outcomes, and a reviewer can add a step.**
+
+**A business outcome is now a declared identifier, not a two-name enum.** `terminalBusinessOutcomeSchema`
+was `['request_found', 'request_not_found']` — names inherited from the Phase 1 demo that every other
+workflow had to map onto, so the seeded library demo published `borrowed → request_found` and recorded
+the right branch under the wrong name. An outcome is now the name the workflow's own outcome step
+carries, matching `^[a-z][a-z0-9_]{0,63}$`, with `none` reserved for a run that has reached no business
+conclusion. The mapping concept is gone entirely: `OutcomeMapping`, the `outcomeMapping` body field on
+the three publish/compile routes, and the mapping form in `SopPublishPanel`. Publishing is a button
+with no question attached. **No data migrated**: `request_found` and `request_not_found` satisfy the new
+grammar exactly as they satisfied the old enum, so the seeded Phase 1 agent, its fixture and every
+existing `runs` row are untouched — asserted by a test against the real CHECK constraint, not assumed.
+Migration `0007_free_form_business_outcomes` swaps a value-list check for a format check and touches no
+row. `packages/runtime` and `packages/executor-playwright` needed no change; the library demo now
+records `borrowed` and `held` end to end. Watchtower reports an outcome without judging it — the old
+"attention" state for `request_not_found` is gone, because Watchtower cannot rank a stranger's business
+conclusions (**ADR-030**).
+
+**A reviewer can insert a step.** `insertStep` and `POST /v1/sop-revisions/:revisionId/steps` add a step
+at a chosen position as a new revision, from an editable state only, with the whole graph re-validated.
+This is the only route by which a recorded workflow can become a branching one, since the recording
+translator refuses to invent a branch nobody demonstrated. Step ids are generated, never supplied.
+Inserting in front of the entry step moves `entryStepId`, or the new step would be silently unreachable.
+**An inserted step has no binding, so it shows as "Not recorded" and blocks publishing until somebody
+demonstrates it — that is the system working, not a gap.** Deleting a step is deliberately not
+implemented (**ADR-030**).
 
 **The branching demo** is `docs/demo/branching-library-demo.md`: search the library catalog, then
 borrow the title or place a hold on it depending on what the page shows. Both branches are driven in

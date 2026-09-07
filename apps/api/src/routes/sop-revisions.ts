@@ -1,5 +1,5 @@
 import { sopDocumentIdSchema, sopRevisionIdSchema } from '@orbit/contracts';
-import { sopStepSchema, type SopGraphIssue } from '@orbit/sop-graph';
+import { sopStepDraftSchema, sopStepSchema, type SopGraphIssue } from '@orbit/sop-graph';
 import { SOP_REVISION_ACTIONS } from '@orbit/sop-service';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -23,6 +23,18 @@ import type { DataEnvelope, SopDocumentSummaryView, SopReviewView } from '../vie
 
 const editStepBodySchema = z.strictObject({
   step: sopStepSchema,
+  note: z.string().trim().min(1).max(500).optional(),
+});
+
+/**
+ * Adding a step. The body carries no id: one is generated (`generateStepId`),
+ * because branches name their targets by it and the step editor refuses to
+ * change one, so a name chosen badly here could not be undone.
+ */
+const insertStepBodySchema = z.strictObject({
+  /** 0 puts the step first; `steps.length` puts it last. */
+  index: z.number().int().nonnegative(),
+  step: sopStepDraftSchema,
   note: z.string().trim().min(1).max(500).optional(),
 });
 
@@ -186,6 +198,57 @@ export function registerSopRevisionRoutes(app: FastifyInstance, context: ApiCont
 
       const payload: DataEnvelope<{ revisionId: string; revisionNumber: number }> = {
         data: { revisionId: result.revision.id, revisionNumber: result.revision.revisionNumber },
+      };
+
+      return reply.code(201).send(payload);
+    },
+  );
+
+  app.post<{ Params: { revisionId: string } }>(
+    '/v1/sop-revisions/:revisionId/steps',
+    async (request, reply) => {
+      const { revisionId } = parseParams(
+        z.object({ revisionId: sopRevisionIdSchema }),
+        request.params,
+        'revision id',
+      );
+      const body = parseBody(insertStepBodySchema, request.body, 'new step');
+
+      const result = await context.sopRevisionService.insertStep({
+        revisionId,
+        index: body.index,
+        step: body.step,
+        ...(body.note === undefined ? {} : { note: body.note }),
+      });
+
+      if (!result.ok) {
+        switch (result.reason) {
+          case 'not_found':
+            throw notFound(`SOP revision "${revisionId}" does not exist.`);
+          case 'not_editable':
+            throw conflict(
+              `This revision is "${result.state}" and can no longer be edited. Send it back for clarification first.`,
+            );
+          case 'out_of_range':
+            throw badRequest(result.explanation);
+          case 'invalid_graph':
+            throw unprocessable(
+              'Adding that step would make the workflow invalid, so it was not saved.',
+              toIssueDetails(result.issues),
+            );
+        }
+      }
+
+      const payload: DataEnvelope<{
+        revisionId: string;
+        revisionNumber: number;
+        stepId: string;
+      }> = {
+        data: {
+          revisionId: result.revision.id,
+          revisionNumber: result.revision.revisionNumber,
+          stepId: result.stepId,
+        },
       };
 
       return reply.code(201).send(payload);
