@@ -40,6 +40,13 @@ describe('viewFromSearch', () => {
     expect(viewFromSearch('?runId=run_123')).toEqual({ kind: 'home' });
   });
 
+  it('reads the agent highlighted after a publish', () => {
+    expect(viewFromSearch('?agentVersionId=agentv_1')).toEqual({
+      kind: 'home',
+      agentVersionId: 'agentv_1',
+    });
+  });
+
   it('reads a recording session', () => {
     expect(viewFromSearch('?recordingSessionId=rec_abc')).toEqual({
       kind: 'recording',
@@ -62,6 +69,7 @@ describe('searchForView', () => {
       { kind: 'documents' },
       { kind: 'review', documentId: 'sopdoc_123' },
       { kind: 'recording', sessionId: 'rec_abc' },
+      { kind: 'home', agentVersionId: 'agentv_1' },
     ];
 
     for (const view of views) {

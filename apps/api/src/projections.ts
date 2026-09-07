@@ -22,6 +22,8 @@ import {
   artifactUrl,
   redactPayload,
   type AgentVersionView,
+  type PublishedAgentVersionView,
+  type SopPublicationView,
   type ArtifactView,
   type RunDetailView,
   type RunEventView,
@@ -53,6 +55,17 @@ export function toAgentVersionView(summary: AgentVersionSummary): AgentVersionVi
     description: summary.description,
     lifecycleStatus: summary.lifecycleStatus,
     inputSchema: summary.inputs,
+  };
+}
+
+export function toPublishedAgentVersionView(record: AgentVersionRecord): PublishedAgentVersionView {
+  return {
+    agentVersionId: record.id,
+    agentId: record.agentId,
+    name: record.name,
+    version: record.version,
+    publishedFromCandidateId: record.publishedFromCandidateId,
+    publishedAt: record.publishedAt?.toISOString() ?? null,
   };
 }
 
@@ -213,6 +226,7 @@ export function toSopReviewView(review: {
   readonly unansweredQuestionIds: readonly string[];
   readonly availableActions: readonly string[];
   readonly editable: boolean;
+  readonly publication: SopPublicationView;
 }): SopReviewView {
   const { graph } = review.revision;
   const lastIndex = graph.steps.length - 1;
@@ -279,6 +293,7 @@ export function toSopReviewView(review: {
       generatedAt: review.revision.provenance.generatedAt ?? null,
     },
     availableActions: review.availableActions,
+    publication: review.publication,
     editable: review.editable,
     reviewNote: review.revision.reviewNote,
     reviewedAt:

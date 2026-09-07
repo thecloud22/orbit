@@ -36,6 +36,13 @@ const REVIEW: SopReviewView = {
   },
   availableActions: ['request_clarification', 'submit_for_review', 'reject'],
   editable: true,
+  publication: {
+    candidateId: null,
+    candidateState: null,
+    sandboxState: null,
+    agentVersionId: null,
+    agentVersion: null,
+  },
   reviewNote: null,
   reviewedAt: null,
   executable: false,

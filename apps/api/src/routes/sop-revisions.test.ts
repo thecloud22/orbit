@@ -59,6 +59,14 @@ function review(overrides: Partial<RevisionReview> = {}): RevisionReview {
     unansweredQuestionIds: graph.clarificationQuestions.map((question) => question.id),
     availableActions: ['request_clarification', 'reject'],
     editable: true,
+    // Nothing compiled yet, which is the state every document starts in.
+    publication: {
+      candidateId: null,
+      candidateState: null,
+      sandboxState: null,
+      agentVersionId: null,
+      agentVersion: null,
+    },
     ...overrides,
   };
 }

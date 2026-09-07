@@ -37,6 +37,22 @@ export interface AgentVersionView {
   readonly inputSchema: AgentIr['inputs'];
 }
 
+/**
+ * What publishing produced.
+ *
+ * Returned to the review page so it can link out to the agent rather than
+ * change its own claim about itself: the SOP Graph stays non-executable after
+ * publishing (ADR-016), and the runnable artifact is a different thing.
+ */
+export interface PublishedAgentVersionView {
+  readonly agentVersionId: string;
+  readonly agentId: string;
+  readonly name: string;
+  readonly version: string;
+  readonly publishedFromCandidateId: string | null;
+  readonly publishedAt: string | null;
+}
+
 export interface RunSummaryView {
   readonly id: string;
   readonly status: RunStatus;
@@ -247,6 +263,14 @@ export interface SopClarificationView {
   readonly answeredAt: string | null;
 }
 
+export interface SopPublicationView {
+  readonly candidateId: string | null;
+  readonly candidateState: string | null;
+  readonly sandboxState: string | null;
+  readonly agentVersionId: string | null;
+  readonly agentVersion: string | null;
+}
+
 export interface SopReviewView {
   readonly documentId: string;
   readonly documentTitle: string;
@@ -265,6 +289,13 @@ export interface SopReviewView {
   readonly provenance: SopDraftProvenanceView;
   /** Derived from SOP_REVISION_TRANSITIONS on the server; never a UI list. */
   readonly availableActions: readonly string[];
+  /**
+   * How far this document has got toward being runnable.
+   *
+   * Read-only. `executable` below stays `false` whatever this says: publishing
+   * produces a separate artifact and changes nothing about the graph (ADR-016).
+   */
+  readonly publication: SopPublicationView;
   readonly editable: boolean;
   readonly reviewNote: string | null;
   readonly reviewedAt: string | null;

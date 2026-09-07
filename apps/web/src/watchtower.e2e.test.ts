@@ -115,17 +115,32 @@ describe('Watchtower end to end', () => {
     return sharedRun;
   }
 
+  /**
+   * The seeded agent's own card.
+   *
+   * Home lists every published agent since sub-phase 2.6, and the end-to-end
+   * stack seeds two — the real one and a deliberately broken fixture. Scoping
+   * to a card is what keeps these tests about the agent they mean rather than
+   * about whichever one happens to sort first.
+   */
+  const SEEDED_AGENT_CARD = 'agent-card-agentv_find_service_request_0_1_0';
+
+  function seededAgent(page: Page) {
+    return page.getByTestId(SEEDED_AGENT_CARD);
+  }
+
   async function startRun(page: Page, requestNumber: string): Promise<void> {
-    await page.getByTestId('agent-name').waitFor({ state: 'visible' });
-    await page.getByTestId('request-number-field').fill(requestNumber);
-    await page.getByTestId('start-run-button').click();
+    const card = seededAgent(page);
+    await card.getByTestId('agent-name').waitFor({ state: 'visible' });
+    await card.getByTestId('request-number-field').fill(requestNumber);
+    await card.getByTestId('start-run-button').click();
   }
 
   it('starts SR-1001, reaches a succeeded run, and shows its output', async () => {
     const page = await open();
 
     await expect
-      .poll(async () => page.getByTestId('agent-name').textContent())
+      .poll(async () => seededAgent(page).getByTestId('agent-name').textContent())
       .toContain('Find Service Request');
 
     await startRun(page, 'SR-1001');
@@ -240,9 +255,10 @@ describe('Watchtower end to end', () => {
 
   it('rejects an empty request number with a field-level message and starts no run', async () => {
     const page = await open();
-    await page.getByTestId('agent-name').waitFor({ state: 'visible' });
-    await page.getByTestId('request-number-field').fill('');
-    await page.getByTestId('start-run-button').click();
+    const card = seededAgent(page);
+    await card.getByTestId('agent-name').waitFor({ state: 'visible' });
+    await card.getByTestId('request-number-field').fill('');
+    await card.getByTestId('start-run-button').click();
 
     await page.getByTestId('run-request-error').waitFor({ state: 'visible', timeout: 30_000 });
 
@@ -891,6 +907,46 @@ describe('Watchtower end to end', () => {
       expect(response.status).toBe(400);
       const body = (await response.json()) as { error: { message: string } };
       expect(body.error.message).toContain('protocol');
+    });
+  });
+
+  describe('publishing', () => {
+    it('shows the publication state without ever claiming the document is executable', async () => {
+      // The rule ADR-016 fixes and 2.6 must not erode: publishing produces a
+      // separate runnable artifact, and the review page keeps saying the
+      // workflow itself is not executable.
+      const page = await open(`/?documentId=${E2E_BOUND_DOCUMENT_ID}`);
+
+      await expect.poll(() => page.getByTestId('sop-review').count(), { timeout: 30_000 }).toBe(1);
+
+      await page.getByTestId('sop-publish-panel').waitFor({ state: 'visible', timeout: 30_000 });
+
+      // Nothing has been compiled for this document, so there is no action yet.
+      expect(await page.getByTestId('sop-publish-summary').textContent()).toContain(
+        'not been turned into an agent',
+      );
+      expect(await page.getByTestId('publish-agent-button').count()).toBe(0);
+
+      // And the banner is exactly where it was.
+      expect(await page.getByTestId('sop-review-not-executable').count()).toBe(1);
+
+      const detail = (await (
+        await fetch(`${E2E_API_URL}/v1/sop-documents/${E2E_BOUND_DOCUMENT_ID}`)
+      ).json()) as { data: { executable: false; publication: { agentVersionId: string | null } } };
+
+      expect(detail.data.executable).toBe(false);
+      expect(detail.data.publication.agentVersionId).toBeNull();
+
+      await page.close();
+    });
+
+    it('refuses to publish a candidate that does not exist', async () => {
+      const response = await fetch(
+        `${E2E_API_URL}/v1/agent-ir-candidates/aircand_01hzz0000000000000000000/publish`,
+        { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' },
+      );
+
+      expect(response.status).toBe(404);
     });
   });
 

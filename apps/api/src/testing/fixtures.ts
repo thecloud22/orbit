@@ -24,6 +24,9 @@ export function agentVersionRecord(
     sourceSopId: agentIr.source.sopId,
     sourceSopVersion: agentIr.source.sopVersion,
     agentIr,
+    // The seeded agent came from a fixture, not a candidate. Null here is the
+    // same thing the database holds for it.
+    publishedFromCandidateId: null,
     irSha256: 'a'.repeat(64),
     createdAt: new Date('2026-09-05T16:00:00.000Z'),
     publishedAt: new Date('2026-09-05T16:00:00.000Z'),

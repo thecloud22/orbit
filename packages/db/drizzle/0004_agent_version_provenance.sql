@@ -1,0 +1,2 @@
+ALTER TABLE "agent_versions" ADD COLUMN "published_from_candidate_id" text;--> statement-breakpoint
+ALTER TABLE "agent_versions" ADD CONSTRAINT "agent_versions_published_from_candidate_id_agent_ir_candidates_id_fk" FOREIGN KEY ("published_from_candidate_id") REFERENCES "public"."agent_ir_candidates"("id") ON DELETE set null ON UPDATE no action;

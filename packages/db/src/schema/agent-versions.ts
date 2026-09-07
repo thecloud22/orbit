@@ -1,6 +1,7 @@
-import type { AgentId, AgentVersionId } from '@orbit/contracts';
+import type { AgentId, AgentIrCandidateId, AgentVersionId } from '@orbit/contracts';
 import { check, index, jsonb, pgTable, text, unique } from 'drizzle-orm/pg-core';
 
+import { agentIrCandidates } from './agent-ir-candidates';
 import { agents } from './agents';
 import { createdAt, inValues, isSha256, opaqueId, timestamptz } from './columns';
 
@@ -53,6 +54,21 @@ export const agentVersions = pgTable(
     sourceSopVersion: text('source_sop_version').notNull(),
     agentIr: jsonb('agent_ir').$type<Record<string, unknown>>().notNull(),
     irSha256: text('ir_sha256').notNull(),
+    /**
+     * The approved candidate this version was published from (sub-phase 2.6).
+     *
+     * Nullable, and permanently so: the seeded Phase 1 agent was published from
+     * a fixture rather than a candidate, and every version predating 2.5 has no
+     * candidate to point at. A column that forced one would have meant
+     * rewriting rows whose immutability is the whole point (ADR-014).
+     *
+     * `set null` rather than `cascade`: losing the candidate must never delete
+     * the version, because the version is what historical runs executed. The
+     * provenance link is worth less than the artifact it annotates.
+     */
+    publishedFromCandidateId: opaqueId<AgentIrCandidateId>(
+      'published_from_candidate_id',
+    ).references(() => agentIrCandidates.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
     publishedAt: timestamptz('published_at'),
   },

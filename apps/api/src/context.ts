@@ -1,6 +1,6 @@
 import type { ArtifactService } from '@orbit/artifact-service';
 import type { OrbitRepositories } from '@orbit/db';
-import type { SopDraftService, SopRevisionService } from '@orbit/sop-service';
+import type { SopDraftService, SopPublishService, SopRevisionService } from '@orbit/sop-service';
 
 import type { RecordingSessionRegistry } from './recording/session-registry';
 
@@ -28,6 +28,7 @@ export interface ApiContext {
   readonly sopDraftService: SopDraftService;
   /** Review, editing, reorder, clarification and lifecycle (sub-phase 2.3). */
   readonly sopRevisionService: SopRevisionService;
+  readonly sopPublishService: SopPublishService;
   /**
    * Recording sessions the API is holding open.
    *

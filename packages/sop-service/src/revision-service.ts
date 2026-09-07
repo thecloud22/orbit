@@ -12,6 +12,7 @@ import {
   type SopGraphRevisionRecord,
   type SopRevisionState,
 } from '@orbit/db';
+import type { createRepositories } from '@orbit/db';
 import {
   parseSopGraphDocument,
   ReorderError,
@@ -84,6 +85,27 @@ export interface ClarificationEntry {
   readonly answeredAt: Date | null;
 }
 
+/**
+ * Where this document has got to on the way to being runnable.
+ *
+ * Read-only, and deliberately so: the review page needs to know whether there
+ * is an approved candidate to publish and whether an agent already exists, so
+ * it can offer the action and then link out. It does not need — and must not
+ * gain — any notion that the document itself became executable. The SOP Graph
+ * is non-executable by construction and stays that way after publishing
+ * (ADR-016); the runnable artifact is a different row entirely.
+ */
+export interface PublicationStatus {
+  /** The newest candidate for this document, if one has been compiled. */
+  readonly candidateId: string | null;
+  readonly candidateState: string | null;
+  /** Whether that candidate could be checked; `cannot_validate` blocks approval. */
+  readonly sandboxState: string | null;
+  /** Set once the candidate has been published. */
+  readonly agentVersionId: string | null;
+  readonly agentVersion: string | null;
+}
+
 export interface RevisionReview {
   readonly document: SopDocumentRecord;
   readonly revision: SopGraphRevisionRecord;
@@ -91,6 +113,7 @@ export interface RevisionReview {
   readonly unansweredQuestionIds: readonly string[];
   readonly availableActions: readonly SopRevisionAction[];
   readonly editable: boolean;
+  readonly publication: PublicationStatus;
 }
 
 /**
@@ -204,6 +227,42 @@ function unansweredQuestionIds(
     .map((question) => question.id);
 }
 
+/**
+ * The publication state of a document, assembled from what already exists.
+ *
+ * No new persistence: the candidate chain and the agent version rows are
+ * already the record, and this only reads them so the review page can offer an
+ * action and then link out.
+ */
+async function publicationStatusFor(
+  repositories: ReturnType<typeof createRepositories>,
+  documentId: SopDocumentId,
+): Promise<PublicationStatus> {
+  const candidate = await repositories.agentIrCandidates.findCurrent(documentId);
+
+  if (candidate === null) {
+    return {
+      candidateId: null,
+      candidateState: null,
+      sandboxState: null,
+      agentVersionId: null,
+      agentVersion: null,
+    };
+  }
+
+  const published = (
+    await repositories.agentVersions.listByAgent(candidate.agentIr.id as never)
+  ).find((version) => version.publishedFromCandidateId === candidate.id);
+
+  return {
+    candidateId: candidate.id,
+    candidateState: candidate.state,
+    sandboxState: candidate.sandboxState,
+    agentVersionId: published?.id ?? null,
+    agentVersion: published?.version ?? null,
+  };
+}
+
 function toClarifications(
   graph: SopGraph,
   answers: readonly SopClarificationAnswerRecord[],
@@ -269,6 +328,7 @@ export function createSopRevisionService(options: SopRevisionServiceOptions): So
             unansweredQuestionIds: unanswered,
             availableActions: availableActionsFor(revision.state, unanswered.length),
             editable: isEditableState(revision.state),
+            publication: await publicationStatusFor(repositories, documentId),
           },
         };
       });
@@ -300,6 +360,7 @@ export function createSopRevisionService(options: SopRevisionServiceOptions): So
             unansweredQuestionIds: unanswered,
             availableActions: availableActionsFor(revision.state, unanswered.length),
             editable: isEditableState(revision.state),
+            publication: await publicationStatusFor(repositories, revision.documentId),
           },
         };
       });

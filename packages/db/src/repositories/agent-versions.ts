@@ -1,5 +1,10 @@
 import type { AgentIr } from '@orbit/agent-ir';
-import { newAgentVersionId, type AgentId, type AgentVersionId } from '@orbit/contracts';
+import {
+  newAgentVersionId,
+  type AgentId,
+  type AgentIrCandidateId,
+  type AgentVersionId,
+} from '@orbit/contracts';
 import { and, asc, eq } from 'drizzle-orm';
 
 import { sha256Of } from '../checksum';
@@ -17,6 +22,15 @@ export interface CreateAgentVersionInput {
   readonly agentIr: AgentIr;
   readonly id?: AgentVersionId;
   readonly publishedAt?: Date;
+  /**
+   * The approved candidate this version was published from (sub-phase 2.6).
+   *
+   * Absent for the seeded agent, which came from a fixture. Recorded at
+   * creation because there is no later opportunity: this repository has no
+   * update path, and adding one to attach provenance afterwards would be the
+   * mutation ADR-014 exists to prevent.
+   */
+  readonly publishedFromCandidateId?: AgentIrCandidateId;
 }
 
 /**
@@ -58,6 +72,7 @@ export function createAgentVersionRepository(executor: Executor): AgentVersionRe
           sourceSopVersion: agentIr.source.sopVersion,
           agentIr: document,
           irSha256: sha256Of(document),
+          publishedFromCandidateId: input.publishedFromCandidateId ?? null,
           publishedAt:
             input.publishedAt ?? (agentIr.lifecycle.status === 'published' ? new Date() : null),
         })

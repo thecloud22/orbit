@@ -6,6 +6,7 @@ import type {
   FinishedRecordingView,
   RecordingSessionView,
   SopBindingsView,
+  PublishedAgentVersionView,
   SopDocumentSummaryView,
   SopDraftView,
   SopReviewView,
@@ -235,4 +236,13 @@ export async function cancelRecording(sessionId: string): Promise<void> {
   if (!response.ok) {
     throw await toApiError(response);
   }
+}
+
+/** Publishes an approved candidate as a runnable Agent Version. */
+export async function publishCandidate(candidateId: string): Promise<PublishedAgentVersionView> {
+  return send<PublishedAgentVersionView>(
+    `/v1/agent-ir-candidates/${candidateId}/publish`,
+    'POST',
+    {},
+  );
 }

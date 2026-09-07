@@ -35,7 +35,7 @@ silently.
 checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
-**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f and 2.5** are complete.
+**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5 and 2.6** are complete.
 `@orbit/sop-graph` provides the non-executable graph contract and its validation;
 `@orbit/sop-generation` turns free text into a proposed graph; `@orbit/sop-service` persists drafts
 and drives review; `@orbit/execution-mapping` defines the Execution Binding and the runtime verifies
@@ -76,7 +76,14 @@ sandbox readiness is `cannot_validate` — the fail-closed secret check, applied
 could be launched (**ADR-021**). The reference escalation-review workflow does not compile, because
 2.5 handles linear graphs only.
 
-**Sub-phase 2.6 is next**: compiling approved bindings into candidate Agent IR. It consumes the
+**Sub-phase 2.6 is complete.** An approved candidate publishes into a runnable Agent Version, minted
+already-published rather than promoted, with `published_from_candidate_id` recording where it came
+from and a check proving only the lifecycle status and the allocated version differ from what was
+approved (**ADR-023**). A published agent runs through the existing route, gate and interpreter.
+The review page gained a Publish action and a link out; the SOP Graph's `executable: false` is
+unchanged. Compiling and approving a candidate still have no Watchtower surface — the next gap.
+
+**What follows**: compiling approved bindings into candidate Agent IR. It consumes the
 binding contract 2.4a froze and the bindings 2.4b produces, and must import `stepChecksum` from
 `@orbit/db` rather than recomputing it — there is one definition so the two cannot drift. See the
 Task P2-001 through P2-004F2 reports under `docs/tasks/reports/`.

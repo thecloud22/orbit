@@ -15,11 +15,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@orbit/agent-ir": "workspace:*",
     "@orbit/agent-ir-compiler": "workspace:*",
     "@orbit/contracts": "workspace:*",
     "@orbit/db": "workspace:*",
     "@orbit/execution-mapping": "workspace:*",
-    "@orbit/runtime": "workspace:*",
     "@orbit/sop-generation": "workspace:*",
     "@orbit/sop-graph": "workspace:*",
     "@orbit/sop-recording": "workspace:*"

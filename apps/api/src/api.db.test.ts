@@ -13,7 +13,11 @@ import {
   respondWith,
   validSopGraphProposal,
 } from '@orbit/sop-generation/testing';
-import { createSopDraftService, createSopRevisionService } from '@orbit/sop-service';
+import {
+  createSopDraftService,
+  createSopPublishService,
+  createSopRevisionService,
+} from '@orbit/sop-service';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -61,6 +65,7 @@ describe('Orbit API over real persistence', () => {
           provider: createFakeSopProvider({ respond: () => respondWith(validSopGraphProposal()) }),
         }),
         sopRevisionService: createSopRevisionService({ database: getDatabase().db }),
+        sopPublishService: createSopPublishService({ database: getDatabase().db }),
         // No browser: these tests never record, and a registry that could open
         // one would be a Chromium per test file for nothing.
         recordingSessions: createRecordingSessionRegistry({

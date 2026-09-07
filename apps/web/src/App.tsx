@@ -27,7 +27,7 @@ import { useRun } from './useRun';
  * API's view of durable server state.
  */
 export function App() {
-  const [agentVersion, setAgentVersion] = useState<AgentVersionView | null>(null);
+  const [agentVersions, setAgentVersions] = useState<readonly AgentVersionView[]>([]);
   const [catalogError, setCatalogError] = useState<ApiRequestError | null>(null);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
   const [draft, setDraft] = useState<SopDraftView | null>(null);
@@ -36,6 +36,8 @@ export function App() {
   const [isStartingRecording, setIsStartingRecording] = useState(false);
   const [recordingError, setRecordingError] = useState<ApiRequestError | null>(null);
   const [view, setView] = useState<View>(() => viewFromSearch(window.location.search));
+  /** Set when arriving from a publish, so the new agent is findable on a busy page. */
+  const highlightedAgentVersionId = view.kind === 'home' ? view.agentVersionId : undefined;
   const run = useRun();
 
   /**
@@ -109,7 +111,10 @@ export function App() {
       try {
         const versions = await listAgentVersions();
         if (!cancelled) {
-          setAgentVersion(versions[0] ?? null);
+          // Every published agent, not just the first. Before 2.6 there was
+          // only ever the seeded one, so `versions[0]` was indistinguishable
+          // from "the agent"; publishing makes that a real omission.
+          setAgentVersions(versions);
           setCatalogError(null);
         }
       } catch (caught) {
@@ -171,7 +176,12 @@ export function App() {
             >
               ← Back to workflows
             </button>
-            <SopReviewPage documentId={view.documentId} />
+            <SopReviewPage
+              onOpenAgent={(agentVersionId) => {
+                navigate({ kind: 'home', agentVersionId });
+              }}
+              documentId={view.documentId}
+            />
           </>
         ) : (
           <DocumentsPage onOpen={navigate} />
@@ -184,27 +194,39 @@ export function App() {
     <Shell current={view} onNavigate={navigate}>
       <p className="text-sm text-slate-600">{APP_INFO.description}</p>
 
-      <section className="rounded border border-slate-200 p-4">
-        <h2 className="text-sm font-semibold text-slate-900" data-testid="agent-name">
-          {agentVersion === null
-            ? isLoadingCatalog
-              ? 'Loading agents…'
-              : 'No published agent is available.'
-            : `${agentVersion.name} ${agentVersion.version}`}
-        </h2>
+      {agentVersions.length === 0 ? (
+        <section className="rounded border border-slate-200 p-4">
+          <h2 className="text-sm font-semibold text-slate-900" data-testid="agent-name">
+            {isLoadingCatalog ? 'Loading agents…' : 'No published agent is available.'}
+          </h2>
+        </section>
+      ) : (
+        agentVersions.map((version) => (
+          <section
+            className={
+              highlightedAgentVersionId === version.id
+                ? 'rounded border-2 border-slate-900 p-4'
+                : 'rounded border border-slate-200 p-4'
+            }
+            data-testid={`agent-card-${version.id}`}
+            key={version.id}
+          >
+            <h2 className="text-sm font-semibold text-slate-900" data-testid="agent-name">
+              {`${version.name} ${version.version}`}
+            </h2>
 
-        <div className="mt-3">
-          <StartRunForm
-            agentVersion={agentVersion}
-            isStarting={run.isStarting}
-            onStart={(requestNumber) => {
-              if (agentVersion !== null) {
-                void run.start(agentVersion.id, requestNumber);
-              }
-            }}
-          />
-        </div>
-      </section>
+            <div className="mt-3">
+              <StartRunForm
+                agentVersion={version}
+                isStarting={run.isStarting}
+                onStart={(requestNumber) => {
+                  void run.start(version.id, requestNumber);
+                }}
+              />
+            </div>
+          </section>
+        ))
+      )}
 
       {catalogError !== null && (
         <ApiErrorNotice

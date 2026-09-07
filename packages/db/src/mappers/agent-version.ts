@@ -1,5 +1,5 @@
 import { parseAgentIrDocument, type AgentIr } from '@orbit/agent-ir';
-import type { AgentId, AgentVersionId } from '@orbit/contracts';
+import type { AgentId, AgentIrCandidateId, AgentVersionId } from '@orbit/contracts';
 
 import { sha256Of } from '../checksum';
 import { DatabaseIntegrityError } from '../errors';
@@ -19,6 +19,8 @@ export interface AgentVersionRecord {
   /** Re-validated on every read; never returned as an unchecked JSON blob. */
   readonly agentIr: AgentIr;
   readonly irSha256: string;
+  /** The approved candidate this was published from; null for the seeded agent. */
+  readonly publishedFromCandidateId: AgentIrCandidateId | null;
   readonly createdAt: Date;
   readonly publishedAt: Date | null;
 }
@@ -72,6 +74,7 @@ export function toAgentVersionRecord(row: AgentVersionRow): AgentVersionRecord {
     sourceSopVersion: row.sourceSopVersion,
     agentIr: parsed.agentIr,
     irSha256: row.irSha256,
+    publishedFromCandidateId: row.publishedFromCandidateId,
     createdAt: row.createdAt,
     publishedAt: row.publishedAt,
   };

@@ -580,7 +580,35 @@ ADR-019 kept script injection out of every process that executes an agent;
 ADR-020 narrows that to one API directory rather than lifting it, and a test
 walks the module graph from the run-dispatch path to prove the two stay apart.
 
-Still not built: publishing (2.6).
+## Publishing and running an agent (Phase 2.6)
+
+An approved candidate becomes a runnable **Agent Version**. The review page has a
+**Publish** action, and afterwards it links out to the agent — it does not change
+what it says about the workflow. The SOP Graph stays non-executable
+(**ADR-016**); what became runnable is a separate artifact.
+
+**Publishing mints a version rather than promoting the candidate.** The runtime
+executes only `published` documents and the compiler emits `draft`, so the two
+cannot be byte-identical — and that difference *is* the approval gate, since a
+candidate identical to a runnable version would be runnable before anyone
+approved it. Exactly two fields differ, `lifecycle.status` and the allocated
+`version`, and a check verifies that against the document actually stored, so a
+widened permission or an added step cannot ride along. Both checksums keep
+covering what they claim.
+
+Versions are allocated per agent (`0.1.0`, `0.1.1`, …) rather than supplied, and
+`agent_versions.published_from_candidate_id` records where a version came from —
+nullable, because the seeded Phase 1 agent came from a fixture.
+
+**Running it uses the existing path.** A published agent appears on Home
+alongside the seeded one and starts through the same route, the same
+`prepareExecution` gate, and the same interpreter. Per-agent containment holds:
+the agent may open the hosts its recording visited, matched exactly, and nothing
+else (**ADR-022**).
+
+Still not built: compiling and approving a candidate have no Watchtower surface,
+so the Publish action is only reachable for candidates created through the
+services. See **ADR-023**.
 
 ## Compiling a candidate agent (Phase 2.5)
 

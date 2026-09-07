@@ -816,3 +816,53 @@ The important observation is that the blanket list was never the thing providing
 | Keep a configurable global allowlist alongside per-agent domains | Two enforcement mechanisms for one property, which is how they drift apart |
 | Allow domain-suffix matches in `allowedDomains` | An agent recorded on a public page would reach internal hosts under the same domain |
 | Drop the protocol restriction too | `file:` and `javascript:` are not navigation, and nothing about lifting a host rule makes them so |
+
+## ADR-023: Mint an Agent Version at publication rather than promoting a candidate, and keep the SOP Graph non-executable
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+Sub-phase 2.5 produced candidate Agent IR: validated, checksummed, approved, and inert. 2.6 turns an approved candidate into something the runtime will execute.
+
+One fact shapes the whole design. The compiler emits `lifecycle.status: 'draft'`, and the runtime's `SUPPORTED_LIFECYCLE_STATUSES` is `['published']` — so what is approved cannot be byte-identical to what runs. That looks like a problem to engineer around, and reading the code showed it is the opposite: if a candidate were byte-identical to a runnable version, it would be runnable *before anyone approved it*, which inverts the gate 2.5 exists to provide.
+
+ADR-014 had already settled the mechanism: `AgentVersionRepository` deliberately exposes "no update, publish, patch, or delete method". There is no row to flip a status on.
+
+### Decision
+
+**Publishing mints a new artifact; it never promotes an existing one.** The Agent Version is created already-published, and its `irSha256` covers the bytes that will actually execute. Nothing is mutated, so ADR-005 immutability and ADR-014's repository-level enforcement are untouched.
+
+**Traceability means re-derivability, not a pointer.** `published_from_candidate_id` records the link, and exactly two fields differ between the approved document and the published one — `lifecycle.status`, because the runtime requires it, and `version`, because `agent_versions` is unique on `(agent_id, version)` and the number is allocated per agent at publish time. `assertOnlyPublicationFieldsChanged` verifies this against the document actually being stored, so a widened `allowedDomains`, an added step, or a changed trust tier cannot ride along with the lifecycle change. Both checksums keep covering exactly what they claim: the candidate's the approved draft, the version's the executed document.
+
+**The provenance column is nullable, permanently.** The seeded Phase 1 agent was published from a fixture and every version predating 2.5 has no candidate. A non-nullable column would have meant rewriting rows whose immutability is the point. The migration is a single nullable `ADD COLUMN` with no backfill and no default, and no existing row is touched.
+
+**Versions are allocated, not supplied.** A caller-supplied version turns republishing after an edit into a collision somebody resolves by inventing a number. The version answers "which publication of this workflow is this", which the system can answer itself.
+
+**Publishing does not make the SOP Graph executable, and the review page must not imply it does.** The document keeps `executable: false` and keeps its "draft only" notice after publication; what became runnable is a different row. The review page gains a read-only publication panel that offers one action and then *links out* to the agent. This is ADR-016 holding under the exact pressure it was written for — the moment when widening one boolean would have been the shortest path.
+
+**Execution reuses the existing path entirely.** `assertNavigable` already reads `permissions.browser.allowedDomains` off the document, and the run route already loads any version by id and calls `prepareExecution`. A published, non-seeded agent needs no new runtime code, and ADR-022's per-agent containment holds for it unchanged: an agent recorded against one host is permitted that host, matched exactly.
+
+### Consequences
+
+- A recorded workflow can be published and run, which closes the loop Phase 2 set out to build.
+- A candidate and the version published from it are different artifacts with different checksums, and the relationship between them is verifiable rather than asserted.
+- **Home lists every published agent.** Before 2.6 it rendered `versions[0]`, which was indistinguishable from "the agent" when only the seeded one existed. Publishing makes that a real omission, so it now lists them — which also means the end-to-end stack's deliberately broken fixture agent is visible where it previously was not.
+- **Compiling and approving a candidate still have no Watchtower surface.** 2.5 shipped them service-level only, so the Publish action is reachable only for candidates created outside the UI. That is the next gap, and it is stated rather than papered over.
+- **`agents` gains its first non-seed writer.** Publishing upserts the agent row the version's foreign key needs. Additive, and it uses the repository's existing method.
+- The schema change requires `pnpm db:migrate` against the development database, which `reset.db.test.ts` will otherwise fail on, because it deliberately connects there.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Widen `SUPPORTED_LIFECYCLE_STATUSES` to accept `draft` | That list is the gate; widening it makes every unapproved candidate runnable |
+| Have the compiler emit `published` so the bytes match | An unapproved candidate would be executable-shaped, inverting 2.5's approval |
+| Store the candidate's bytes and override the status on read | The checksum would no longer cover what actually executes — the worst option available |
+| Move `lifecycle` out of the Agent IR document | Changes a frozen contract, and `profile.ts` reads status from the document |
+| Add a `publish()` method that flips the row | Exactly the mutation ADR-014 removed, on the one table whose immutability runs depend on |
+| Make `published_from_candidate_id` non-nullable | Requires rewriting or excluding the seeded agent, whose row must not change |
+| Let the caller supply the version at publish time | Puts a semver decision in front of the non-engineer the recording flow exists for |
+| Flip the document's `executable` flag once published | The SOP Graph is non-executable by construction; the runnable thing is a separate artifact (ADR-016) |

@@ -2,7 +2,11 @@ import { createLocalFilesystemArtifactStorage } from '@orbit/artifacts';
 import { createArtifactService } from '@orbit/artifact-service';
 import { createDatabase, createRepositories } from '@orbit/db';
 import type { LLMProvider } from '@orbit/sop-generation';
-import { createSopDraftService, createSopRevisionService } from '@orbit/sop-service';
+import {
+  createSopDraftService,
+  createSopPublishService,
+  createSopRevisionService,
+} from '@orbit/sop-service';
 
 import {
   createPlaywrightRecordingSessionFactory,
@@ -78,6 +82,7 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
         provider: options.sopProvider,
       }),
       sopRevisionService: createSopRevisionService({ database: handle.db }),
+      sopPublishService: createSopPublishService({ database: handle.db }),
       recordingSessions,
       dispatcher: createInProcessRunDispatcher({
         database: handle.db,

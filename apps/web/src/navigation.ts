@@ -13,7 +13,8 @@
  */
 
 export type View =
-  | { readonly kind: 'home' }
+  /** `agentVersionId` highlights one published agent, e.g. the one just published. */
+  | { readonly kind: 'home'; readonly agentVersionId?: string }
   | { readonly kind: 'documents' }
   | { readonly kind: 'review'; readonly documentId: string }
   | { readonly kind: 'recording'; readonly sessionId: string };
@@ -41,14 +42,24 @@ export function viewFromSearch(search: string): View {
     return { kind: 'recording', sessionId };
   }
 
-  return params.get('view') === DOCUMENTS_VIEW ? { kind: 'documents' } : { kind: 'home' };
+  if (params.get('view') === DOCUMENTS_VIEW) {
+    return { kind: 'documents' };
+  }
+
+  const agentVersionId = params.get('agentVersionId');
+
+  return agentVersionId === null || agentVersionId === ''
+    ? { kind: 'home' }
+    : { kind: 'home', agentVersionId };
 }
 
 /** The URL a view lives at, relative to the current page. */
 export function searchForView(view: View): string {
   switch (view.kind) {
     case 'home':
-      return '';
+      return view.agentVersionId === undefined
+        ? ''
+        : `?agentVersionId=${encodeURIComponent(view.agentVersionId)}`;
     case 'documents':
       return `?view=${DOCUMENTS_VIEW}`;
     case 'review':

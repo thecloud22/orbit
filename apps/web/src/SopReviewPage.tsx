@@ -8,10 +8,13 @@ import {
   editSopStep,
   getSopBindings,
   getSopReview,
+  publishCandidate,
   reorderSopStep,
   transitionSopRevision,
 } from './api-client';
+import { describePublishFailure, type PublishFailure } from './publication-view-model';
 import { SopBindingPanel } from './SopBindingPanel';
+import { SopPublishPanel } from './SopPublishPanel';
 import { SopStepEditor } from './SopStepEditor';
 import {
   describeReviewFailure,
@@ -24,6 +27,8 @@ import { DRAFT_NOT_EXECUTABLE_NOTICE } from './sop-draft-view-model';
 
 export interface SopReviewPageProps {
   readonly documentId: string;
+  /** Navigates to the agent publishing produced. The document itself is unchanged. */
+  readonly onOpenAgent: (agentVersionId: string) => void;
 }
 
 /**
@@ -34,13 +39,15 @@ export interface SopReviewPageProps {
  * — the revision id the page was showing has just been superseded, and
  * continuing to edit against it would be editing history.
  */
-export function SopReviewPage({ documentId }: SopReviewPageProps) {
+export function SopReviewPage({ documentId, onOpenAgent }: SopReviewPageProps) {
   const [review, setReview] = useState<SopReviewView | null>(null);
   const [bindings, setBindings] = useState<SopBindingsView | null>(null);
   const [failure, setFailure] = useState<ReviewFailure | null>(null);
   const [busy, setBusy] = useState(false);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [publishing, setPublishing] = useState(false);
+  const [publishFailure, setPublishFailure] = useState<PublishFailure | null>(null);
 
   const load = useCallback(async () => {
     // Loaded alongside the review, and deliberately not fatal: binding
@@ -220,6 +227,34 @@ export function SopReviewPage({ documentId }: SopReviewPageProps) {
           ))}
         </ol>
       </section>
+
+      <SopPublishPanel
+        failure={publishFailure}
+        isPublishing={publishing}
+        onOpenAgent={onOpenAgent}
+        onPublish={(candidateId) => {
+          setPublishing(true);
+          setPublishFailure(null);
+
+          void publishCandidate(candidateId)
+            .then(() => load())
+            .catch((error: unknown) => {
+              setPublishFailure(
+                error instanceof ApiRequestError
+                  ? describePublishFailure(error)
+                  : {
+                      kind: 'request_failed',
+                      message: 'The agent could not be published.',
+                      agentVersionId: null,
+                    },
+              );
+            })
+            .finally(() => {
+              setPublishing(false);
+            });
+        }}
+        publication={review.publication}
+      />
 
       <SopBindingPanel bindings={bindings} steps={review.steps} />
 
