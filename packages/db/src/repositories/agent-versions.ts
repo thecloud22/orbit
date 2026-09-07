@@ -5,7 +5,7 @@ import {
   type AgentIrCandidateId,
   type AgentVersionId,
 } from '@orbit/contracts';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNotNull } from 'drizzle-orm';
 
 import { sha256Of } from '../checksum';
 import type { Executor } from '../client';
@@ -15,7 +15,7 @@ import {
   type AgentVersionRecord,
   type AgentVersionSummary,
 } from '../mappers';
-import { agentVersions } from '../schema';
+import { agents, agentVersions } from '../schema';
 
 export interface CreateAgentVersionInput {
   /** Already validated by @orbit/agent-ir; this repository never stores unvalidated IR. */
@@ -102,13 +102,24 @@ export function createAgentVersionRepository(executor: Executor): AgentVersionRe
     },
 
     async listPublished() {
+      // Archiving (ADR-026) retires the agent, not any version row, so the
+      // active catalog is filtered against `agents` here rather than by a
+      // column on `agent_versions` — no published version is ever touched.
+      const archivedAgentRows = await executor
+        .select({ id: agents.id })
+        .from(agents)
+        .where(isNotNull(agents.archivedAt));
+      const archivedAgentIds = new Set(archivedAgentRows.map((row) => row.id));
+
       const rows = await executor
         .select()
         .from(agentVersions)
         .where(eq(agentVersions.lifecycleStatus, 'published'))
         .orderBy(asc(agentVersions.name), asc(agentVersions.version));
 
-      return rows.map((row) => toAgentVersionSummary(toAgentVersionRecord(row)));
+      return rows
+        .filter((row) => !archivedAgentIds.has(row.agentId))
+        .map((row) => toAgentVersionSummary(toAgentVersionRecord(row)));
     },
 
     async listByAgent(agentId) {

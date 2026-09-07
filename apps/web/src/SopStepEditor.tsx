@@ -47,7 +47,7 @@ export function SopStepEditor({ step, isSaving, onSave, onCancel }: SopStepEdito
 
   return (
     <form
-      className="mt-3 rounded border border-slate-300 bg-slate-50 p-3"
+      className="mt-3 rounded-md border border-slate-300 bg-slate-50 p-3"
       onSubmit={handleSubmit}
       data-testid="sop-step-editor"
     >
@@ -73,7 +73,7 @@ export function SopStepEditor({ step, isSaving, onSave, onCancel }: SopStepEdito
           What you changed, and why
         </label>
         <input
-          className="rounded border border-slate-300 px-2 py-1 text-sm"
+          className="rounded-md border border-slate-300 px-2 py-1 text-sm"
           data-testid="sop-edit-note"
           id={`note-${step.id}`}
           onChange={(event) => setNote(event.target.value)}
@@ -83,7 +83,7 @@ export function SopStepEditor({ step, isSaving, onSave, onCancel }: SopStepEdito
 
       <div className="mt-3 flex gap-2">
         <button
-          className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:bg-slate-300"
+          className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:bg-slate-300"
           data-testid="sop-step-save"
           disabled={isSaving}
           type="submit"
@@ -91,7 +91,7 @@ export function SopStepEditor({ step, isSaving, onSave, onCancel }: SopStepEdito
           {isSaving ? 'Saving…' : 'Save as a new revision'}
         </button>
         <button
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
           data-testid="sop-step-cancel"
           onClick={onCancel}
           type="button"
@@ -141,7 +141,7 @@ function Field({
       <div className="flex flex-col gap-1">
         {label}
         <select
-          className="rounded border border-slate-300 px-2 py-1 text-sm"
+          className="rounded-md border border-slate-300 px-2 py-1 text-sm"
           data-testid={`field-${spec.name}`}
           id={id}
           onChange={(event) => onChange(spec.name, event.target.value || undefined)}
@@ -163,7 +163,7 @@ function Field({
       <div className="flex flex-col gap-1">
         {label}
         <textarea
-          className="min-h-16 rounded border border-slate-300 px-2 py-1 text-sm"
+          className="min-h-16 rounded-md border border-slate-300 px-2 py-1 text-sm"
           data-testid={`field-${spec.name}`}
           id={id}
           onChange={(event) => onChange(spec.name, event.target.value)}
@@ -178,7 +178,7 @@ function Field({
       <div className="flex flex-col gap-1">
         {label}
         <input
-          className="rounded border border-slate-300 px-2 py-1 text-sm"
+          className="rounded-md border border-slate-300 px-2 py-1 text-sm"
           data-testid={`field-${spec.name}`}
           id={id}
           onChange={(event) => onChange(spec.name, event.target.value)}
@@ -194,7 +194,7 @@ function Field({
       <div className="flex flex-col gap-1">
         {label}
         <input
-          className="rounded border border-slate-300 px-2 py-1 text-sm"
+          className="rounded-md border border-slate-300 px-2 py-1 text-sm"
           data-testid={`field-${spec.name}`}
           id={id}
           onChange={(event) =>
@@ -269,7 +269,7 @@ function RowsField({
               ) : (
                 <input
                   aria-label={column.label}
-                  className="rounded border border-slate-300 px-2 py-1 text-sm"
+                  className="rounded-md border border-slate-300 px-2 py-1 text-sm"
                   key={column.key}
                   onChange={(event) => update(index, column.key, event.target.value)}
                   placeholder={column.label}
@@ -278,7 +278,7 @@ function RowsField({
               ),
             )}
             <button
-              className="rounded border border-slate-300 px-2 py-1 text-xs"
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
               onClick={() =>
                 onChange(
                   spec.name,
@@ -293,7 +293,7 @@ function RowsField({
         ))}
         <div>
           <button
-            className="rounded border border-slate-300 px-2 py-1 text-xs"
+            className="rounded-md border border-slate-300 px-2 py-1 text-xs"
             onClick={() => onChange(spec.name, [...rows, {}])}
             type="button"
           >

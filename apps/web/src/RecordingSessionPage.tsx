@@ -122,7 +122,7 @@ export function RecordingSessionPage({
 
   return (
     <section className="flex flex-col gap-4" data-testid="recording-session">
-      <header className="rounded border border-slate-200 p-4">
+      <header className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h2
           className="text-base font-semibold text-slate-900"
           data-testid="recording-session-title"
@@ -138,7 +138,7 @@ export function RecordingSessionPage({
 
         <div className="mt-3 flex flex-wrap gap-2">
           <button
-            className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:bg-slate-300"
+            className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:bg-slate-300"
             data-testid="finish-recording-button"
             disabled={isFinishing || !canFinish(session)}
             onClick={() => void finish()}
@@ -147,7 +147,7 @@ export function RecordingSessionPage({
             {isFinishing ? 'Saving…' : 'Finish recording'}
           </button>
           <button
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
             data-testid="discard-recording-button"
             onClick={() => void discard()}
             type="button"
@@ -183,7 +183,7 @@ export function RecordingSessionPage({
         </section>
       )}
 
-      <section className="rounded border border-slate-200 p-4">
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="text-sm font-semibold text-slate-900">What you have done so far</h3>
 
         {rows.length === 0 ? (

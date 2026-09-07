@@ -4,7 +4,14 @@ import type { AgentVersionView, SopDraftView } from '@orbit/api/views';
 
 import { AgentsPage } from './AgentsPage';
 import { ApiErrorNotice } from './ApiErrorNotice';
-import { ApiRequestError, createSopDraft, listAgentVersions, startRecording } from './api-client';
+import {
+  ApiRequestError,
+  archiveAgent,
+  createSopDraft,
+  listAgentVersions,
+  restoreAgent,
+  startRecording,
+} from './api-client';
 import { APP_INFO } from './app-info';
 import { describeSopDraftFailure, type SopDraftFailure } from './sop-draft-view-model';
 import { SopDraftForm } from './SopDraftForm';
@@ -30,6 +37,12 @@ export function App() {
   const [agentVersions, setAgentVersions] = useState<readonly AgentVersionView[]>([]);
   const [catalogError, setCatalogError] = useState<ApiRequestError | null>(null);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
+  const [archivingAgentVersionId, setArchivingAgentVersionId] = useState<string | null>(null);
+  const [archiveError, setArchiveError] = useState<ApiRequestError | null>(null);
+  const [justArchived, setJustArchived] = useState<{
+    readonly agentVersionId: string;
+    readonly name: string;
+  } | null>(null);
   const [draft, setDraft] = useState<SopDraftView | null>(null);
   const [draftFailure, setDraftFailure] = useState<SopDraftFailure | null>(null);
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
@@ -152,6 +165,54 @@ export function App() {
     };
   }, [view.kind]);
 
+  /** Re-reads the catalog after archiving or restoring changes what it shows. */
+  async function reloadCatalog() {
+    try {
+      setAgentVersions(await listAgentVersions());
+      setCatalogError(null);
+    } catch (caught) {
+      setCatalogError(
+        caught instanceof ApiRequestError
+          ? caught
+          : new ApiRequestError({ status: 0, message: 'The API could not be reached.' }),
+      );
+    }
+  }
+
+  async function archiveAgentVersion(agentVersionId: string, name: string) {
+    setArchivingAgentVersionId(agentVersionId);
+    setArchiveError(null);
+
+    try {
+      await archiveAgent(agentVersionId);
+      setJustArchived({ agentVersionId, name });
+      await reloadCatalog();
+    } catch (caught) {
+      setArchiveError(
+        caught instanceof ApiRequestError
+          ? caught
+          : new ApiRequestError({ status: 0, message: 'The API could not be reached.' }),
+      );
+    } finally {
+      setArchivingAgentVersionId(null);
+    }
+  }
+
+  async function undoArchive(agentVersionId: string) {
+    setJustArchived(null);
+
+    try {
+      await restoreAgent(agentVersionId);
+      await reloadCatalog();
+    } catch (caught) {
+      setArchiveError(
+        caught instanceof ApiRequestError
+          ? caught
+          : new ApiRequestError({ status: 0, message: 'The API could not be reached.' }),
+      );
+    }
+  }
+
   async function beginRecording(title: string, startUrl: string) {
     setIsStartingRecording(true);
     setRecordingError(null);
@@ -211,11 +272,22 @@ export function App() {
       ) : view.kind === 'agents' ? (
         <AgentsPage
           agentVersions={agentVersions}
+          archiveError={archiveError}
+          archivingAgentVersionId={archivingAgentVersionId}
           catalogError={catalogError}
           highlightedAgentVersionId={highlightedAgentVersionId}
           isLoadingCatalog={isLoadingCatalog}
           isStarting={run.isStarting}
+          justArchived={justArchived}
+          onArchive={(agentVersionId) => {
+            const version = agentVersions.find((candidate) => candidate.id === agentVersionId);
+            void archiveAgentVersion(
+              agentVersionId,
+              version === undefined ? agentVersionId : `${version.name} ${version.version}`,
+            );
+          }}
           onStart={(agentVersionId, inputs) => void startAgent(agentVersionId, inputs)}
+          onUndoArchive={(agentVersionId) => void undoArchive(agentVersionId)}
           startError={run.error}
         />
       ) : view.kind === 'runs' ? (
@@ -242,7 +314,7 @@ export function App() {
 
             <div className="grid gap-4 md:grid-cols-2">
               <section
-                className="rounded border border-slate-200 p-4"
+                className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
                 data-testid="guided-path-card"
               >
                 <h3 className="text-sm font-semibold text-slate-900">Guided path via AI</h3>
@@ -259,7 +331,7 @@ export function App() {
               </section>
 
               <section
-                className="rounded border border-slate-200 p-4"
+                className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
                 data-testid="record-own-card"
               >
                 <h3 className="text-sm font-semibold text-slate-900">Record your own</h3>
@@ -287,7 +359,7 @@ export function App() {
             {draft !== null && (
               <div>
                 <button
-                  className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
                   data-testid="open-draft-review"
                   onClick={() => navigate({ kind: 'review', documentId: draft.documentId })}
                   type="button"
@@ -324,9 +396,9 @@ function Shell({
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="h-1 bg-gradient-to-r from-indigo-600 via-indigo-500 to-sky-500" />
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-4xl px-8 pt-8 pb-3">
-          <h1 className="text-2xl font-semibold text-slate-900">
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+        <div className="mx-auto max-w-5xl px-8 pt-6 pb-3">
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">
             <span className="text-indigo-600">Orbit</span> Watchtower
           </h1>
           <p className="mt-1 text-sm text-slate-500">{APP_INFO.description}</p>
@@ -334,7 +406,7 @@ function Shell({
         <Nav current={current} onNavigate={onNavigate} />
       </header>
 
-      <main className="mx-auto flex max-w-4xl flex-col gap-6 p-8">{children}</main>
+      <main className="mx-auto flex max-w-5xl flex-col gap-6 p-8 pb-16">{children}</main>
     </div>
   );
 }

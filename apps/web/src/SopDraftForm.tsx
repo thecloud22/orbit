@@ -33,7 +33,7 @@ export function SopDraftForm({ isGenerating, onGenerate }: SopDraftFormProps) {
           Describe the procedure in your own words
         </label>
         <textarea
-          className="min-h-40 rounded border border-slate-300 px-3 py-2 text-sm text-slate-900 disabled:bg-slate-100"
+          className="min-h-40 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 disabled:bg-slate-100"
           data-testid="sop-source-text"
           disabled={isGenerating}
           id="sop-source-text"
@@ -49,7 +49,7 @@ export function SopDraftForm({ isGenerating, onGenerate }: SopDraftFormProps) {
 
       <div>
         <button
-          className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:bg-slate-300"
+          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:bg-slate-300"
           data-testid="generate-draft-button"
           disabled={disabled}
           type="submit"

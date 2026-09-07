@@ -40,7 +40,10 @@ export function SopBindingPanel({ steps, bindings }: SopBindingPanelProps) {
   const summary = summarizeBindings(bindings);
 
   return (
-    <section className="rounded border border-slate-200 p-4" data-testid="sop-bindings">
+    <section
+      className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+      data-testid="sop-bindings"
+    >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-900">Mapping to a real page</h3>
         {isFullyApproved(bindings) && (
@@ -75,7 +78,10 @@ export function SopBindingPanel({ steps, bindings }: SopBindingPanelProps) {
 
 function BindingRowItem({ row }: { readonly row: BindingRow }) {
   return (
-    <li className="rounded border border-slate-200 p-3" data-testid="sop-binding-row">
+    <li
+      className="rounded-md border border-slate-200 p-3 transition-colors hover:border-slate-300"
+      data-testid="sop-binding-row"
+    >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="text-sm text-slate-900">
           <span className="mr-2 text-xs text-slate-500">{row.position}.</span>

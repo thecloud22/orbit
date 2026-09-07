@@ -6,7 +6,7 @@ import { z } from 'zod';
 import type { ApiContext } from '../context';
 import { badRequest, invalidInput, notFound } from '../errors';
 import { toAgentVersionView } from '../projections';
-import type { CreateRunResultView, DataEnvelope } from '../views';
+import type { AgentArchiveActionView, CreateRunResultView, DataEnvelope } from '../views';
 
 /**
  * The Phase 1 development actor.
@@ -108,6 +108,49 @@ export function registerAgentVersionRoutes(app: FastifyInstance, context: ApiCon
     };
 
     return reply.code(202).send(payload);
+  });
+
+  // Archiving retires the agent, not this version: it sets one timestamp on
+  // the `agents` identity row and touches no `agent_versions` content, so
+  // every past run and its evidence stays exactly as it was (ADR-026).
+  app.post('/v1/agent-versions/:agentVersionId/archive', async (request) => {
+    const agentVersionId = parseAgentVersionId(request.params);
+    const agentVersion = await context.repositories.agentVersions.findById(agentVersionId);
+
+    if (agentVersion === null) {
+      throw notFound(`Agent Version "${agentVersionId}" does not exist.`);
+    }
+
+    const agent = await context.repositories.agents.archive(agentVersion.agentId);
+
+    if (agent === null) {
+      throw notFound(`Agent "${agentVersion.agentId}" does not exist.`);
+    }
+
+    const payload: DataEnvelope<AgentArchiveActionView> = {
+      data: { agentId: agent.id, archivedAt: agent.archivedAt?.toISOString() ?? null },
+    };
+    return payload;
+  });
+
+  app.post('/v1/agent-versions/:agentVersionId/restore', async (request) => {
+    const agentVersionId = parseAgentVersionId(request.params);
+    const agentVersion = await context.repositories.agentVersions.findById(agentVersionId);
+
+    if (agentVersion === null) {
+      throw notFound(`Agent Version "${agentVersionId}" does not exist.`);
+    }
+
+    const agent = await context.repositories.agents.restore(agentVersion.agentId);
+
+    if (agent === null) {
+      throw notFound(`Agent "${agentVersion.agentId}" does not exist.`);
+    }
+
+    const payload: DataEnvelope<AgentArchiveActionView> = {
+      data: { agentId: agent.id, archivedAt: agent.archivedAt?.toISOString() ?? null },
+    };
+    return payload;
   });
 }
 

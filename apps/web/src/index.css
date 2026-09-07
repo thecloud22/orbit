@@ -1,1 +1,31 @@
 @import 'tailwindcss';
+
+@theme {
+  --font-sans:
+    'Inter var', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+}
+
+@layer base {
+  body {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /*
+   * One focus style for every interactive element, so a polished look does not
+   * come at the cost of keyboard/screen-reader users losing track of focus —
+   * the default outline is suppressed only where this ring replaces it.
+   */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    box-shadow:
+      0 0 0 2px white,
+      0 0 0 4px var(--color-indigo-500);
+  }
+}

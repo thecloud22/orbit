@@ -18,6 +18,16 @@ export interface AgentRepository {
   upsert(input: CreateAgentInput & { readonly id: AgentId }): Promise<AgentRecord>;
   findById(id: AgentId): Promise<AgentRecord | null>;
   list(): Promise<readonly AgentRecord[]>;
+  /**
+   * Retires the agent from the active catalog (ADR-026). Every version
+   * published under it, and every run and its evidence, is untouched — this
+   * sets one timestamp on the identity row, nothing on `agent_versions`.
+   * Returns `null` for an id that does not exist rather than throwing, so a
+   * route can turn that into a 404 without a separate existence check.
+   */
+  archive(id: AgentId): Promise<AgentRecord | null>;
+  /** Reverses `archive`. Returns `null` for an id that does not exist. */
+  restore(id: AgentId): Promise<AgentRecord | null>;
 }
 
 export function createAgentRepository(executor: Executor): AgentRepository {
@@ -60,6 +70,26 @@ export function createAgentRepository(executor: Executor): AgentRepository {
     async list() {
       const rows = await executor.select().from(agents).orderBy(asc(agents.name));
       return rows.map(toAgentRecord);
+    },
+
+    async archive(id) {
+      const [row] = await executor
+        .update(agents)
+        .set({ archivedAt: new Date(), updatedAt: new Date() })
+        .where(eq(agents.id, id))
+        .returning();
+
+      return row === undefined ? null : toAgentRecord(row);
+    },
+
+    async restore(id) {
+      const [row] = await executor
+        .update(agents)
+        .set({ archivedAt: null, updatedAt: new Date() })
+        .where(eq(agents.id, id))
+        .returning();
+
+      return row === undefined ? null : toAgentRecord(row);
     },
   };
 }

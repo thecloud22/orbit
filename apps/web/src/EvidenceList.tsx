@@ -27,7 +27,10 @@ export function EvidenceList({ run }: EvidenceListProps) {
   const items = describeEvidence(run.artifacts);
 
   return (
-    <section className="rounded border border-slate-200 p-4" data-testid="evidence-list">
+    <section
+      className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+      data-testid="evidence-list"
+    >
       <h3 className="text-sm font-semibold text-slate-900">Evidence</h3>
 
       {items.length === 0 ? (
@@ -38,7 +41,7 @@ export function EvidenceList({ run }: EvidenceListProps) {
         <ul className="mt-3 flex flex-col gap-3">
           {items.map((item) => (
             <li
-              className="rounded border border-slate-200 p-3"
+              className="rounded-md border border-slate-200 p-3 transition-colors hover:border-slate-300"
               data-testid="evidence-row"
               key={item.id}
             >
@@ -57,7 +60,7 @@ export function EvidenceList({ run }: EvidenceListProps) {
                 <ScreenshotPreview item={item} />
               ) : (
                 <a
-                  className="mt-2 inline-block rounded border border-slate-300 px-3 py-1 text-xs font-medium text-slate-900"
+                  className="mt-2 inline-block rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-900"
                   data-testid={`evidence-download-${item.kind}`}
                   download
                   href={item.url}
@@ -116,7 +119,7 @@ function ScreenshotPreview({ item }: { readonly item: EvidenceItem }) {
     <div className="mt-2">
       {state.kind !== 'ready' && (
         <button
-          className="rounded border border-slate-300 px-3 py-1 text-xs font-medium text-slate-900 disabled:opacity-50"
+          className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-900 disabled:opacity-50"
           data-testid="evidence-show-screenshot"
           disabled={state.kind === 'loading'}
           onClick={() => void show()}

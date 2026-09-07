@@ -53,7 +53,10 @@ export function SopDraftPanel({ draft, failure }: SopDraftPanelProps) {
   const summary = summarizeSopDraft(draft);
 
   return (
-    <section className="rounded border border-slate-200 p-4" data-testid="sop-draft">
+    <section
+      className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+      data-testid="sop-draft"
+    >
       <p
         className="rounded bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"
         data-testid="sop-draft-not-executable"

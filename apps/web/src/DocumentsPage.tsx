@@ -85,7 +85,7 @@ export function DocumentsPage({ onOpen }: DocumentsPageProps) {
 
       {rows.length === 0 ? (
         <p
-          className="rounded border border-slate-200 p-4 text-sm text-slate-600"
+          className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm"
           data-testid="documents-empty"
         >
           {EMPTY_DOCUMENTS_MESSAGE}
@@ -95,7 +95,7 @@ export function DocumentsPage({ onOpen }: DocumentsPageProps) {
           {rows.map((row) => (
             <li key={row.documentId}>
               <a
-                className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 p-4 hover:border-slate-400"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-indigo-300 hover:shadow-md"
                 data-testid={`document-row-${row.documentId}`}
                 href={row.href}
                 onClick={(event) => {

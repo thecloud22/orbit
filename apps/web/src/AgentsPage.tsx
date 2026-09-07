@@ -25,13 +25,37 @@ export function AgentsPage(props: {
    */
   readonly startError: ApiRequestError | null;
   readonly onStart: (agentVersionId: string, inputs: Readonly<Record<string, string>>) => void;
+  /** The version whose agent is mid-archive, so its own button can say so. */
+  readonly archivingAgentVersionId: string | null;
+  readonly archiveError: ApiRequestError | null;
+  readonly onArchive: (agentVersionId: string) => void;
+  /** The most recently archived agent, kept only long enough to offer undo. */
+  readonly justArchived: { readonly agentVersionId: string; readonly name: string } | null;
+  readonly onUndoArchive: (agentVersionId: string) => void;
 }) {
   return (
     <section className="flex flex-col gap-4">
       <h2 className="text-base font-semibold text-slate-900">Agents</h2>
 
+      {props.justArchived !== null && (
+        <div
+          className="flex items-center justify-between rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900"
+          data-testid="agent-archived-banner"
+        >
+          <span>{`"${props.justArchived.name}" was archived.`}</span>
+          <button
+            className="font-medium underline"
+            data-testid="undo-archive-button"
+            onClick={() => props.onUndoArchive(props.justArchived!.agentVersionId)}
+            type="button"
+          >
+            Undo
+          </button>
+        </div>
+      )}
+
       {props.agentVersions.length === 0 ? (
-        <section className="rounded border border-slate-200 p-4">
+        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-sm font-semibold text-slate-900" data-testid="agent-name">
             {props.isLoadingCatalog
               ? 'Loading agents…'
@@ -43,18 +67,40 @@ export function AgentsPage(props: {
           <section
             className={
               props.highlightedAgentVersionId === version.id
-                ? 'rounded border-2 border-indigo-500 p-4'
-                : 'rounded border border-slate-200 p-4'
+                ? 'rounded-lg border-2 border-indigo-500 bg-white p-5 shadow-md'
+                : 'rounded-lg border border-slate-200 bg-white p-5 shadow-sm'
             }
             data-testid={`agent-card-${version.id}`}
             key={version.id}
           >
-            <h3 className="text-sm font-semibold text-slate-900" data-testid="agent-name">
-              {`${version.name} ${version.version}`}
-            </h3>
-            {version.description !== null && (
-              <p className="mt-1 text-xs text-slate-500">{version.description}</p>
-            )}
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900" data-testid="agent-name">
+                  {`${version.name} ${version.version}`}
+                </h3>
+                {version.description !== null && (
+                  <p className="mt-1 text-xs text-slate-500">{version.description}</p>
+                )}
+              </div>
+
+              <button
+                className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:border-rose-300 hover:text-rose-700 disabled:text-slate-300"
+                data-testid={`archive-agent-${version.id}`}
+                disabled={props.archivingAgentVersionId === version.id}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Archive "${version.name}"? It stays runnable in its own history, but disappears from this list and can no longer start new runs.`,
+                    )
+                  ) {
+                    props.onArchive(version.id);
+                  }
+                }}
+                type="button"
+              >
+                {props.archivingAgentVersionId === version.id ? 'Archiving…' : 'Archive'}
+              </button>
+            </div>
 
             <div className="mt-3">
               <StartRunForm
@@ -72,6 +118,14 @@ export function AgentsPage(props: {
           error={props.catalogError}
           testId="catalog-error"
           title="The agent list could not be loaded"
+        />
+      )}
+
+      {props.archiveError !== null && (
+        <ApiErrorNotice
+          error={props.archiveError}
+          testId="archive-error"
+          title="The agent could not be archived"
         />
       )}
 

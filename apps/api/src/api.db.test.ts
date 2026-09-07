@@ -168,6 +168,54 @@ describe('Orbit API over real persistence', () => {
     ]);
   });
 
+  it('archiving an agent retires it from the catalog without touching its version', async () => {
+    const archiveResponse = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-versions/${agentVersionId}/archive`,
+    });
+
+    expect(archiveResponse.statusCode).toBe(200);
+    expect(archiveResponse.json().data.archivedAt).not.toBeNull();
+
+    const listed = await app.inject({ method: 'GET', url: '/v1/agent-versions' });
+    expect(listed.json().data).toEqual([]);
+
+    // The version row itself is untouched — archiving retires the agent
+    // identity, never a version's own immutable content (ADR-026).
+    const repositories = createRepositories(getDatabase().db);
+    const stillThere = await repositories.agentVersions.findById(agentVersionId);
+    expect(stillThere?.lifecycleStatus).toBe('published');
+
+    const restoreResponse = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-versions/${agentVersionId}/restore`,
+    });
+
+    expect(restoreResponse.statusCode).toBe(200);
+    expect(restoreResponse.json().data.archivedAt).toBeNull();
+
+    const listedAgain = await app.inject({ method: 'GET', url: '/v1/agent-versions' });
+    expect(listedAgain.json().data).toEqual([
+      expect.objectContaining({ id: agentVersionId, name: 'Find Service Request' }),
+    ]);
+  });
+
+  it('refuses to archive or restore an agent version that does not exist', async () => {
+    const missing = 'agentv_missing_00000000000000000' as AgentVersionId;
+
+    const archiveResponse = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-versions/${missing}/archive`,
+    });
+    expect(archiveResponse.statusCode).toBe(404);
+
+    const restoreResponse = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-versions/${missing}/restore`,
+    });
+    expect(restoreResponse.statusCode).toBe(404);
+  });
+
   it('starts a run and returns its id before execution finishes', async () => {
     const response = await app.inject({
       method: 'POST',

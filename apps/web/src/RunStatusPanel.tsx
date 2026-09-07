@@ -41,13 +41,13 @@ export function RunStatusPanel({
 
   return (
     <section className="flex flex-col gap-4" data-testid="run-status-panel">
-      <div className={`rounded border p-4 ${TONE_CLASSES[status.tone]}`}>
+      <div className={`rounded-lg border p-5 shadow-sm ${TONE_CLASSES[status.tone]}`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold" data-testid="run-status-label">
             {status.label}
           </h2>
           <button
-            className="rounded border border-current px-3 py-1 text-xs font-medium disabled:opacity-50"
+            className="rounded-md border border-current px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50"
             data-testid="refresh-run-button"
             disabled={isRefreshing}
             onClick={onRefresh}
@@ -85,7 +85,10 @@ export function RunStatusPanel({
       </div>
 
       {outputs.length > 0 && (
-        <div className="rounded border border-slate-200 p-4" data-testid="run-outputs">
+        <div
+          className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+          data-testid="run-outputs"
+        >
           <h3 className="text-sm font-semibold text-slate-900">Output</h3>
           <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm">
             {outputs.map((output) => (

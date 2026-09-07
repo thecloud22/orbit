@@ -61,7 +61,7 @@ export function StartRunForm({ agentVersion, isStarting, onStart }: StartRunForm
             </label>
             <input
               autoComplete="off"
-              className="w-64 rounded border border-slate-300 px-3 py-2 text-sm text-slate-900 disabled:bg-slate-100"
+              className="w-64 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 disabled:bg-slate-100"
               data-testid={`input-field-${id}`}
               disabled={disabled}
               id={`run-input-${id}`}
@@ -82,7 +82,7 @@ export function StartRunForm({ agentVersion, isStarting, onStart }: StartRunForm
       )}
 
       <button
-        className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:bg-slate-300"
+        className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:bg-slate-300"
         data-testid="start-run-button"
         disabled={disabled}
         type="submit"

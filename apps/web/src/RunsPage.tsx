@@ -74,7 +74,7 @@ export function RunsPage({ onOpen }: RunsPageProps) {
             return (
               <li key={run.id}>
                 <button
-                  className="flex w-full items-center justify-between gap-3 rounded border border-slate-200 p-3 text-left hover:border-indigo-300"
+                  className="flex w-full items-center justify-between gap-3 rounded-md border border-slate-200 p-3 transition-colors hover:border-slate-300 text-left hover:border-indigo-300"
                   data-testid={`run-row-${run.id}`}
                   onClick={() => onOpen(run.id)}
                   type="button"

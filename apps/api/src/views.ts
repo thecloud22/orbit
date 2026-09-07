@@ -37,6 +37,12 @@ export interface AgentVersionView {
   readonly inputSchema: AgentIr['inputs'];
 }
 
+/** What archiving or restoring an agent produced (ADR-026). */
+export interface AgentArchiveActionView {
+  readonly agentId: string;
+  readonly archivedAt: string | null;
+}
+
 /**
  * What compiling or approving a candidate produced.
  *

@@ -952,3 +952,40 @@ A generated draft is a different case. Nothing has confirmed that a free-text de
 | Add a "skip review" toggle a person can set per document | A configurable bypass of a governance gate is the pattern ADR-022 and ADR-021 both reject elsewhere for the same reason: a setting somebody can flip is not a property of the workflow |
 | Auto-answer the outcome mapping from the graph's own step text | The mapping is a business judgement, not a fact the graph already states; guessing it wrong would misreport a run's business outcome silently |
 | Keep the old three-button API surface alongside the new one, both reachable from the panel | Two contracts doing the same job invite drift, and the removed one had no caller left to justify keeping it tested |
+
+## ADR-026: Archive an agent by retiring its identity, never by deleting or mutating a version
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+Watchtower had no way to remove an agent from the active catalog. The request was for "delete," but Agent Versions are immutable by design (ADR-005), and `AgentVersionRepository` deliberately exposes no update, publish, patch, or delete method (ADR-014) — a run's evidence is meaningless if the definition it executed can later be reinterpreted or removed. Deleting a version row outright would either cascade-delete every run and every piece of evidence ever recorded against it, or fail on the foreign key `runs` already holds to it. Both are wrong for a product whose central claim is that a run's evidence can always be reconstructed.
+
+### Decision
+
+**Archiving retires the agent's identity, not any version of it.** `agents.archivedAt` is a nullable timestamp on the `agents` table — the row that already models "logical agent identity, separate from any version of it" and already outlives every version published under it. Setting it hides every version published under that agent from the active catalog (`GET /v1/agent-versions`) without writing to a single `agent_versions` row. No `agent_versions` content, checksum, or lifecycle status ever changes; no run, step, event, or artifact linked to any version of that agent is touched.
+
+**This is not the exception ADR-014 warns about.** ADR-014's guarantee is scoped to a version's own content — the thing a run's evidence depends on being unchanged. The `agents` table was already mutable before this task (`upsert` already exists, refreshing display fields), because agent identity is not the thing runs pin; a version is. Adding `archive`/`restore` here extends an already-mutable row by one field; it does not open a mutation path on the immutable one.
+
+**`AgentVersionRepository.listPublished()` filters against `agents.archivedAt`, in application code, not a database join.** The active catalog is: every version with `lifecycleStatus: 'published'`, whose agent is not archived. This mirrors the codebase's existing pattern of composing across tables in the repository or route layer (`toRunListItemView`'s per-run agent lookup) rather than reaching for SQL joins, and keeps `listByAgent` — used internally by publish and revision services to allocate version numbers and check "already published" — unfiltered, since those internal uses must see every version regardless of archive state.
+
+**Archiving is symmetric.** `restore` reverses it. An accidental archive with no way back would be a footgun disproportionate to how cheap the reverse operation is; the two routes (`POST /v1/agent-versions/:id/archive`, `POST /v1/agent-versions/:id/restore`) and the Watchtower "Undo" affordance next to the confirmation exist for the same reason.
+
+### Consequences
+
+- An agent can be removed from the active catalog and can no longer start new runs, while every run it ever produced, and that run's full evidence, remains exactly as reconstructible as before.
+- `agents` gains its second mutable field (`archivedAt`, alongside the display-field refresh `upsert` already allowed) — additive, no migration touches `agent_versions`.
+- Republishing a new version under an archived agent (recompiling and republishing the same recorded document) does not implicitly restore it — the new version would also be hidden. This is a stated limitation, not solved here; nothing in this task's scope required handling it.
+- `listPublished()`'s archive filter is a second query per call; acceptable at Phase 1 scale and consistent with the N+1 posture already taken for run listing.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Add a delete method to `AgentVersionRepository`, cascading to its runs | Directly violates ADR-005/ADR-014 and destroys the audit evidence the product exists to preserve |
+| Add a delete method that only removes the version, restricted by the FK | Fails outright the moment any run references the version — which is every published version that has ever been run |
+| Add `archivedAt` to `agent_versions` instead of `agents` | An agent with more than one published version would need every one of its version rows updated to retire the agent as a whole, turning a one-row identity change into a multi-row mutation of otherwise-immutable content |
+| Filter archived agents with a SQL join in `listPublished` | No join precedent exists elsewhere in this repository layer; the existing pattern composes across tables in application code, and Phase 1 scale does not need the join's efficiency |
+| Archive with no restore path | A destructive action with no undo is a worse default for a "delete" a person can trigger by mistake, for a trivially cheap reverse operation |

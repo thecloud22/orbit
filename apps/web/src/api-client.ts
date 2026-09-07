@@ -1,4 +1,5 @@
 import type {
+  AgentArchiveActionView,
   AgentVersionView,
   CandidateActionView,
   CreateRunResultView,
@@ -81,6 +82,16 @@ async function getJson<T>(url: string): Promise<T> {
 
 export async function listAgentVersions(): Promise<readonly AgentVersionView[]> {
   return getJson<readonly AgentVersionView[]>('/v1/agent-versions');
+}
+
+/** Retires the agent from the active catalog. Every past run is untouched. */
+export async function archiveAgent(agentVersionId: string): Promise<AgentArchiveActionView> {
+  return send<AgentArchiveActionView>(`/v1/agent-versions/${agentVersionId}/archive`, 'POST', {});
+}
+
+/** Reverses `archiveAgent`. */
+export async function restoreAgent(agentVersionId: string): Promise<AgentArchiveActionView> {
+  return send<AgentArchiveActionView>(`/v1/agent-versions/${agentVersionId}/restore`, 'POST', {});
 }
 
 export async function startRun(

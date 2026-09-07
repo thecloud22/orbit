@@ -15,16 +15,16 @@ export interface NavProps {
  */
 export function Nav({ current, onNavigate }: NavProps) {
   return (
-    <nav className="border-b border-slate-200" data-testid="watchtower-nav">
-      <ul className="mx-auto flex max-w-4xl gap-1 px-8">
+    <nav data-testid="watchtower-nav">
+      <ul className="mx-auto flex max-w-5xl gap-1 px-8">
         {navLinks(current).map((link) => (
           <li key={link.label}>
             <a
               aria-current={link.current ? 'page' : undefined}
               className={
                 link.current
-                  ? 'inline-block border-b-2 border-indigo-600 px-3 py-3 text-sm font-medium text-indigo-700'
-                  : 'inline-block border-b-2 border-transparent px-3 py-3 text-sm text-slate-600 hover:text-indigo-600'
+                  ? 'inline-block border-b-2 border-indigo-600 px-3 py-3 text-sm font-medium text-indigo-700 transition-colors'
+                  : 'inline-block border-b-2 border-transparent px-3 py-3 text-sm text-slate-600 transition-colors hover:text-indigo-600'
               }
               data-testid={`nav-${link.label.toLowerCase()}`}
               href={link.href}

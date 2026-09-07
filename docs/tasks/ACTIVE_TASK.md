@@ -103,6 +103,16 @@ Runs, and per-run pages — triggering a run leaves the page that started it for
 and the review page's old three-button publish panel was removed along with its now-dead view-model
 code.
 
+**Agents can now be archived.** `agents.archivedAt` retires an agent's identity — hiding every
+version published under it from the active catalog and blocking new runs against it — without
+writing to a single `agent_versions` row; every past run and its evidence stays exactly as it was
+(**ADR-026**). This is deliberately not deletion: Agent Versions stay immutable (ADR-005, ADR-014),
+and the mutable field lives on the `agents` identity row that was already mutable before this task.
+Archiving is symmetric (`restore` reverses it) and Watchtower offers an inline undo. Watchtower also
+moved to Tailwind CSS 4.3 with a professional-SaaS visual pass — card elevation, rounded-md
+interactive elements, a sticky translucent header, and a consistent focus-visible ring — with no
+change to any `data-testid` or component behavior.
+
 **What follows**: sub-phase 2.5's own limitations remain — the escalation-review reference workflow
 does not compile because branching is unsupported, and a workflow needing credentials compiles but
 can never be approved. Rejecting a candidate has a service and a route but no button; recompiling

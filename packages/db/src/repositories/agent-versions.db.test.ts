@@ -52,6 +52,29 @@ describe('agents', () => {
     const repositories = createRepositories(testDatabase().db);
     expect(await repositories.agents.findById('agent_missing' as never)).toBeNull();
   });
+
+  it('archives and restores an agent without touching its name or description', async () => {
+    const repositories = createRepositories(testDatabase().db);
+    const created = await repositories.agents.create({
+      id: 'agent_to_archive' as never,
+      name: 'Retiring Soon',
+    });
+    expect(created.archivedAt).toBeNull();
+
+    const archived = await repositories.agents.archive(created.id);
+    expect(archived?.archivedAt).not.toBeNull();
+    expect(archived?.name).toBe('Retiring Soon');
+
+    const restored = await repositories.agents.restore(created.id);
+    expect(restored?.archivedAt).toBeNull();
+    expect(restored?.name).toBe('Retiring Soon');
+  });
+
+  it('returns null archiving or restoring an agent that does not exist', async () => {
+    const repositories = createRepositories(testDatabase().db);
+    expect(await repositories.agents.archive('agent_missing' as never)).toBeNull();
+    expect(await repositories.agents.restore('agent_missing' as never)).toBeNull();
+  });
 });
 
 describe('seeding find service request 0.1.0', () => {
@@ -199,5 +222,24 @@ describe('agent ir round trip through jsonb', () => {
     expect(summary?.name).toBe('Find Service Request');
     expect(summary?.version).toBe('0.1.0');
     expect(summary?.inputs['requestNumber']?.label).toBe('Service request number');
+  });
+
+  it('excludes a published version once its agent is archived, and includes it again once restored', async () => {
+    const { db } = testDatabase();
+    const { agentVersion } = await seedFindServiceRequest(db);
+    const repositories = createRepositories(db);
+
+    // Archiving retires the agent identity, never the version row (ADR-026):
+    // this is the one place that distinction is actually observable.
+    await repositories.agents.archive(agentVersion.agentId);
+    expect(await repositories.agentVersions.listPublished()).toEqual([]);
+
+    const stillThere = await repositories.agentVersions.findById(agentVersion.id);
+    expect(stillThere?.lifecycleStatus).toBe('published');
+    expect(stillThere?.irSha256).toBe(agentVersion.irSha256);
+
+    await repositories.agents.restore(agentVersion.agentId);
+    const [summary] = await repositories.agentVersions.listPublished();
+    expect(summary?.id).toBe(agentVersion.id);
   });
 });

@@ -57,7 +57,10 @@ export function SopPublishPanel(props: {
         : "This workflow needs its steps mapped to a real page before it can run, and that isn't built yet. Recording the workflow instead works today.";
 
   return (
-    <section className="rounded border border-slate-200 p-4" data-testid="sop-publish-panel">
+    <section
+      className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+      data-testid="sop-publish-panel"
+    >
       <h3 className="text-sm font-semibold text-slate-900">Running this workflow</h3>
       <p className="mt-1 text-sm text-slate-600" data-testid="sop-publish-summary">
         {summary}
@@ -77,7 +80,7 @@ export function SopPublishPanel(props: {
                 <span className="font-medium">{outcome.name}</span> — {outcome.message}
               </span>
               <select
-                className="rounded border border-slate-300 px-2 py-1 text-sm"
+                className="rounded-md border border-slate-300 px-2 py-1 text-sm"
                 data-testid={`outcome-mapping-${outcome.name}`}
                 onChange={(event) => {
                   const { value } = event.target;
@@ -103,7 +106,7 @@ export function SopPublishPanel(props: {
           ))}
 
           <button
-            className="w-fit rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:bg-slate-300"
+            className="w-fit rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:bg-slate-300"
             data-testid="publish-recording-button"
             disabled={props.isPublishing || !mappingComplete}
             onClick={() => {
@@ -118,7 +121,7 @@ export function SopPublishPanel(props: {
 
       {stage.kind === 'published' ? (
         <button
-          className="mt-3 rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-900"
+          className="mt-3 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-900"
           data-testid="open-published-agent"
           onClick={() => {
             props.onOpenAgent(stage.agentVersionId);

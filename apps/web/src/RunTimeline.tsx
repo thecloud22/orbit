@@ -21,7 +21,10 @@ export interface RunTimelineProps {
 export function RunTimeline({ run }: RunTimelineProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <section className="rounded border border-slate-200 p-4" data-testid="step-timeline">
+      <section
+        className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+        data-testid="step-timeline"
+      >
         <h3 className="text-sm font-semibold text-slate-900">Steps</h3>
         <ol className="mt-2 flex flex-col gap-1 text-sm">
           {run.steps.map((step) => (
@@ -43,7 +46,10 @@ export function RunTimeline({ run }: RunTimelineProps) {
         </ol>
       </section>
 
-      <section className="rounded border border-slate-200 p-4" data-testid="event-timeline">
+      <section
+        className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+        data-testid="event-timeline"
+      >
         <h3 className="text-sm font-semibold text-slate-900">Events</h3>
         <ol className="mt-2 flex max-h-96 flex-col gap-1 overflow-y-auto text-sm">
           {run.events.map((event) => (
