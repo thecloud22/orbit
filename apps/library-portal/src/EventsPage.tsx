@@ -1,8 +1,11 @@
+import { CalendarDays, Clock, MapPin, UserPlus, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 
 import { Layout } from './components/Layout';
 import { EVENTS, searchEventsByDate, type EventCategory, type LibraryEvent } from './data/events';
 import { describeEligibilityReason, evaluateEligibility, findMember } from './data/members';
+
+type CategoryFilter = 'All' | EventCategory;
 
 const CATEGORY_BADGE: Record<EventCategory, string> = {
   Kids: 'rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-700',
@@ -83,16 +86,33 @@ function EventCard({ event }: { readonly event: LibraryEvent }) {
   }
 
   return (
-    <li className="rounded border border-slate-200 p-5" data-testid="event-item">
+    <li
+      className="rounded border border-slate-200 p-5 shadow-sm transition-colors hover:bg-slate-50"
+      data-testid="event-item"
+    >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="font-semibold text-slate-900" data-testid="event-title">
+        <p className="font-serif font-semibold text-slate-900" data-testid="event-title">
           {event.title}
         </p>
         <span className={CATEGORY_BADGE[event.category]}>{event.category}</span>
       </div>
 
-      <p className="mt-1 text-sm text-slate-700" data-testid="event-date">
-        {formatDate(event.date)} · {event.time} · {event.location}
+      <p
+        className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-700"
+        data-testid="event-date"
+      >
+        <span className="flex items-center gap-1">
+          <CalendarDays aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
+          {formatDate(event.date)}
+        </span>
+        <span className="flex items-center gap-1">
+          <Clock aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
+          {event.time}
+        </span>
+        <span className="flex items-center gap-1">
+          <MapPin aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
+          {event.location}
+        </span>
       </p>
       <p className="mt-1 text-sm text-slate-600">{event.description}</p>
 
@@ -113,10 +133,11 @@ function EventCard({ event }: { readonly event: LibraryEvent }) {
         </div>
 
         <button
-          className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+          className="flex items-center gap-1.5 rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
           data-testid="event-register-button"
           type="submit"
         >
+          <UserPlus aria-hidden="true" className="h-3.5 w-3.5" />
           Register
         </button>
       </form>
@@ -142,13 +163,16 @@ function EventCard({ event }: { readonly event: LibraryEvent }) {
 
 export function EventsPage() {
   const [dateFilter, setDateFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('All');
 
-  const matches = [...searchEventsByDate(dateFilter)].sort((a, b) => a.date.localeCompare(b.date));
+  const matches = [...searchEventsByDate(dateFilter)]
+    .filter((event) => categoryFilter === 'All' || event.category === categoryFilter)
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   return (
     <Layout current="events">
       <div className="mx-auto max-w-3xl px-8 py-12">
-        <h1 className="text-2xl font-semibold text-slate-900">Events</h1>
+        <h1 className="font-serif text-2xl font-semibold text-slate-900">Events</h1>
         <p className="mt-2 text-sm text-slate-600">
           {EVENTS.length} upcoming programs across all branches. A member in good standing may
           register with their member ID.
@@ -169,12 +193,35 @@ export function EventsPage() {
             />
           </div>
 
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-900" htmlFor="event-category-filter">
+              Category
+            </label>
+            <select
+              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+              data-testid="event-category-filter"
+              id="event-category-filter"
+              onChange={(event) => setCategoryFilter(event.target.value as CategoryFilter)}
+              value={categoryFilter}
+            >
+              <option value="All">All</option>
+              <option value="Kids">Kids</option>
+              <option value="Teens">Teens</option>
+              <option value="Adults">Adults</option>
+              <option value="Community">Community</option>
+            </select>
+          </div>
+
           <button
-            className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:border-slate-400"
+            className="flex items-center gap-1.5 rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:border-slate-400"
             data-testid="event-date-filter-clear"
-            onClick={() => setDateFilter('')}
+            onClick={() => {
+              setDateFilter('');
+              setCategoryFilter('All');
+            }}
             type="button"
           >
+            <X aria-hidden="true" className="h-4 w-4" />
             Clear
           </button>
         </div>

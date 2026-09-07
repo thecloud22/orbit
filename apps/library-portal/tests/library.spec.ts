@@ -25,6 +25,23 @@ test.describe('site chrome', () => {
     await page.getByText('Return to the homepage').click();
     await expect(page).toHaveURL('/');
   });
+
+  test('on a narrow viewport, the mobile menu toggle reveals every nav link', async ({ page }) => {
+    await page.setViewportSize({ width: 400, height: 800 });
+    await page.goto('/');
+
+    await expect(page.getByTestId('site-nav-mobile-menu')).toHaveCount(0);
+
+    await page.getByTestId('site-nav-menu-toggle').click();
+
+    await expect(page.getByTestId('site-nav-catalog-mobile')).toBeVisible();
+    await expect(page.getByTestId('site-nav-circulation-mobile')).toBeVisible();
+    await expect(page.getByTestId('site-nav-hours-mobile')).toBeVisible();
+    await expect(page.getByTestId('site-nav-events-mobile')).toBeVisible();
+
+    await page.getByTestId('site-nav-menu-toggle').click();
+    await expect(page.getByTestId('site-nav-mobile-menu')).toHaveCount(0);
+  });
 });
 
 test.describe('home', () => {
@@ -49,6 +66,16 @@ test.describe('home', () => {
 
     await expect(page).toHaveURL('/catalog?q=Clean%20Code');
     await expect(page.getByTestId('catalog-result-title')).toHaveText('Clean Code');
+  });
+
+  test('the New & Notable shelf links into the catalog for each title', async ({ page }) => {
+    const items = page.getByTestId('home-new-and-notable-item');
+    await expect(items).toHaveCount(3);
+
+    const firstTitle = await items.first().locator('p').first().innerText();
+    await items.first().click();
+
+    await expect(page.getByTestId('catalog-result-title')).toHaveText(firstTitle);
   });
 
   test('an empty hero search lands on the catalog page browsing all titles', async ({ page }) => {
@@ -161,6 +188,96 @@ test.describe('catalog search', () => {
     const row = page.getByTestId('catalog-result-item').filter({ hasText: 'Design Patterns' });
     await expect(row.getByTestId('catalog-borrow-input')).toHaveCount(0);
   });
+
+  test('filtering by status narrows the browse-all list to just that status', async ({ page }) => {
+    await page.getByTestId('catalog-filter-status').selectOption('on_hold');
+
+    await expect(page.getByTestId('catalog-page-info')).toHaveText('Showing 1–10 of 10');
+    const statuses = await page.getByTestId('catalog-result-status').allInnerTexts();
+    for (const status of statuses) {
+      expect(status).toBe('On hold');
+    }
+  });
+
+  test('filtering by category narrows the browse-all list to just that category', async ({
+    page,
+  }) => {
+    await page.getByTestId('catalog-filter-category').selectOption('Fiction');
+
+    await expect(page.getByTestId('catalog-page-info')).toHaveText('Showing 1–10 of 48');
+  });
+
+  test('changing a filter resets to page 1', async ({ page }) => {
+    await page.getByTestId('catalog-next-page').click();
+    await expect(page.getByTestId('catalog-page-info')).toHaveText('Showing 11–20 of 100');
+
+    await page.getByTestId('catalog-filter-category').selectOption('Nonfiction');
+    await expect(page.getByTestId('catalog-page-info')).toHaveText('Showing 1–10 of 52');
+  });
+
+  test('sorting by author reorders search results', async ({ page }) => {
+    await page.getByTestId('catalog-search-input').fill('Design Patterns');
+    await page.getByTestId('catalog-search-button').click();
+
+    await expect(page.getByTestId('catalog-result-title').first()).toHaveText('Design Patterns');
+
+    await page.getByTestId('catalog-sort').selectOption('author');
+
+    await expect(page.getByTestId('catalog-result-title').first()).toHaveText(
+      'Head First Design Patterns',
+    );
+  });
+
+  test('a member in good standing can place a hold on an on-loan book', async ({ page }) => {
+    await page.getByTestId('catalog-search-input').fill('Design Patterns');
+    await page.getByTestId('catalog-search-button').click();
+
+    const row = page
+      .getByTestId('catalog-result-item')
+      .filter({ hasText: 'Design Patterns' })
+      .first();
+    await row.getByTestId('catalog-hold-input').fill('LIB-1001');
+    await row.getByTestId('catalog-hold-button').click();
+
+    await expect(row.getByTestId('catalog-hold-result')).toHaveText(
+      'Dana Whitfield is #1 in line for this title.',
+    );
+    await expect(row.getByTestId('catalog-hold-queue-count')).toHaveText('1 member waiting');
+  });
+
+  test('a member not in good standing cannot place a hold', async ({ page }) => {
+    await page.getByTestId('catalog-search-input').fill('Design Patterns');
+    await page.getByTestId('catalog-search-button').click();
+
+    const row = page
+      .getByTestId('catalog-result-item')
+      .filter({ hasText: 'Design Patterns' })
+      .first();
+    await row.getByTestId('catalog-hold-input').fill('LIB-1004');
+    await row.getByTestId('catalog-hold-button').click();
+
+    await expect(row.getByTestId('catalog-hold-result')).toContainText('Not eligible');
+  });
+
+  test('placing a hold twice with the same member reports their existing position', async ({
+    page,
+  }) => {
+    await page.getByTestId('catalog-search-input').fill('Design Patterns');
+    await page.getByTestId('catalog-search-button').click();
+
+    const row = page
+      .getByTestId('catalog-result-item')
+      .filter({ hasText: 'Design Patterns' })
+      .first();
+    await row.getByTestId('catalog-hold-input').fill('LIB-1001');
+    await row.getByTestId('catalog-hold-button').click();
+    await row.getByTestId('catalog-hold-input').fill('LIB-1001');
+    await row.getByTestId('catalog-hold-button').click();
+
+    await expect(row.getByTestId('catalog-hold-result')).toHaveText(
+      'Already in line for this title, at position #1.',
+    );
+  });
 });
 
 test.describe('circulation desk', () => {
@@ -271,6 +388,24 @@ test.describe('events', () => {
     await page.getByTestId('event-date-filter-input').fill('2026-09-17');
     await page.getByTestId('event-date-filter-clear').click();
 
+    await expect(page.getByTestId('event-item')).toHaveCount(13);
+  });
+
+  test('filtering by category shows only events in that category', async ({ page }) => {
+    await page.getByTestId('event-category-filter').selectOption('Kids');
+
+    await expect(page.getByTestId('event-item')).toHaveCount(4);
+    for (const title of await page.getByTestId('event-title').allInnerTexts()) {
+      expect(['Toddler Storytime', 'Family Craft Hour']).toContain(title);
+    }
+  });
+
+  test('clearing the filters resets both date and category', async ({ page }) => {
+    await page.getByTestId('event-date-filter-input').fill('2026-09-17');
+    await page.getByTestId('event-category-filter').selectOption('Kids');
+    await expect(page.getByTestId('event-item')).toHaveCount(1);
+
+    await page.getByTestId('event-date-filter-clear').click();
     await expect(page.getByTestId('event-item')).toHaveCount(13);
   });
 

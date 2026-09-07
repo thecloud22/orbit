@@ -1,3 +1,4 @@
+import { AlertTriangle, CheckCircle2, Search, UserCheck } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 
 import { Layout } from './components/Layout';
@@ -10,8 +11,10 @@ import {
 } from './data/members';
 
 const STANDING_BADGE = {
-  eligible: 'rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700',
-  blocked: 'rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700',
+  eligible:
+    'inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700',
+  blocked:
+    'inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700',
 } as const;
 
 /**
@@ -50,13 +53,21 @@ export function CirculationPage() {
   return (
     <Layout current="circulation">
       <div className="mx-auto max-w-3xl px-8 py-12">
-        <h1 className="text-2xl font-semibold text-slate-900">Circulation desk</h1>
+        <h1 className="font-serif text-2xl font-semibold text-slate-900">Circulation desk</h1>
         <p className="mt-2 text-sm text-slate-600">
           Look up a member's standing and borrowing eligibility by member ID.
         </p>
 
-        <h2 className="mt-8 text-lg font-semibold text-slate-900">All members</h2>
-        <div className="mt-3 overflow-x-auto rounded border border-slate-200">
+        <div className="mt-6 flex items-center gap-2 text-sm text-slate-600">
+          <UserCheck aria-hidden="true" className="h-4 w-4 text-indigo-600" />
+          <span data-testid="member-directory-summary">
+            {MEMBERS.filter((member) => evaluateEligibility(member).eligible).length} of{' '}
+            {MEMBERS.length} members in good standing
+          </span>
+        </div>
+
+        <h2 className="mt-4 font-serif text-lg font-semibold text-slate-900">All members</h2>
+        <div className="mt-3 overflow-x-auto rounded border border-slate-200 shadow-sm">
           <table className="w-full text-left text-sm" data-testid="member-directory-list">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -72,7 +83,11 @@ export function CirculationPage() {
                 const eligibility = evaluateEligibility(member);
 
                 return (
-                  <tr data-testid="member-directory-row" key={member.memberId}>
+                  <tr
+                    className="hover:bg-slate-50"
+                    data-testid="member-directory-row"
+                    key={member.memberId}
+                  >
                     <td className="px-4 py-2 text-slate-900" data-testid="member-directory-id">
                       {member.memberId}
                     </td>
@@ -88,6 +103,11 @@ export function CirculationPage() {
                         }
                         data-testid="member-directory-standing"
                       >
+                        {eligibility.eligible ? (
+                          <CheckCircle2 aria-hidden="true" className="h-3 w-3" />
+                        ) : (
+                          <AlertTriangle aria-hidden="true" className="h-3 w-3" />
+                        )}
                         {eligibility.eligible
                           ? 'Eligible'
                           : describeEligibilityReason(eligibility.reason)}
@@ -100,7 +120,7 @@ export function CirculationPage() {
           </table>
         </div>
 
-        <h2 className="mt-10 text-lg font-semibold text-slate-900">Look up a member</h2>
+        <h2 className="mt-10 font-serif text-lg font-semibold text-slate-900">Look up a member</h2>
         <form className="mt-3 flex flex-wrap items-end gap-3" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-slate-900" htmlFor="member-id">
@@ -119,10 +139,11 @@ export function CirculationPage() {
           </div>
 
           <button
-            className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+            className="flex items-center gap-1.5 rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
             data-testid="member-lookup-button"
             type="submit"
           >
+            <Search aria-hidden="true" className="h-4 w-4" />
             Look up
           </button>
         </form>
@@ -134,11 +155,11 @@ export function CirculationPage() {
             return (
               <section
                 aria-live="polite"
-                className="mt-8 rounded border border-slate-200 p-4"
+                className="mt-8 rounded border border-slate-200 p-4 shadow-sm"
                 data-testid="member-result"
                 role="status"
               >
-                <h2 className="text-lg font-semibold text-slate-900">Member standing</h2>
+                <h2 className="font-serif text-lg font-semibold text-slate-900">Member standing</h2>
 
                 <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
                   <dt className="font-medium text-slate-600">Name</dt>
