@@ -104,7 +104,24 @@ export function App() {
     }
   }, [adopt]);
 
+  /**
+   * Re-fetched every time Home becomes the active view, not only once at
+   * mount.
+   *
+   * `App` never unmounts as the URL changes — navigation is client-side state,
+   * not a page load — so a fetch keyed to mount alone runs exactly once for
+   * the whole session. A workflow published while looking at its review page
+   * would then never appear: the catalog snapshot taken before anything was
+   * published is what Home would show forever, however many times you
+   * navigated back to it. `view.kind` is the dependency rather than `view`
+   * itself so leaving Home and returning re-triggers this without re-running
+   * on every documentId change inside the review page.
+   */
   useEffect(() => {
+    if (view.kind !== 'home') {
+      return;
+    }
+
     let cancelled = false;
 
     async function load() {
@@ -137,7 +154,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [view.kind]);
 
   async function beginRecording(title: string, startUrl: string) {
     setIsStartingRecording(true);
@@ -192,129 +209,144 @@ export function App() {
 
   return (
     <Shell current={view} onNavigate={navigate}>
-      <p className="text-sm text-slate-600">{APP_INFO.description}</p>
+      {/*
+        Creating a workflow comes first, not running one — the two paths a new
+        team has, given equal top billing, above the returning-user action of
+        starting something that already exists. The two are peers: one is
+        faster when you can describe the task, the other is exact when you
+        would rather just do it once.
+      */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-base font-semibold text-slate-900">Create a workflow</h2>
 
-      {agentVersions.length === 0 ? (
-        <section className="rounded border border-slate-200 p-4">
-          <h2 className="text-sm font-semibold text-slate-900" data-testid="agent-name">
-            {isLoadingCatalog ? 'Loading agents…' : 'No published agent is available.'}
-          </h2>
-        </section>
-      ) : (
-        agentVersions.map((version) => (
-          <section
-            className={
-              highlightedAgentVersionId === version.id
-                ? 'rounded border-2 border-slate-900 p-4'
-                : 'rounded border border-slate-200 p-4'
-            }
-            data-testid={`agent-card-${version.id}`}
-            key={version.id}
-          >
-            <h2 className="text-sm font-semibold text-slate-900" data-testid="agent-name">
-              {`${version.name} ${version.version}`}
-            </h2>
-
+        <div className="grid gap-4 md:grid-cols-2">
+          <section className="rounded border border-slate-200 p-4" data-testid="guided-path-card">
+            <h3 className="text-sm font-semibold text-slate-900">Guided path via AI</h3>
+            <p className="mt-1 text-xs text-slate-600">
+              Describe the procedure in your own words. Orbit reads it and proposes a structured,
+              reviewable workflow.
+            </p>
             <div className="mt-3">
-              <StartRunForm
-                agentVersion={version}
-                isStarting={run.isStarting}
-                onStart={(requestNumber) => {
-                  void run.start(version.id, requestNumber);
-                }}
+              <SopDraftForm
+                isGenerating={isGeneratingDraft}
+                onGenerate={(sourceText) => void generateDraft(sourceText)}
               />
             </div>
           </section>
-        ))
-      )}
 
-      {catalogError !== null && (
-        <ApiErrorNotice
-          error={catalogError}
-          testId="catalog-error"
-          title="The agent list could not be loaded"
-        />
-      )}
-
-      {run.error !== null && (
-        <ApiErrorNotice
-          error={run.error}
-          testId="run-request-error"
-          title="The request was not accepted"
-        />
-      )}
-
-      {run.run !== null && (
-        <>
-          <RunStatusPanel
-            isRefreshing={run.isRefreshing}
-            onRefresh={() => void run.refresh()}
-            pollingStopped={run.pollingStopped}
-            run={run.run}
-          />
-          <RunTimeline run={run.run} />
-          <EvidenceList run={run.run} />
-        </>
-      )}
-
-      {run.run === null && run.isStarting && (
-        <p className="text-sm text-slate-600" data-testid="run-starting">
-          Starting the run…
-        </p>
-      )}
-
-      <section className="rounded border border-slate-200 p-4">
-        <h2 className="text-sm font-semibold text-slate-900">
-          Draft a workflow from a description
-        </h2>
-        <p className="mt-1 text-xs text-slate-600">
-          Sub-phase 2.2: Orbit reads what you write and proposes a structured draft. Reviewing and
-          editing it arrives in the next sub-phase.
-        </p>
-        <div className="mt-3">
-          <SopDraftForm
-            isGenerating={isGeneratingDraft}
-            onGenerate={(sourceText) => void generateDraft(sourceText)}
-          />
+          <section className="rounded border border-slate-200 p-4" data-testid="record-own-card">
+            <h3 className="text-sm font-semibold text-slate-900">Record your own</h3>
+            <p className="mt-1 text-xs text-slate-600">
+              Do the task once in a real browser. Orbit writes down every step and the exact element
+              it acted on.
+            </p>
+            <div className="mt-3">
+              <RecordWorkflowForm
+                isStarting={isStartingRecording}
+                onStart={(title, startUrl) => void beginRecording(title, startUrl)}
+              />
+            </div>
+          </section>
         </div>
+
+        {recordingError !== null && (
+          <ApiErrorNotice
+            error={recordingError}
+            testId="recording-start-error"
+            title="The recording could not be started"
+          />
+        )}
+
+        {draft !== null && (
+          <div>
+            <button
+              className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+              data-testid="open-draft-review"
+              onClick={() => navigate({ kind: 'review', documentId: draft.documentId })}
+              type="button"
+            >
+              Review and edit this draft
+            </button>
+          </div>
+        )}
+
+        <SopDraftPanel draft={draft} failure={draftFailure} />
       </section>
 
-      <section className="rounded border border-slate-200 p-4">
-        <h2 className="text-sm font-semibold text-slate-900">Record a workflow</h2>
-        <p className="mt-1 text-xs text-slate-600">
-          Do the task once in a real browser and Orbit writes down what you did — the steps and the
-          elements they act on, together.
-        </p>
-        <div className="mt-3">
-          <RecordWorkflowForm
-            isStarting={isStartingRecording}
-            onStart={(title, startUrl) => void beginRecording(title, startUrl)}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-base font-semibold text-slate-900">Your agents</h2>
+
+        {agentVersions.length === 0 ? (
+          <section className="rounded border border-slate-200 p-4">
+            <h3 className="text-sm font-semibold text-slate-900" data-testid="agent-name">
+              {isLoadingCatalog
+                ? 'Loading agents…'
+                : 'Nothing published yet — publish a reviewed workflow to run it here.'}
+            </h3>
+          </section>
+        ) : (
+          agentVersions.map((version) => (
+            <section
+              className={
+                highlightedAgentVersionId === version.id
+                  ? 'rounded border-2 border-slate-900 p-4'
+                  : 'rounded border border-slate-200 p-4'
+              }
+              data-testid={`agent-card-${version.id}`}
+              key={version.id}
+            >
+              <h3 className="text-sm font-semibold text-slate-900" data-testid="agent-name">
+                {`${version.name} ${version.version}`}
+              </h3>
+
+              <div className="mt-3">
+                <StartRunForm
+                  agentVersion={version}
+                  isStarting={run.isStarting}
+                  onStart={(inputs) => {
+                    void run.start(version.id, inputs);
+                  }}
+                />
+              </div>
+            </section>
+          ))
+        )}
+
+        {catalogError !== null && (
+          <ApiErrorNotice
+            error={catalogError}
+            testId="catalog-error"
+            title="The agent list could not be loaded"
           />
-        </div>
+        )}
+
+        {run.error !== null && (
+          <ApiErrorNotice
+            error={run.error}
+            testId="run-request-error"
+            title="The request was not accepted"
+          />
+        )}
+
+        {run.run !== null && (
+          <>
+            <RunStatusPanel
+              isRefreshing={run.isRefreshing}
+              onRefresh={() => void run.refresh()}
+              pollingStopped={run.pollingStopped}
+              run={run.run}
+            />
+            <RunTimeline run={run.run} />
+            <EvidenceList run={run.run} />
+          </>
+        )}
+
+        {run.run === null && run.isStarting && (
+          <p className="text-sm text-slate-600" data-testid="run-starting">
+            Starting the run…
+          </p>
+        )}
       </section>
-
-      {recordingError !== null && (
-        <ApiErrorNotice
-          error={recordingError}
-          testId="recording-start-error"
-          title="The recording could not be started"
-        />
-      )}
-
-      {draft !== null && (
-        <div>
-          <button
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm"
-            data-testid="open-draft-review"
-            onClick={() => navigate({ kind: 'review', documentId: draft.documentId })}
-            type="button"
-          >
-            Review and edit this draft
-          </button>
-        </div>
-      )}
-
-      <SopDraftPanel draft={draft} failure={draftFailure} />
     </Shell>
   );
 }
@@ -340,6 +372,7 @@ function Shell({
       <header className="border-b border-slate-200">
         <div className="mx-auto max-w-4xl px-8 pt-8 pb-3">
           <h1 className="text-2xl font-semibold text-slate-900">{APP_INFO.title}</h1>
+          <p className="mt-1 text-sm text-slate-500">{APP_INFO.description}</p>
         </div>
         <Nav current={current} onNavigate={onNavigate} />
       </header>

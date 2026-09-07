@@ -94,7 +94,10 @@ export function navLinks(current: View): readonly NavLink[] {
     const view: View = kind === 'home' ? { kind: 'home' } : { kind: 'documents' };
 
     return {
-      label: kind === 'home' ? 'Home' : 'Documents',
+      // "Workflows", not "Documents": the page itself has always called this
+      // list Workflows, and the nav label disagreeing with the page it opens
+      // is exactly the kind of small inconsistency that reads as unpolished.
+      label: kind === 'home' ? 'Home' : 'Workflows',
       view,
       href: searchForView(view) === '' ? '/' : searchForView(view),
       current: isCurrent(view),

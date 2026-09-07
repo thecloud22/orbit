@@ -84,7 +84,7 @@ describe('searchForView', () => {
 
 describe('navLinks', () => {
   it('offers Home and Documents', () => {
-    expect(navLinks({ kind: 'home' }).map((link) => link.label)).toEqual(['Home', 'Documents']);
+    expect(navLinks({ kind: 'home' }).map((link) => link.label)).toEqual(['Home', 'Workflows']);
   });
 
   it('marks exactly one link current', () => {
@@ -98,7 +98,7 @@ describe('navLinks', () => {
 
     // A recording is something you are doing, not a place in the app.
     expect(links.find((link) => link.label === 'Home')?.current).toBe(true);
-    expect(links.find((link) => link.label === 'Documents')?.current).toBe(false);
+    expect(links.find((link) => link.label === 'Workflows')?.current).toBe(false);
   });
 
   it('keeps Documents current while reading a document', () => {
@@ -106,7 +106,7 @@ describe('navLinks', () => {
     // are, rather than the bar going blank.
     const links = navLinks({ kind: 'review', documentId: 'sopdoc_123' });
 
-    expect(links.find((link) => link.label === 'Documents')?.current).toBe(true);
+    expect(links.find((link) => link.label === 'Workflows')?.current).toBe(true);
     expect(links.find((link) => link.label === 'Home')?.current).toBe(false);
   });
 

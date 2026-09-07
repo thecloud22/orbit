@@ -24,7 +24,7 @@ export interface UseRun {
   readonly isStarting: boolean;
   readonly isRefreshing: boolean;
   readonly pollingStopped: boolean;
-  start(agentVersionId: string, requestNumber: string): Promise<void>;
+  start(agentVersionId: string, inputs: Readonly<Record<string, string>>): Promise<void>;
   /** Watches a run that already exists, so a run can be reopened by id. */
   adopt(runId: string): Promise<void>;
   refresh(): Promise<void>;
@@ -56,7 +56,7 @@ export function useRun(): UseRun {
   }, []);
 
   const start = useCallback(
-    async (agentVersionId: string, requestNumber: string) => {
+    async (agentVersionId: string, inputs: Readonly<Record<string, string>>) => {
       // The in-flight guard. It is a UI guard only: the server accepts a second
       // dispatch and creates a second run, which is a documented Phase 1 limit.
       if (isStarting) {
@@ -71,7 +71,7 @@ export function useRun(): UseRun {
       polls.current = 0;
 
       try {
-        const created = await startRun(agentVersionId, { requestNumber });
+        const created = await startRun(agentVersionId, inputs);
         setRunId(created.runId);
         await load(created.runId);
       } catch (caught) {

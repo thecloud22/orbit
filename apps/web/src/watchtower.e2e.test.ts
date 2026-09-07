@@ -132,7 +132,7 @@ describe('Watchtower end to end', () => {
   async function startRun(page: Page, requestNumber: string): Promise<void> {
     const card = seededAgent(page);
     await card.getByTestId('agent-name').waitFor({ state: 'visible' });
-    await card.getByTestId('request-number-field').fill(requestNumber);
+    await card.getByTestId('input-field-requestNumber').fill(requestNumber);
     await card.getByTestId('start-run-button').click();
   }
 
@@ -257,7 +257,7 @@ describe('Watchtower end to end', () => {
     const page = await open();
     const card = seededAgent(page);
     await card.getByTestId('agent-name').waitFor({ state: 'visible' });
-    await card.getByTestId('request-number-field').fill('');
+    await card.getByTestId('input-field-requestNumber').fill('');
     await card.getByTestId('start-run-button').click();
 
     await page.getByTestId('run-request-error').waitFor({ state: 'visible', timeout: 30_000 });
@@ -753,13 +753,13 @@ describe('Watchtower end to end', () => {
         .poll(() => page.getByTestId('watchtower-nav').count(), { timeout: 20_000 })
         .toBe(1);
       expect(await page.getByTestId('nav-home').getAttribute('aria-current')).toBe('page');
-      expect(await page.getByTestId('nav-documents').getAttribute('aria-current')).toBeNull();
+      expect(await page.getByTestId('nav-workflows').getAttribute('aria-current')).toBeNull();
 
-      await page.getByTestId('nav-documents').click();
+      await page.getByTestId('nav-workflows').click();
       await expect
         .poll(() => page.getByTestId('documents-page').count(), { timeout: 20_000 })
         .toBe(1);
-      expect(await page.getByTestId('nav-documents').getAttribute('aria-current')).toBe('page');
+      expect(await page.getByTestId('nav-workflows').getAttribute('aria-current')).toBe('page');
 
       await page.close();
     });
@@ -769,7 +769,7 @@ describe('Watchtower end to end', () => {
 
       // Anchors rather than buttons: middle-click and copy-link must keep
       // working, which a button silently breaks.
-      expect(await page.getByTestId('nav-documents').getAttribute('href')).toBe('?view=documents');
+      expect(await page.getByTestId('nav-workflows').getAttribute('href')).toBe('?view=documents');
       expect(await page.getByTestId('nav-home').getAttribute('href')).toBe('/');
 
       await page.close();
@@ -1025,6 +1025,33 @@ describe('Watchtower end to end', () => {
       expect(versions.data.map((version) => version.id)).toContain(
         detail.data.publication.agentVersionId,
       );
+
+      // The regression this pins: Home's catalog was fetched once at the
+      // page's first load — before this agent existed — and App never
+      // remounts as the URL changes, so a fetch keyed to mount alone would
+      // never see anything published afterwards. Clicking through to Home
+      // must show the new card without a page reload.
+      await page.getByTestId('open-published-agent').click();
+      await expect
+        .poll(
+          () => page.getByTestId(`agent-card-${detail.data.publication.agentVersionId}`).count(),
+          { timeout: 20_000 },
+        )
+        .toBe(1);
+
+      // The other regression this pins: 4f-1 bakes every non-secret typed
+      // value into the compiled agent as a literal rather than declaring it as
+      // an input, so this agent takes none at all. The trigger form used to be
+      // hard-coded to a single field named requestNumber regardless of what an
+      // agent actually declared, so starting any agent but the seeded one sent
+      // an input it never asked for and the server rightly refused it.
+      const card = page.getByTestId(`agent-card-${detail.data.publication.agentVersionId}`);
+      expect(await card.getByTestId('start-run-no-inputs').count()).toBe(1);
+      expect(await card.getByTestId('input-field-requestNumber').count()).toBe(0);
+
+      await card.getByTestId('start-run-button').click();
+      await page.getByTestId('run-status-panel').waitFor({ state: 'visible', timeout: 30_000 });
+      expect(await page.getByTestId('run-request-error').count()).toBe(0);
 
       await page.close();
     });
