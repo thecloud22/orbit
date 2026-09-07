@@ -1,3 +1,4 @@
+import { ALLOWED_HOSTS } from '@orbit/runtime';
 import { describe, expect, it } from 'vitest';
 
 import type {
@@ -48,6 +49,31 @@ describe('POST /v1/recording-sessions', () => {
 
     expect(response.statusCode).toBe(201);
     expect(response.json().data.sessionId).toBe('rec_abc123');
+
+    await app.close();
+  });
+
+  it('permits the hosts the runtime permits, because it is the same list', async () => {
+    // The route used to declare its own copy of the allowlist while its comment
+    // claimed it did not. Two lists of permitted hosts are two things to keep in
+    // step, so this drives the real constant through the real route.
+    const app = server({ start: () => Promise.resolve(SESSION) });
+    await app.ready();
+
+    // `::1` is in the list as a bare hostname but cannot be written into a URL
+    // without brackets, so it is exercised through its `[::1]` spelling.
+    const addressable = ALLOWED_HOSTS.filter((host) => URL.canParse(`http://${host}:3001/`));
+    expect(addressable.length).toBeGreaterThan(0);
+
+    for (const host of addressable) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v1/recording-sessions',
+        payload: { title: 'Sandbox', startUrl: `http://${host}:3001/requests` },
+      });
+
+      expect(response.statusCode, `${host} should be permitted`).toBe(201);
+    }
 
     await app.close();
   });

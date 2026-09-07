@@ -1,3 +1,4 @@
+import { ALLOWED_HOSTS } from '@orbit/runtime';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -14,6 +15,9 @@ import type { RecordingSessionState } from '../recording/session-registry';
  * an HTTP request should live. Starting returns an id, polling reports what has
  * happened since, and finishing compiles the sequence into a document.
  *
+ * Recording performs real actions, so the target is checked against the
+ * runtime's allowlist before a browser opens.
+ *
  * The browser opens on the machine running the API, because someone has to see
  * and click it. That is a real constraint on where Orbit can run rather than an
  * implementation detail, and the UI says so plainly.
@@ -25,12 +29,6 @@ const startBodySchema = z.strictObject({
 });
 
 const sessionIdSchema = z.string().regex(/^rec_[A-Za-z0-9]+$/);
-
-/**
- * Recording performs real actions, so the target is checked before a browser
- * opens — the runtime's own allowlist, not a second copy of it.
- */
-const ALLOWED_RECORDING_HOSTS = ['localhost', '127.0.0.1', '[::1]', '::1'] as const;
 
 function assertSandbox(candidate: string): string {
   let url: URL;
@@ -45,10 +43,13 @@ function assertSandbox(candidate: string): string {
     throw badRequest(`${url.protocol} is not a protocol Orbit will open.`);
   }
 
-  if (!(ALLOWED_RECORDING_HOSTS as readonly string[]).includes(url.hostname)) {
+  // The runtime's own allowlist, imported rather than copied: a second list of
+  // permitted hosts is a second thing to keep in step, and a security constant
+  // that can drift is the one kind that must not.
+  if (!(ALLOWED_HOSTS as readonly string[]).includes(url.hostname)) {
     throw badRequest(
       'Recording performs real actions in a real browser, so it may only ever target a local ' +
-        `sandbox. "${url.hostname}" is not one of ${ALLOWED_RECORDING_HOSTS.join(', ')}.`,
+        `sandbox. "${url.hostname}" is not one of ${ALLOWED_HOSTS.join(', ')}.`,
     );
   }
 
