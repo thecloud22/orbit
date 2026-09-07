@@ -35,6 +35,9 @@ importers:
       '@orbit/agent-ir':
         specifier: workspace:*
         version: link:../../packages/agent-ir
+      '@orbit/agent-ir-compiler':
+        specifier: workspace:*
+        version: link:../../packages/agent-ir-compiler
       '@orbit/artifact-service':
         specifier: workspace:*
         version: link:../../packages/artifact-service

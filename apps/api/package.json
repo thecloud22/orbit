@@ -7,10 +7,12 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "start:e2e": "tsx src/testing/e2e-server.ts"
+    "start:e2e": "tsx src/testing/e2e-server.ts",
+    "seed:library": "tsx src/testing/seed-library-demo.ts"
   },
   "dependencies": {
     "@orbit/agent-ir": "workspace:*",
+    "@orbit/agent-ir-compiler": "workspace:*",
     "@orbit/artifact-service": "workspace:*",
     "@orbit/artifacts": "workspace:*",
     "@orbit/contracts": "workspace:*",

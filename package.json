@@ -25,6 +25,7 @@
     "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm test:db",
     "db:generate": "pnpm --filter @orbit/db generate",
     "db:seed": "pnpm --filter @orbit/db seed",
+    "db:seed:library": "pnpm --filter @orbit/api seed:library",
     "agent:run": "pnpm --filter @orbit/browser-worker agent:run",
     "record:binding": "pnpm --filter @orbit/recorder record",
     "record:workflow": "pnpm --filter @orbit/recorder record-workflow",
