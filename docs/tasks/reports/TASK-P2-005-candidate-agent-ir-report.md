@@ -52,10 +52,17 @@ reachable around by calling a different function is not a guard. Rejection has n
    destination, not an element — so every recorded workflow would have been refused. Navigate now
    compiles from the graph's own `urlHint`, preferring a binding's URL when one exists. Caught by the
    test that compiles a real recording; a hand-written fixture would not have found it.
-2. **The truncation order omitted the new table.** `ORBIT_TABLE_NAMES` is a hand-maintained list, and
-   `agent_ir_candidates` references `sop_graph_revisions` with `restrict` — so test isolation would
-   have broken *and* truncating revisions would have failed outright. Added first, children before
-   parents.
+2. **The truncation list omitted the new table.** `ORBIT_TABLE_NAMES` is a hand-maintained list and
+   `agent_ir_candidates` was not in it, so the completeness assertion in `reset.db.test.ts` failed.
+   Added.
+
+   *Correction, made while reading this code again for 2.6:* this entry originally claimed the
+   omission "would have broken test isolation **and** made truncating revisions fail outright."
+   Both consequences were overstated. Truncation is a single `TRUNCATE ... CASCADE` naming every
+   table, so `CASCADE` would have reached the missing table anyway — isolation would have held and
+   nothing would have failed at the database level. The real defect was the narrower one above: a
+   completeness assertion caught a list that had gone stale. Adding the table was still correct;
+   the reasoning given for it was not.
 3. **A refusal counted instead of naming.** The multi-field extract message said "2 values but only
    one was mapped" without saying which was missing — the only thing the reader needs. It now names
    them. The test asserted the useful behaviour and the code was wrong.
