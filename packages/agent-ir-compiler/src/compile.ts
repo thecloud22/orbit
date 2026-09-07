@@ -41,15 +41,6 @@ export interface CompileInput {
   /** The approved bindings for this document, at most one per step. */
   readonly bindings: readonly ExecutionBinding[];
   readonly outcomeMapping: OutcomeMapping;
-  /**
-   * Hosts a compiled navigation may target.
-   *
-   * Passed in rather than imported because the one definition lives in
-   * `@orbit/runtime` (`ALLOWED_HOSTS`) and a pure compiler must not depend on
-   * the runtime. The caller passes that constant; a service test asserts it
-   * passes that one and not a copy.
-   */
-  readonly allowedHosts: readonly string[];
   readonly agentId: string;
   readonly version: string;
   readonly sopId: string;
@@ -315,17 +306,11 @@ export function compileCandidate(input: CompileInput): CompileResult {
         continue;
       }
 
-      if (!input.allowedHosts.includes(url.hostname)) {
-        refusals.push(
-          refusal(
-            'navigation_not_permitted',
-            `Step "${step.id}" opens "${url.hostname}", which Orbit is not permitted to visit.`,
-            step.id,
-          ),
-        );
-        continue;
-      }
-
+      // Every host the workflow actually opens becomes part of the agent's
+      // declared `allowedDomains` below. That declaration is the containment:
+      // the semantic validator checks it at publish and the runtime re-checks it
+      // before every navigation, so a compiled agent can reach the sites its
+      // recording visited and nothing else.
       domains.add(url.hostname);
       actions.add('navigate');
       steps.push({

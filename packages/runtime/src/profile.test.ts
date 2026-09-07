@@ -216,9 +216,19 @@ describe('assertNavigable', () => {
     expect(error.code).toBe('NAVIGATION_FAILED');
   });
 
-  it('throws NAVIGATION_FAILED for a host in allowedDomains but outside the runtime localhost allowlist', () => {
+  it('permits an external host the agent declared, since containment is per agent', () => {
+    // There is no blanket host list any more. What an agent may open is what it
+    // declared, checked at publish and again here.
+    expect(() =>
+      assertNavigable('https://www.plano.gov/x', ['www.plano.gov'], 'step'),
+    ).not.toThrow();
+  });
+
+  it('still refuses a neighbouring host the agent did not declare', () => {
+    // The declaration is exact, not a domain suffix: an agent recorded on one
+    // host cannot wander to another that merely looks related.
     const error = captureRuntimeError(() =>
-      assertNavigable('http://example.com/x', ['example.com'], 'step'),
+      assertNavigable('https://internal.plano.gov/x', ['www.plano.gov'], 'step'),
     );
 
     expect(error.code).toBe('NAVIGATION_FAILED');

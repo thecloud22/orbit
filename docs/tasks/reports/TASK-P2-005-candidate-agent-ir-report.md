@@ -76,10 +76,14 @@ reachable around by calling a different function is not a guard. Rejection has n
    carrying `node:crypto` and a type import. The compiler imports the one definition structurally.
    A boundary test asserts that file imports nothing else.
 
-   The host allowlist could not be handled the same way: its one definition is in `@orbit/runtime`,
-   which a pure compiler must not import. It is passed in, and supplied from exactly one place
-   (`allowed-hosts.ts`) that re-exports rather than redeclares — the same rule as the fix committed
-   in `3ee081d`.
+   The host allowlist could not be handled the same way: its one definition was in `@orbit/runtime`,
+   which a pure compiler must not import, so it was passed in and supplied from exactly one place
+   (`allowed-hosts.ts`) that re-exported rather than redeclared it.
+
+   **Both of those are now gone.** A follow-up change (ADR-022) removed the blanket host allowlist
+   entirely — containment moved to the `allowedDomains` each agent declares, which the compiler
+   already derived — so `allowedHosts`, the `navigation_not_permitted` refusal and `allowed-hosts.ts`
+   no longer exist. The step-checksum subpath is unaffected.
 
 ## Tests
 

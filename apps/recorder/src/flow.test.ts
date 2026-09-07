@@ -62,12 +62,10 @@ describe('decideStartUrl', () => {
     expect(decideStartUrl('http://127.0.0.1:3001/').ok).toBe(true);
   });
 
-  it('refuses anything that is not the sandbox, because recording is a real action', () => {
+  it('accepts a real website, because a person drives the recording', () => {
     const decision = decideStartUrl('https://service-portal.example.com/login');
 
-    expect(decision.ok).toBe(false);
-    expect(!decision.ok && decision.reason).toContain('real actions');
-    expect(!decision.ok && decision.reason).toContain('local sandbox');
+    expect(decision).toEqual({ ok: true, url: 'https://service-portal.example.com/login' });
   });
 
   it('refuses a protocol Orbit will not open', () => {
@@ -89,11 +87,13 @@ describe('suggestedStartUrl', () => {
     expect(suggestedStartUrl(step('sign_in'))).toBeUndefined();
   });
 
-  it('is only a suggestion — it still has to pass the sandbox check', () => {
-    // The fixture's hint is an example.com URL, which must not open.
+  it('is only a suggestion — it still goes through the same check', () => {
+    // The hint comes out of a draft graph, so it is untrusted text rather than
+    // a vetted address. It is offered, never opened without being parsed.
     const hint = suggestedStartUrl(step('open_portal'));
     expect(hint).toBeDefined();
-    expect(decideStartUrl(hint!).ok).toBe(false);
+    expect(decideStartUrl(hint!).ok).toBe(true);
+    expect(decideStartUrl('not a url at all').ok).toBe(false);
   });
 });
 

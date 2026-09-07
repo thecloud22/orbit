@@ -878,18 +878,19 @@ describe('Watchtower end to end', () => {
       await page.close();
     });
 
-    it('refuses a target outside the local sandbox before a browser opens', async () => {
-      // Recording performs real actions. The allowlist is the same rule the
-      // runtime enforces, checked here at the point a session is created.
+    it('refuses a target that is not a page a browser can open', async () => {
+      // The host restriction is gone — a person may record anywhere — but a
+      // `file:` URL is not somewhere a browser goes on somebody's behalf, and
+      // the refusal happens before any browser is created.
       const response = await fetch(`${E2E_API_URL}/v1/recording-sessions`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ title: 'Somewhere else', startUrl: 'https://example.com/admin' }),
+        body: JSON.stringify({ title: 'Not a page', startUrl: 'file:///etc/passwd' }),
       });
 
       expect(response.status).toBe(400);
       const body = (await response.json()) as { error: { message: string } };
-      expect(body.error.message).toContain('local sandbox');
+      expect(body.error.message).toContain('protocol');
     });
   });
 

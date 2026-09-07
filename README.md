@@ -570,11 +570,15 @@ says so. The browser still holds the work, which is the one thing in this flow a
 person cannot repeat from memory. An idle session is closed after thirty minutes,
 and any still open when the API stops go with it.
 
-Recording targets the **local sandbox only** — the same allowlist the runtime
-enforces, checked before a browser opens. ADR-019 kept script injection out of
-every process that executes an agent; ADR-020 narrows that to one API directory
-rather than lifting it, and a test walks the module graph from the run-dispatch
-path to prove the two stay apart.
+**Recording may target any `http` or `https` URL**, including a real website. A
+recording is a person doing their job in a browser they are driving, so there is
+no host list here; other protocols (`file:`, `data:`, `javascript:`) are still
+refused before a browser opens. What the resulting *agent* may open on its own is
+constrained per agent — see **ADR-022** and the section below.
+
+ADR-019 kept script injection out of every process that executes an agent;
+ADR-020 narrows that to one API directory rather than lifting it, and a test
+walks the module graph from the run-dispatch path to prove the two stay apart.
 
 Still not built: publishing (2.6).
 
@@ -607,6 +611,13 @@ A candidate nobody could check cannot be approved; it can still be rejected.
 
 Candidates are derived, never authored: recompiling supersedes its predecessor in
 the same transaction, exactly as re-recording supersedes a binding.
+
+**Where an agent may go is decided per agent.** The compiler collects every host
+the workflow actually opens into `permissions.browser.allowedDomains`, the
+semantic validator checks that when a version is published, and the runtime
+re-checks it before every navigation. The match is exact, not a domain suffix, so
+an agent recorded on `www.example.gov` cannot wander to `internal.example.gov`
+even if a later edit puts that URL in a step.
 
 **The reference escalation-review workflow does not compile yet**, because it
 branches. That is the requirements document's own worked example, and a test

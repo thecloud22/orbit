@@ -321,13 +321,16 @@ describe('refusals', () => {
     expect(refusalCodes(result)).toEqual(['missing_destination']);
   });
 
-  it('refuses to compile a workflow that would leave the sandbox', () => {
-    // The allowlist is passed in rather than copied here — the one definition
-    // is ALLOWED_HOSTS in @orbit/runtime, which a pure compiler must not import.
+  it('grants an external workflow exactly the domain it visits, and no other', () => {
+    // This is the containment, now that there is no blanket host list: the
+    // compiled agent declares the hosts its recording actually opened, the
+    // semantic validator checks that at publish, and the runtime re-checks it
+    // before every navigation. An agent recorded on one site cannot reach a
+    // second one, even if a later edit puts another URL in a step.
     const graph = findServiceRequestGraph();
     const steps = graph.steps.map((step) =>
       step.id === 'open_portal' && step.kind === 'navigate'
-        ? { ...step, urlHint: 'https://service-portal.example.com/requests' }
+        ? { ...step, urlHint: 'https://www.plano.gov/1391/Service-Requests' }
         : step,
     );
 
@@ -338,7 +341,10 @@ describe('refusals', () => {
       ),
     });
 
-    expect(refusalCodes(result)).toEqual(['navigation_not_permitted']);
+    expect(refusalCodes(result)).toEqual([]);
+    if (!result.ok) return;
+
+    expect(result.agentIr.permissions.browser.allowedDomains).toEqual(['www.plano.gov']);
   });
 
   it('refuses an input type an agent cannot yet carry', () => {

@@ -1,4 +1,3 @@
-import { ALLOWED_HOSTS } from '@orbit/runtime';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -15,8 +14,11 @@ import type { RecordingSessionState } from '../recording/session-registry';
  * an HTTP request should live. Starting returns an id, polling reports what has
  * happened since, and finishing compiles the sequence into a document.
  *
- * Recording performs real actions, so the target is checked against the
- * runtime's allowlist before a browser opens.
+ * Recording performs real actions in a real browser, driven by a person, and it
+ * may target any http or https URL. What an agent compiled from a recording may
+ * later open on its own is constrained per agent by the `allowedDomains` it
+ * declares, rather than by a global list here — the recording is somebody
+ * working, and the agent is the thing that needs containing.
  *
  * The browser opens on the machine running the API, because someone has to see
  * and click it. That is a real constraint on where Orbit can run rather than an
@@ -41,16 +43,6 @@ function assertSandbox(candidate: string): string {
 
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw badRequest(`${url.protocol} is not a protocol Orbit will open.`);
-  }
-
-  // The runtime's own allowlist, imported rather than copied: a second list of
-  // permitted hosts is a second thing to keep in step, and a security constant
-  // that can drift is the one kind that must not.
-  if (!(ALLOWED_HOSTS as readonly string[]).includes(url.hostname)) {
-    throw badRequest(
-      'Recording performs real actions in a real browser, so it may only ever target a local ' +
-        `sandbox. "${url.hostname}" is not one of ${ALLOWED_HOSTS.join(', ')}.`,
-    );
   }
 
   return url.toString();

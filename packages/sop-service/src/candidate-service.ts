@@ -1,4 +1,3 @@
-import { ALLOWED_HOSTS_FOR_COMPILATION } from './allowed-hosts';
 import {
   assessSandboxReadiness,
   compileCandidate,
@@ -72,7 +71,6 @@ export function createSopCandidateService(options: {
         graph: revision.graph,
         bindings: bindings.map((record) => record.binding),
         outcomeMapping: input.outcomeMapping,
-        allowedHosts: ALLOWED_HOSTS_FOR_COMPILATION,
         agentId: input.agentId,
         version: input.version,
         sopId: input.documentId,

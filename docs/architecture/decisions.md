@@ -684,7 +684,7 @@ So the alternative ADR-019 rejected has to be revisited, and with it the ban tha
 
 **The browser opens on the machine running the API, and the UI says so.** Someone has to see and click the page, so a headed browser needs a display where the API runs. That is a real constraint on where Orbit can be deployed rather than an implementation detail, and it is stated on the form before a recording starts — not discovered by waiting for a window that never appears.
 
-**Only the local sandbox may be recorded.** Recording performs real clicks and real fills in a real browser, so the target is checked against the same localhost-only allowlist the runtime enforces, before a browser opens. A remote target is refused at session creation.
+**Only the local sandbox may be recorded.** Recording performs real clicks and real fills in a real browser, so the target is checked against the same localhost-only allowlist the runtime enforces, before a browser opens. A remote target is refused at session creation. — *Superseded by ADR-022: recording now accepts any `http` or `https` URL, and containment moved to the `allowedDomains` each agent declares. The protocol check described here remains.*
 
 **A recording that cannot be compiled keeps its session open.** If the captured sequence fails validation, the session survives, the browser keeps the page, and the error says so explicitly. The alternative — close the session and report the failure — destroys work a person cannot repeat from memory, which is the one irreversible thing in the whole flow.
 
@@ -770,3 +770,49 @@ A compiler facing gaps like these has two options: emit something approximate, o
 | Record "could not validate" as a validation failure | Suggests something was attempted; nothing was |
 | Let a service own the approval precondition | A guard reachable around by calling another function is not a guard |
 | Inject the step checksum as a function argument | Leaves one definition guaranteed only by convention, which is what ADR-019 set out to avoid |
+
+## ADR-022: Contain browser navigation per agent, and lift the blanket localhost allowlist
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+Phase 1 pinned every navigation to `localhost` through `ALLOWED_HOSTS` in `@orbit/runtime`, and `CLAUDE.md` listed external websites under explicit exclusions. That was right for what Phase 1 was: proving deterministic execution and evidence against a controlled page, where an external site changing under a run would make a real regression indistinguishable from a redesign.
+
+Sub-phase 2.4f made recording a whole workflow the entry point for a non-engineer, and 2.5 made a reviewed workflow compile into a candidate agent. Both are useless against a demo portal — a person records the task they actually do, on the system they actually use. The first attempt to record a real site was refused by the recording route, which is what prompted revisiting this.
+
+The important observation is that the blanket list was never the thing providing containment. Agent IR already declares `permissions.browser.allowedDomains` per version; the semantic validator checks it when a version is published, and `assertNavigable` re-checks it before every navigation. `ALLOWED_HOSTS` sat *on top* of that as a second, global ceiling.
+
+### Decision
+
+**Containment is per agent, through `allowedDomains`, and the blanket host list is removed.** The compiler collects every host a workflow actually opens and emits exactly those. An agent recorded against one site is permitted that site and nothing else — a *tighter* guarantee than a shared allowlist, because it is specific to the agent rather than common to all of them. The match is exact rather than a domain suffix, so a neighbouring host is refused even if a later edit puts its URL in a step.
+
+**Recording accepts any `http` or `https` URL.** A recording is a person driving a browser and doing their job; the thing that needs containing is the agent compiled from it, which runs unattended. Both recording entry points — the Watchtower session route and the CLI — now check only the protocol.
+
+**Protocol restrictions stay everywhere.** `file:`, `data:` and `javascript:` are not places a browser goes on somebody's behalf, and lifting a host restriction is not a reason to accept them. They are refused at the recording routes before a browser is created, and by the runtime before a navigation.
+
+**The compiler no longer takes a host allowlist.** The `navigation_not_permitted` refusal and the `allowedHosts` input introduced in 2.5 are gone, along with `sop-service`'s `allowed-hosts.ts` re-export. What replaces them is the `allowedDomains` the compiler already derived; there is now one enforcement mechanism rather than two.
+
+**This is a documented scope change, not a bug fix.** `CLAUDE.md` said "Phase 1 browser navigation allowlist is `localhost` only" and "Do not automate external websites in Phase 1". Both were changed deliberately and in the same commit as the code, because a standing instruction that the code silently contradicts is worse than either the old rule or the new one.
+
+### Consequences
+
+- A workflow can be recorded, compiled and run against the system it actually concerns, which is what makes 2.4f and 2.5 useful at all.
+- Each agent carries its own, narrower permission set. The failure mode "some agent could reach some host" is replaced by "this agent may reach these hosts".
+- **Orbit can now send traffic to third-party systems**, and real actions performed during a recording happen on a real service. Whether a given site may be automated is a judgement about that site — its terms, its owner, its data — and Orbit does not make it. `CLAUDE.md` now says so.
+- **Nothing behind a login is reachable**, because Orbit still cannot supply a secret: such a candidate compiles, is recorded `cannot_validate`, and can never be approved (ADR-021). The credential barrier does the work the host list used to.
+- **A misrecorded destination is now a real risk.** Under the old rule the worst case was reaching the wrong local page; now a recording made on the wrong site produces an agent permitted that site. The recording confirm step and graph review are where that gets caught.
+- **Sandbox-versus-production drift becomes ordinary rather than theoretical.** ADR-018 noted it as a limitation when recording only ever happened against a sandbox; recording against production means the fingerprint was captured on the system it will run against, which mostly removes the problem and makes any remaining drift a real change on that site.
+- The demo portal, the seeded Phase 1 agent, and `verify:phase1` are unaffected: they declare `localhost` and still get exactly `localhost`.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Keep the blanket list and add an environment variable to widen it | A security boundary gated by a variable somebody could set by accident — the pattern rejected for the fake model provider in sub-phase 2.2 |
+| Lift it for recording only | A person could record a real workflow and never run it; the wall simply moves to compile time |
+| Keep a configurable global allowlist alongside per-agent domains | Two enforcement mechanisms for one property, which is how they drift apart |
+| Allow domain-suffix matches in `allowedDomains` | An agent recorded on a public page would reach internal hosts under the same domain |
+| Drop the protocol restriction too | `file:` and `javascript:` are not navigation, and nothing about lifting a host rule makes them so |

@@ -1,4 +1,3 @@
-import { ALLOWED_HOSTS } from '@orbit/runtime';
 import {
   comparisonModeFor,
   isBindableStepKind,
@@ -78,15 +77,8 @@ export function decideStartUrl(candidate: string): StartUrlDecision {
     return { ok: false, reason: `${url.protocol} is not a protocol Orbit will open.` };
   }
 
-  if (!(ALLOWED_HOSTS as readonly string[]).includes(url.hostname)) {
-    return {
-      ok: false,
-      reason:
-        `Recording performs real actions, so it may only ever target a local sandbox. ` +
-        `"${url.hostname}" is not one of ${ALLOWED_HOSTS.join(', ')}.`,
-    };
-  }
-
+  // Any http or https target. A recording is a person doing their job; what an
+  // agent may later open unattended is constrained per agent instead.
   return { ok: true, url: url.toString() };
 }
 

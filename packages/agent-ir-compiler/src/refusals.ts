@@ -31,8 +31,6 @@ export const COMPILE_REFUSAL_CODES = [
   'unusable_value_source',
   /** A navigate step with no destination at all. */
   'missing_destination',
-  /** A destination outside the hosts Orbit is permitted to open. */
-  'navigation_not_permitted',
   /** The compiler produced something that is not valid Agent IR. */
   'invalid_candidate',
 ] as const;

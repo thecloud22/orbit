@@ -1,4 +1,3 @@
-import { ALLOWED_HOSTS } from '@orbit/runtime';
 import { describe, expect, it } from 'vitest';
 
 import type {
@@ -53,48 +52,52 @@ describe('POST /v1/recording-sessions', () => {
     await app.close();
   });
 
-  it('permits the hosts the runtime permits, because it is the same list', async () => {
-    // The route used to declare its own copy of the allowlist while its comment
-    // claimed it did not. Two lists of permitted hosts are two things to keep in
-    // step, so this drives the real constant through the real route.
+  it('records against a real website, not only a local sandbox', async () => {
+    // A recording is a person doing their job in a browser they are driving.
+    // Containment belongs to the agent compiled from it, which declares the
+    // domains it may open; a blanket list here only limited what Orbit is for.
     const app = server({ start: () => Promise.resolve(SESSION) });
     await app.ready();
 
-    // `::1` is in the list as a bare hostname but cannot be written into a URL
-    // without brackets, so it is exercised through its `[::1]` spelling.
-    const addressable = ALLOWED_HOSTS.filter((host) => URL.canParse(`http://${host}:3001/`));
-    expect(addressable.length).toBeGreaterThan(0);
-
-    for (const host of addressable) {
+    for (const startUrl of [
+      'http://localhost:3001/requests',
+      'https://www.plano.gov/1391/Service-Requests',
+      'http://127.0.0.1:8080/',
+    ]) {
       const response = await app.inject({
         method: 'POST',
         url: '/v1/recording-sessions',
-        payload: { title: 'Sandbox', startUrl: `http://${host}:3001/requests` },
+        payload: { title: 'Somewhere real', startUrl },
       });
 
-      expect(response.statusCode, `${host} should be permitted`).toBe(201);
+      expect(response.statusCode, `${startUrl} should be permitted`).toBe(201);
     }
 
     await app.close();
   });
 
-  it('refuses to open a browser anywhere but a local sandbox', async () => {
-    // Recording performs real actions. This is the same rule the runtime
-    // enforces for navigation, applied before a browser exists.
+  it('still refuses a protocol that is not a navigation', async () => {
+    // Lifting the host restriction does not make `file:`, `data:` or
+    // `javascript:` into places a browser goes on somebody's behalf.
     const app = server({
       start: () => {
         throw new Error('A browser must not be opened for a rejected URL.');
       },
     });
 
-    const response = await app.inject({
-      method: 'POST',
-      url: '/v1/recording-sessions',
-      payload: { title: 'Production', startUrl: 'https://service-portal.example.com/login' },
-    });
+    for (const startUrl of [
+      'file:///etc/passwd',
+      'javascript:alert(1)',
+      'data:text/html,<h1>hi</h1>',
+    ]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v1/recording-sessions',
+        payload: { title: 'Not a page', startUrl },
+      });
 
-    expect(response.statusCode).toBe(400);
-    expect(response.json().error.message).toContain('local sandbox');
+      expect(response.statusCode, `${startUrl} must be refused`).toBe(400);
+    }
 
     await app.close();
   });

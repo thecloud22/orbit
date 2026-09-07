@@ -83,7 +83,9 @@ If a document conflicts with this file, stop and clearly identify the conflict r
 - SOP document upload, OCR, document parsing, source screenshot extraction, video ingestion.
 - LLM-based SOP parsing, runtime LLM decision nodes, or LLM recovery.
 - Studio authoring UI, graph canvas, natural-language workflow edits, publishing UI.
-- External websites, real credentials, authentication workflows, MFA, CAPTCHA.
+- Real credentials, authentication workflows, MFA, CAPTCHA. (External websites left this list in
+  sub-phase 2.5 — see **ADR-022** — but nothing behind a login is reachable, because Orbit still
+  cannot supply a secret.)
 - State-changing business actions: refunds, payments, messages, account updates, deletions, permissions changes.
 - API/webhook/schedule/email/file/event-bus triggers.
 - Redis, BullMQ, Temporal, S3, MinIO, cloud deployment, Terraform, Kubernetes, microservices.
@@ -192,8 +194,15 @@ ${variables.assignedTeam}
 
 ## Browser and security rules
 
-- Phase 1 browser navigation allowlist is `localhost` only.
-- Do not automate external websites in Phase 1.
+- Browser navigation is constrained **per agent**, by the `permissions.browser.allowedDomains` an
+  Agent Version declares. The semantic validator checks it at publish and the runtime re-checks it
+  before every navigation, so an agent may open the hosts its recording visited and nothing else.
+  Phase 1's blanket `localhost`-only allowlist was lifted in sub-phase 2.5 (**ADR-022**); it was a
+  ceiling on what Orbit could be used for rather than the thing providing containment.
+- Recording may target any `http` or `https` URL, because a person drives the browser. Other
+  protocols — `file:`, `data:`, `javascript:` — are still refused everywhere.
+- External sites are real systems. Do not record or automate a workflow that performs
+  state-changing actions on one, and do not automate a site whose terms forbid it.
 - Use stable `data-testid` locators in the demo portal.
 - Do not use coordinate clicking.
 - Do not hard-code, log, persist, display, or commit secrets.

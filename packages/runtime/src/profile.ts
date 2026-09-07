@@ -32,8 +32,21 @@ export const SUPPORTED_ASSERTION_TYPES = ['locator_visible', 'locator_has_text']
 export const SUPPORTED_EXTRACT_METHODS = ['text'] as const;
 export const SUPPORTED_VALUE_TYPES = ['string'] as const;
 
-/** Phase 1 automates the local demo portal and nothing else (CLAUDE.md > Browser and security rules). */
-export const ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]', '::1'] as const;
+/**
+ * Which hosts an agent may open is declared per agent, not fixed globally.
+ *
+ * Phase 1 pinned every navigation to localhost, because the point then was to
+ * prove deterministic execution against a controlled page. Containment did not
+ * actually come from that list: it comes from
+ * `permissions.browser.allowedDomains`, which the semantic validator checks when
+ * a version is published and `assertNavigable` re-checks below before every
+ * navigation. An agent recorded against one site is permitted that site and
+ * nothing else, which is a tighter guarantee than a shared allowlist gave.
+ *
+ * The blanket list was therefore a ceiling on what Orbit could be used for
+ * rather than a security property, and it has been lifted. Protocols stay
+ * restricted: `file:`, `data:` and `javascript:` are not navigation.
+ */
 export const ALLOWED_PROTOCOLS = ['http:', 'https:'] as const;
 
 export const DEFAULT_NAVIGATION_TIMEOUT_MS = 30_000;
@@ -94,9 +107,9 @@ function assertionsOf(step: AgentIrStep): readonly (readonly [Assertion, string]
  * Rejects a navigation target the runtime is not permitted to open.
  *
  * The semantic validator already checked this when the version was published;
- * this is the last gate before the network, and it additionally enforces the
- * Phase 1 localhost allowlist, which is a runtime policy rather than a property
- * of the Agent IR document.
+ * this is the last gate before the network. What it enforces is the agent's own
+ * declared `allowedDomains`, so a version that never declared a host can never
+ * reach it, however the URL came to be in the step.
  */
 export function assertNavigable(
   url: string,
@@ -129,15 +142,6 @@ export function assertNavigable(
     throw new RuntimeError({
       code: 'NAVIGATION_FAILED',
       message: `Step "${agentStepId}" navigates to a host the Agent Version does not permit.`,
-      details: [{ field: 'url.hostname', message: parsed.hostname }],
-      agentStepId,
-    });
-  }
-
-  if (!includes(ALLOWED_HOSTS, parsed.hostname)) {
-    throw new RuntimeError({
-      code: 'NAVIGATION_FAILED',
-      message: `Step "${agentStepId}" navigates outside the Phase 1 localhost allowlist.`,
       details: [{ field: 'url.hostname', message: parsed.hostname }],
       agentStepId,
     });
