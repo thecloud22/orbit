@@ -14,3 +14,8 @@ packages/db/drizzle
 # Documentation and fixtures are authored verbatim and must not be reformatted.
 **/*.md
 fixtures/**
+
+# Per-developer editor and tool state. Globally gitignored and never part of the
+# repository's authored source, so the format gate has no business failing on a
+# file whose contents depend on which permissions someone happened to grant.
+/.claude
