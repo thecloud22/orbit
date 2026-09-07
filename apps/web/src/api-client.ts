@@ -1,6 +1,7 @@
 import type {
   AgentArchiveActionView,
   AgentVersionView,
+  BindingSessionView,
   CandidateActionView,
   CreateRunResultView,
   DataEnvelope,
@@ -8,6 +9,7 @@ import type {
   RunListItemView,
   FinishedRecordingView,
   RecordingSessionView,
+  SavedBindingView,
   SopBindingsView,
   PublishedAgentVersionView,
   SopDocumentSummaryView,
@@ -225,12 +227,57 @@ export async function transitionSopRevision(
 /**
  * Reads which steps have Execution Bindings.
  *
- * There is no companion write here, and there will not be one: bindings are
- * created and moved through their lifecycle by the recorder CLI, which requires
- * a human demonstrating a step against a real page (ADR-019).
+ * Writing one goes through a binding session below, not through this resource:
+ * creating a binding needs a person demonstrating the step against a real page,
+ * so it is a session with a browser behind it rather than a field on a form
+ * (ADR-019, ADR-027).
  */
 export async function getSopBindings(documentId: string): Promise<SopBindingsView> {
   return getJson<SopBindingsView>(`/v1/sop-documents/${documentId}/bindings`);
+}
+
+/** Opens a browser on the Orbit machine, aimed at one step of one workflow. */
+export async function startBindingSession(input: {
+  readonly documentId: string;
+  readonly stepId: string;
+  readonly startUrl: string;
+}): Promise<BindingSessionView> {
+  return send('/v1/binding-sessions', 'POST', input);
+}
+
+export async function getBindingSession(sessionId: string): Promise<BindingSessionView> {
+  return getJson<BindingSessionView>(`/v1/binding-sessions/${sessionId}`);
+}
+
+/** Points the same open browser at a different step, leaving the page where it is. */
+export async function targetBindingStep(
+  sessionId: string,
+  stepId: string,
+): Promise<BindingSessionView> {
+  return send(`/v1/binding-sessions/${sessionId}/target`, 'POST', { stepId });
+}
+
+/** Saves one demonstrated step as an approved binding. The session stays open. */
+export async function saveBinding(
+  sessionId: string,
+  input: {
+    readonly captureId: string;
+    readonly valueSource?:
+      { kind: 'sop_variable'; name: string } | { kind: 'literal'; value: string };
+    readonly readMethod?:
+      { kind: 'text' } | { kind: 'attribute'; attribute: string } | { kind: 'checked' };
+    readonly variable?: string;
+  },
+): Promise<SavedBindingView> {
+  return send(`/v1/binding-sessions/${sessionId}/binding`, 'POST', input);
+}
+
+export async function cancelBindingSession(sessionId: string): Promise<void> {
+  const response = await fetch(`/v1/binding-sessions/${sessionId}`, { method: 'DELETE' });
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
 }
 
 export async function startRecording(
@@ -283,6 +330,22 @@ export async function publishCandidate(candidateId: string): Promise<PublishedAg
     'POST',
     {},
   );
+}
+
+/**
+ * Publishes a workflow whose every step has been bound, in one call.
+ *
+ * The drafted counterpart to `publishRecording`: a recording confirms a
+ * workflow against a real page all at once, binding confirms it one step at a
+ * time, and once every step is bound the same one action applies (ADR-027).
+ */
+export async function publishBoundDocument(
+  documentId: string,
+  outcomeMapping: Readonly<Record<string, string>>,
+): Promise<PublishedAgentVersionView> {
+  return send<PublishedAgentVersionView>(`/v1/sop-documents/${documentId}/publish-bound`, 'POST', {
+    outcomeMapping,
+  });
 }
 
 /**

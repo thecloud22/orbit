@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import type { ApiContext } from '../context';
 import { ApiError, badRequest, notFound } from '../errors';
+import { assertOpenableTarget } from './browser-target';
 import type { DataEnvelope } from '../views';
 import type { RecordingSessionState } from '../recording/session-registry';
 
@@ -32,22 +33,6 @@ const startBodySchema = z.strictObject({
 
 const sessionIdSchema = z.string().regex(/^rec_[A-Za-z0-9]+$/);
 
-function assertSandbox(candidate: string): string {
-  let url: URL;
-
-  try {
-    url = new URL(candidate);
-  } catch {
-    throw badRequest(`"${candidate}" is not a URL.`);
-  }
-
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw badRequest(`${url.protocol} is not a protocol Orbit will open.`);
-  }
-
-  return url.toString();
-}
-
 function parseSessionId(params: unknown): string {
   const parsed = z.object({ sessionId: sessionIdSchema }).safeParse(params);
 
@@ -72,7 +57,7 @@ export function registerRecordingRoutes(app: FastifyInstance, context: ApiContex
       );
     }
 
-    const startUrl = assertSandbox(body.data.startUrl);
+    const startUrl = assertOpenableTarget(body.data.startUrl);
 
     const state = await context.recordingSessions.start({ title: body.data.title, startUrl });
 

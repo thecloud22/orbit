@@ -5,11 +5,13 @@ import type { LLMProvider } from '@orbit/sop-generation';
 import {
   createSopCandidateService,
   createSopDraftService,
+  createPublishBoundDocumentService,
   createPublishRecordingService,
   createSopPublishService,
   createSopRevisionService,
 } from '@orbit/sop-service';
 
+import { createBindingSessionRegistry } from './recording/binding-session-registry';
 import {
   createPlaywrightRecordingSessionFactory,
   createRecordingSessionRegistry,
@@ -66,13 +68,23 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
 
   // Headed, because a person has to see and click the page they are recording.
   // That makes recording a local-machine capability, which the UI states.
+  const browserSessionFactory =
+    options.recordingSessionFactory ??
+    createPlaywrightRecordingSessionFactory({
+      headless: process.env['ORBIT_RECORDER_HEADLESS'] === 'true',
+    });
+
   const recordingSessions = createRecordingSessionRegistry({
     database: handle.db,
-    factory:
-      options.recordingSessionFactory ??
-      createPlaywrightRecordingSessionFactory({
-        headless: process.env['ORBIT_RECORDER_HEADLESS'] === 'true',
-      }),
+    factory: browserSessionFactory,
+  });
+
+  // The second registry that holds a browser, built on the same factory and
+  // closed on the same path. Separate from recording because saving a binding
+  // leaves the browser open where finishing a recording closes it (ADR-027).
+  const bindingSessions = createBindingSessionRegistry({
+    database: handle.db,
+    factory: browserSessionFactory,
   });
 
   const app = buildServer({
@@ -87,7 +99,9 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
       sopCandidateService: createSopCandidateService({ database: handle.db }),
       sopPublishService: createSopPublishService({ database: handle.db }),
       publishRecordingService: createPublishRecordingService({ database: handle.db }),
+      publishBoundDocumentService: createPublishBoundDocumentService({ database: handle.db }),
       recordingSessions,
+      bindingSessions,
       dispatcher: createInProcessRunDispatcher({
         database: handle.db,
         storage,
@@ -118,6 +132,7 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
       // Any browser a recording still holds goes with the process that opened
       // it; a stranded Chromium outlives the API otherwise.
       await recordingSessions.closeAll();
+      await bindingSessions.closeAll();
       await handle.close();
     },
   };

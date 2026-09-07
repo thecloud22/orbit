@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 
 import {
   E2E_API_URL,
+  E2E_BINDABLE_DOCUMENT_ID,
+  E2E_BINDABLE_STEP_ID,
   E2E_BOUND_DOCUMENT_ID,
   E2E_BOUND_STEP_ID,
   E2E_WATCHTOWER_URL,
@@ -727,7 +729,7 @@ describe('Watchtower end to end', () => {
       await page.close();
     });
 
-    it('offers no way to create, approve or change a binding', async () => {
+    it('offers no way to approve someone else’s binding, or to bind a person’s step', async () => {
       const page = await open();
       await openSeededReview(page);
 
@@ -735,12 +737,95 @@ describe('Watchtower end to end', () => {
         .poll(() => page.getByTestId('sop-bindings').count(), { timeout: 20_000 })
         .toBe(1);
 
-      // Read-only by design: recording a binding means demonstrating a step in
-      // a browser, which happens in the recorder CLI and nowhere else.
       const panel = page.getByTestId('sop-bindings');
-      expect(await panel.locator('button').count()).toBe(0);
-      expect(await panel.locator('input').count()).toBe(0);
+      const buttons = (await panel.locator('button').allTextContents()).join('\n');
+
+      // Binding a step is offered (ADR-027); reviewing a binding somebody else
+      // made is not, and the panel says as much rather than leaving it to be
+      // discovered.
+      expect(buttons).not.toContain('Approve');
+      expect(buttons).not.toContain('Reject');
+      expect((await panel.textContent()) ?? '').toContain(
+        "Approving or turning down someone else's binding is not done from here",
+      );
+
+      // A manual_review step routes to a person; there is nothing to bind.
+      const manualRow = panel
+        .getByTestId('sop-binding-row')
+        .filter({ hasText: 'routes to a person' })
+        .first();
+      expect(await manualRow.locator('button').count()).toBe(0);
+
+      // The terminal path is still named, because it still exists.
       expect((await panel.textContent()) ?? '').toContain('pnpm record:binding');
+
+      await page.close();
+    });
+  });
+
+  /**
+   * Binding a drafted workflow's step from Watchtower — the gap this closes.
+   *
+   * The browser a person would click in is the one thing substituted, the same
+   * way recording substitutes it: the stack's API scripts a capture rather than
+   * launching a headed Chromium on a test runner. Everything either side of it
+   * — the session, the capture list, the save, the approved binding the review
+   * page then reads back — is real.
+   */
+  describe('binding a drafted step from Watchtower', () => {
+    it('opens a session, saves the demonstrated step, and shows it approved', async () => {
+      const page = await open();
+      await page.goto(`${E2E_WATCHTOWER_URL}/?documentId=${E2E_BINDABLE_DOCUMENT_ID}`, {
+        waitUntil: 'load',
+      });
+
+      await expect
+        .poll(() => page.getByTestId('sop-bindings').count(), { timeout: 30_000 })
+        .toBe(1);
+
+      const status = page.getByTestId(`sop-binding-status-${E2E_BINDABLE_STEP_ID}`);
+      expect((await status.textContent()) ?? '').toBe('Not recorded');
+
+      await page.getByTestId(`sop-binding-bind-${E2E_BINDABLE_STEP_ID}`).click();
+
+      // The open session is in the URL, so a reload reattaches to the browser
+      // rather than orphaning the window it opened.
+      await expect
+        .poll(() => page.url().includes('bindingSessionId=bind_'), { timeout: 20_000 })
+        .toBe(true);
+
+      await expect
+        .poll(() => page.getByTestId('binding-session').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      // The captures arrive by polling, as they would while someone worked.
+      await expect
+        .poll(() => page.getByTestId(/^binding-capture-/).count(), { timeout: 20_000 })
+        .toBeGreaterThan(0);
+
+      expect(await page.getByTestId('save-binding-button').isDisabled()).toBe(true);
+      await page
+        .getByTestId(/^binding-capture-/)
+        .first()
+        .check();
+
+      await page.getByTestId('save-binding-button').click();
+
+      await expect
+        .poll(() => page.getByTestId('binding-saved').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      await expect
+        .poll(async () => (await status.textContent()) ?? '', { timeout: 20_000 })
+        .toBe('Approved');
+
+      // Done closes the browser and leaves the review page where it was.
+      await page.getByTestId('binding-session-done').click();
+
+      await expect
+        .poll(() => page.getByTestId('binding-session').count(), { timeout: 20_000 })
+        .toBe(0);
+      expect(page.url()).not.toContain('bindingSessionId=');
 
       await page.close();
     });
@@ -949,9 +1034,11 @@ describe('Watchtower end to end', () => {
     it('shows the publication state without ever claiming the document is executable', async () => {
       // The rule ADR-016 fixes and 2.6 must not erode: publishing produces a
       // separate runnable artifact, and the review page keeps saying the
-      // workflow itself is not executable. This fixture is authored, not
-      // recorded, so it never offers the one-click path (ADR-025) — nothing
-      // today can map its steps to a real page.
+      // workflow itself is not executable. This fixture is authored rather than
+      // recorded, and only one of its steps is bound, so it stays short of the
+      // bar ADR-027 sets — the one-click path needs *every* bindable step
+      // confirmed against a real page, and a partly bound draft gets the
+      // missing-work note instead of a button.
       const page = await open(`/?documentId=${E2E_BOUND_DOCUMENT_ID}`);
 
       await expect.poll(() => page.getByTestId('sop-review').count(), { timeout: 30_000 }).toBe(1);
@@ -959,7 +1046,7 @@ describe('Watchtower end to end', () => {
       await page.getByTestId('sop-publish-panel').waitFor({ state: 'visible', timeout: 30_000 });
 
       expect(await page.getByTestId('sop-publish-summary').textContent()).toContain(
-        "isn't built yet",
+        'has to be bound to a real page',
       );
       expect(await page.getByTestId('publish-recording-button').count()).toBe(0);
 

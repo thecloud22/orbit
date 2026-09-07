@@ -357,10 +357,11 @@ export interface SopDocumentSummaryView {
 /**
  * Whether a step has an Execution Binding, and what state it is in.
  *
- * Read-only by construction. Bindings are created, confirmed and moved through
- * their lifecycle by the recorder CLI (ADR-019); this view exists so that
- * someone reviewing a SOP Graph in Watchtower can see whether its steps have
- * been mapped, which they otherwise could not.
+ * A read view, and its route stays read-only by construction: creating a
+ * binding is a separate resource (`/v1/binding-sessions`), because it needs a
+ * person demonstrating the step against a real page. Two ways to reach that
+ * exist and neither is the other's fallback — the recorder CLI (ADR-019) and a
+ * binding session driven from Watchtower (ADR-027).
  */
 export interface SopBindingSelectorView {
   readonly strategy: string;
@@ -453,4 +454,58 @@ export interface FinishedRecordingView {
   readonly documentId: string;
   readonly stepCount: number;
   readonly bindingCount: number;
+}
+
+/**
+ * Binding one step of a workflow against a real page, as Watchtower shows it.
+ *
+ * The same local-browser constraint as recording, for the same reason: the
+ * window opens on the machine running the API because a person has to click in
+ * it. A binding session differs from a recording session in one visible way —
+ * saving a binding does not end it, because binding a workflow means binding
+ * several steps and each starts where the last left the page.
+ */
+export interface BindingCaptureView {
+  readonly captureId: string;
+  readonly kind: string;
+  readonly description: string;
+  /** A password field was touched and its value deliberately not read. */
+  readonly sensitive: boolean;
+}
+
+export interface BindingCaptureFailureView {
+  readonly reason: string;
+  readonly url: string;
+}
+
+export interface BindingTargetStepView {
+  readonly stepId: string;
+  readonly kind: string;
+  readonly summary: string;
+  /** `action` — perform the step; `pick` — point at the value to read. */
+  readonly mode: string;
+  /** What a fill step already declares its value to be. Null otherwise. */
+  readonly declaredValue: string | null;
+  readonly sensitive: boolean;
+  /** An extract step's declared field names. */
+  readonly fields: readonly string[];
+}
+
+export interface BindingSessionView {
+  readonly sessionId: string;
+  readonly documentId: string;
+  readonly startUrl: string;
+  readonly currentUrl: string;
+  readonly startedAt: string;
+  readonly step: BindingTargetStepView;
+  readonly captures: readonly BindingCaptureView[];
+  readonly failures: readonly BindingCaptureFailureView[];
+}
+
+/** What was written when a binding was saved, and where the session stands after. */
+export interface SavedBindingView {
+  readonly bindingId: string;
+  readonly stepId: string;
+  readonly state: string;
+  readonly session: BindingSessionView;
 }

@@ -35,7 +35,8 @@ silently.
 checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
-**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5 and 2.6** are complete.
+**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5, 2.6 and 2.7** are
+complete.
 `@orbit/sop-graph` provides the non-executable graph contract and its validation;
 `@orbit/sop-generation` turns free text into a proposed graph; `@orbit/sop-service` persists drafts
 and drives review; `@orbit/execution-mapping` defines the Execution Binding and the runtime verifies
@@ -113,11 +114,34 @@ moved to Tailwind CSS 4.3 with a professional-SaaS visual pass — card elevatio
 interactive elements, a sticky translucent header, and a consistent focus-visible ring — with no
 change to any `data-testid` or component behavior.
 
+**A drafted workflow's steps can now be bound from Watchtower, closing the guided path's dead end.**
+A generated or hand-authored graph arrived at the compiler with no Execution Bindings and was refused
+`missing_binding`, and the only way to create one was the recorder CLI — a terminal, in front of
+exactly the person the guided path exists for. `/v1/binding-sessions` opens a headed browser aimed at
+one step, polls what was captured, re-aims the same browser at the next step, and saves a binding
+created-submitted-approved in one transaction, because demonstrating the step against the page *is*
+the review. **ADR-027** reverses ADR-019 for this case on the same merits ADR-020 used for
+whole-workflow recording; the recorder CLI remains, and neither path is the other's fallback.
+
+A binding session is a **sitting**, not one session per step: saving writes one row and leaves the
+browser exactly where it is, because each step starts where the last left the page. That is why it is
+a separate registry from recording, where finishing closes the browser — what the two share is their
+hazard, a real Chromium that must not outlive the API, and that is shared as
+`recording/session-store.ts`. Binding assembly moved out of the recorder CLI into
+`@orbit/sop-service`, so what a real browser click means has one definition; that package still does
+not import `@orbit/execution-recorder`, because a capture crosses the boundary as a plain shape.
+Once every bindable step carries an approved, non-stale binding, a drafted workflow gets ADR-025's
+same one-click publish through `publish-bound-document-service.ts` — the four-call sequence is now
+shared as `publish-pipeline.ts`, so the recorded and bound paths differ only in their precondition.
+An unbound or partly bound draft still gets no button. `routes/sop-bindings.ts` stays read-only.
+
 **What follows**: sub-phase 2.5's own limitations remain — the escalation-review reference workflow
 does not compile because branching is unsupported, and a workflow needing credentials compiles but
 can never be approved. Rejecting a candidate has a service and a route but no button; recompiling
-already supersedes whatever existed, which is today's actual unblock mechanism. See the
-Task P2-001 through P2-006 reports under `docs/tasks/reports/`.
+already supersedes whatever existed, which is today's actual unblock mechanism. Approving or
+rejecting somebody else's binding still has no Watchtower surface, and a binding session is
+in-memory: an API restart drops every open session, and only one sitting per document is allowed.
+See the Task P2-001 through P2-007 reports under `docs/tasks/reports/`.
 
 Phase 2 direction and the remaining sub-phases are in
 `docs/tasks/phase-2-sop-graph-requirements.md`. Model output is untrusted input: anything a model

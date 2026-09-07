@@ -25,8 +25,13 @@ import {
   type RecordingSession,
 } from '@orbit/execution-recorder';
 import { describeStep, type SopGraph, type SopStep } from '@orbit/sop-graph';
+import {
+  bindingBodyFor,
+  boundStepIds,
+  createBinding,
+  type BindingChoice,
+} from '@orbit/sop-service';
 
-import { boundStepIds, createBinding } from '../binding-service';
 import { buildConfirmSummary, summarizeValueSource } from '../confirm';
 import {
   captureModeForStep,
@@ -435,14 +440,46 @@ async function buildBody(
   step: SopStep,
   capture: CapturedAction,
 ): Promise<BindingBody | undefined> {
-  const target = { selectors: capture.selectors, fingerprint: capture.fingerprint };
+  const choice = await askChoice(context, step, capture);
 
+  if (choice === undefined) {
+    return undefined;
+  }
+
+  // Assembled by @orbit/sop-service, not here: the terminal and Watchtower's
+  // binding sessions must produce the same body from the same answers
+  // (ADR-027), so this file asks the questions and nothing more.
+  const result = bindingBodyFor({
+    step,
+    capture: {
+      selectors: capture.selectors,
+      fingerprint: capture.fingerprint,
+      url: capture.url,
+      ...(capture.typedValue === undefined ? {} : { typedValue: capture.typedValue }),
+    },
+    choice,
+  });
+
+  if (!result.ok) {
+    process.stdout.write(`  ${result.reason}\n`);
+    return undefined;
+  }
+
+  return result.body;
+}
+
+/** The one judgement a capture cannot supply, asked per step kind. */
+async function askChoice(
+  context: Context,
+  step: SopStep,
+  capture: CapturedAction,
+): Promise<BindingChoice | undefined> {
   if (step.kind === 'click') {
-    return { kind: 'click', target };
+    return { kind: 'click' };
   }
 
   if (step.kind === 'navigate') {
-    return { kind: 'navigate', target, url: capture.url };
+    return { kind: 'navigate' };
   }
 
   if (step.kind === 'fill') {
@@ -475,7 +512,7 @@ async function buildBody(
       choice = { kind: 'variable', name };
     }
 
-    return { kind: 'fill', target, valueSource: resolveValueSource(choice, capture.typedValue) };
+    return { kind: 'fill', valueSource: resolveValueSource(choice, capture.typedValue) };
   }
 
   const answered = (
@@ -489,14 +526,14 @@ async function buildBody(
 
   if (step.kind === 'decision') {
     const condition = (await ask(context.io, '  Which branch condition does this feed? ')).trim();
-    return { kind: 'decision', target, readMethod, condition };
+    return { kind: 'decision', readMethod, condition };
   }
 
   const variable = (await ask(context.io, '  Which workflow value does it populate? ')).trim();
 
   return step.kind === 'outcome'
-    ? { kind: 'outcome', target, readMethod, variable }
-    : { kind: 'extract', target, readMethod, variable };
+    ? { kind: 'outcome', readMethod, variable }
+    : { kind: 'extract', readMethod, variable };
 }
 
 try {

@@ -989,3 +989,56 @@ Watchtower had no way to remove an agent from the active catalog. The request wa
 | Add `archivedAt` to `agent_versions` instead of `agents` | An agent with more than one published version would need every one of its version rows updated to retire the agent as a whole, turning a one-row identity change into a multi-row mutation of otherwise-immutable content |
 | Filter archived agents with a SQL join in `listPublished` | No join precedent exists elsewhere in this repository layer; the existing pattern composes across tables in application code, and Phase 1 scale does not need the join's efficiency |
 | Archive with no restore path | A destructive action with no undo is a worse default for a "delete" a person can trigger by mistake, for a trivially cheap reverse operation |
+
+## ADR-027: Bind a drafted workflow's steps from Watchtower, in a sitting that holds one browser open
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+A drafted workflow — generated from free text, or authored by hand — reaches the compiler with no Execution Bindings and is refused with `missing_binding`. ADR-019 put binding creation in the recorder CLI on the grounds that demonstrating a step needs a real browser and a person's hands, which a web page cannot supply. That was true, and it left a structural dead end: the guided path produces a workflow in Watchtower, and the only way out of the state it lands in was a terminal. The person the guided path exists for is precisely the person who does not have one.
+
+ADR-020 had already answered the same objection for whole-workflow recording. The browser is opened by the API on the machine the API runs on, headed, and a person drives it; Watchtower is the first window and the browser is the second. Nothing about that reasoning was specific to recording an entire workflow rather than one step of one.
+
+The second question is what a bound draft is then allowed to do. ADR-025 gave a recorded workflow one-click publish and deliberately withheld it from a draft, because nothing had confirmed a draft's steps against a real page. That reason is sound, and it is a statement about *evidence*, not about *provenance* — which means it stops applying exactly when the evidence exists.
+
+### Decision
+
+**Binding a step is reachable from the review page, through a session the API holds open.** `POST /v1/binding-sessions` opens a headed browser aimed at a start URL and targets one step; `GET` polls what has been captured; `POST /target` re-aims the same open browser at another step; `POST /binding` saves one; `DELETE` closes it. This reverses ADR-019 for this case on ADR-020's merits, and does not retire the recorder CLI — `pnpm record:binding` remains, and neither path is the other's fallback.
+
+**A binding session is a sitting, not one session per step.** Mapping a workflow means binding several steps in sequence, and each starts where the last left the page — signed in, filtered, three clicks deep. Saving a binding therefore writes one row and leaves the browser exactly where it is, where finishing a *recording* creates a document and closes it. That difference is why this is a separate registry rather than a mode of `RecordingSessionRegistry`: one method meaning both things behind one id space is the overload ADR-020 already warned against.
+
+**What the two registries share is their hazard, and that is shared in code.** Each holds a real Chromium process that must not outlive the API. `recording/session-store.ts` owns ids, idle reaping, an unreferenced sweeper and `closeAll`; both registries build on it. Two copies of that handling would drift in exactly the way that strands a browser. Session ids are prefixed (`rec_`, `bind_`) so one can never be used against the other. The 30-minute idle timeout is unchanged from recording.
+
+**Binding assembly moved out of the recorder CLI into `packages/sop-service/src/binding-service.ts`.** Two things now turn a demonstration into a binding, and what a real browser click *means* must have exactly one definition — the same reasoning that put `stepChecksum` in `@orbit/db`. `@orbit/sop-service` does not import `@orbit/execution-recorder`: a capture crosses that boundary as a plain `{selectors, fingerprint, url, typedValue?}` shape, so the composition root never depends on the package that injects script into a page.
+
+**A binding created through Watchtower is approved on creation**, in one transaction — created, submitted for review, approved — matching `recording-service.ts`'s existing precedent. The act of demonstrating the step against the page *is* the review; asking the same person to then approve their own demonstration on a second screen is the ceremony ADR-025 removed for recordings.
+
+**The revision and checksum a binding records are read at save time, not at session start.** A sitting outlives edits to the workflow it is binding, so a binding records what it actually bound against; a step edited out from under the session is refused rather than bound to something that no longer exists.
+
+**A drafted workflow gets ADR-025's one publish action once every bindable step has an approved, non-stale binding.** `publish-bound-document-service.ts` gates on that and then runs the same pipeline the recorded path runs — extracted to `publish-pipeline.ts` so the two differ only in their precondition. The gate is technical, not a review waiver: `compileDocument` already refuses `missing_binding`, so what this adds is checking the precondition *before* driving the revision through approval, letting a refusal name the unbound steps instead of leaving a workflow approved and uncompilable. An unbound or partly bound draft still gets no button, because nothing has confirmed its steps against a real page.
+
+**`routes/sop-bindings.ts` stays read-only.** The write path is its own route file. The guard tests asserting that binding data cannot be mutated through the read surface are unchanged and still pass.
+
+### Consequences
+
+- A guided workflow can now reach compile → approve → publish → run without a terminal, closing the dead end the guided path led to.
+- The review page offers "Bind this step" only for `fill`, `click` and `extract` — exactly the compiler's `BINDABLE_KINDS`. A `navigate` step compiles from the graph's own `urlHint`, `manual_review` routes to a person, and `decision`/`outcome` are not compiled today; offering to bind any of them would be offering work that changes nothing.
+- The open session id lives in the review page's URL, so a reload reattaches to the browser rather than orphaning the window it opened.
+- The API process now holds two kinds of browser-holding session. Both are closed on the same shutdown path; `check:teardown` covers both.
+- Approving or rejecting *somebody else's* binding still has no Watchtower surface, and the panel now says so rather than leaving it to be discovered.
+- A typed value is deliberately absent from the capture summaries the API returns. It exists to prove the right field was hit; echoing it back through the API would put whatever someone typed into a place this phase does not protect. A password field's value is never captured at all.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Leave binding in the recorder CLI and document it better | The person the guided path exists for is the person without a terminal; better docs do not give them one |
+| Fold binding sessions into `RecordingSessionRegistry` as a mode | Finishing a recording closes the browser; saving a binding must not. One method meaning both behind one id space is the overload ADR-020 warned against |
+| One session per step, opened and closed around each binding | Each step starts where the last left the page — signed in, filtered, deep in a flow. Reopening at the start URL each time discards exactly the state that made the next step reachable |
+| Keep binding assembly in `apps/recorder` and call it from the API | The API would import the CLI, and `@orbit/sop-service` would gain a path to the package that injects script into a page. One definition in the composition root, no recorder import |
+| Create bindings as `draft` and require a separate approval click | The demonstration is the review; a second screen confirming one's own demonstration is the ceremony ADR-025 removed. Matches `recording-service.ts`'s precedent |
+| Let a partly bound draft publish and rely on the compiler's refusal | The revision would already have been driven through approval by then, leaving a workflow approved and uncompilable, with a refusal that names nothing actionable |
+| Offer binding for every step kind | `navigate` compiles from the graph's own hint and `manual_review` routes to a person; binding either changes no compiler outcome |

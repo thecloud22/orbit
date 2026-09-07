@@ -13,6 +13,7 @@ import type {
 } from '@orbit/db';
 
 import type {
+  PublishBoundDocumentService,
   PublishRecordingService,
   SopCandidateService,
   SopDraftService,
@@ -20,6 +21,7 @@ import type {
   SopRevisionService,
 } from '@orbit/sop-service';
 
+import type { BindingSessionRegistry } from '../recording/binding-session-registry';
 import type { RecordingSessionRegistry } from '../recording/session-registry';
 
 import type { ApiContext } from '../context';
@@ -70,7 +72,9 @@ export interface StubContextOptions {
   readonly sopCandidateService?: Partial<SopCandidateService>;
   readonly sopPublishService?: Partial<SopPublishService>;
   readonly publishRecordingService?: Partial<PublishRecordingService>;
+  readonly publishBoundDocumentService?: Partial<PublishBoundDocumentService>;
   readonly recordingSessions?: Partial<RecordingSessionRegistry>;
+  readonly bindingSessions?: Partial<BindingSessionRegistry>;
 }
 
 export function createStubContext(options: StubContextOptions = {}): ApiContext {
@@ -101,6 +105,11 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
       'publishRecordingService',
       options.publishRecordingService ?? {},
     ),
+    publishBoundDocumentService: stubbed(
+      'publishBoundDocumentService',
+      options.publishBoundDocumentService ?? {},
+    ),
     recordingSessions: stubbed('recordingSessions', options.recordingSessions ?? {}),
+    bindingSessions: stubbed('bindingSessions', options.bindingSessions ?? {}),
   };
 }

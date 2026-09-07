@@ -84,6 +84,27 @@ export function offersOneClickPublish(input: {
   return input.provenanceKind === 'recorded' && input.stage.kind !== 'published';
 }
 
+/**
+ * Whether a workflow nobody recorded may be published in one action.
+ *
+ * The condition is that every step the compiler needs a binding for has an
+ * approved, up-to-date one — a technical precondition, not a review waiver.
+ * This does not reopen the line ADR-025 drew: an unbound or partly bound draft
+ * still gets no button, because nothing has confirmed its steps against a real
+ * page. What changed is that a drafted workflow can now *reach* that state, one
+ * demonstrated step at a time, which is the same confirmation a recording
+ * provides assembled differently (ADR-027).
+ */
+export function offersBoundPublish(input: {
+  readonly provenanceKind: string;
+  readonly stage: PublicationStage;
+  readonly fullyBound: boolean;
+}): boolean {
+  return (
+    input.provenanceKind !== 'recorded' && input.fullyBound && input.stage.kind !== 'published'
+  );
+}
+
 /** One line per refusal, when the server named them (ADR-021). Empty otherwise. */
 export function describePublishRecordingFailure(error: ApiRequestError): CompileFailure {
   return {

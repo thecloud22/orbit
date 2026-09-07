@@ -14,6 +14,7 @@ import { escalationReviewGraph } from '@orbit/sop-graph/testing';
 import { loadTestEnv, resolveTestDatabaseUrl, truncateOrbitTables } from '@orbit/db/testing';
 import {
   brokenExtractLocatorAgentIr,
+  isPortOpen,
   startManagedProcess,
   waitForHttpReady,
   waitForPortReleased,
@@ -22,6 +23,7 @@ import {
 import {
   E2E_API_PORT,
   E2E_API_URL,
+  E2E_BINDABLE_DOCUMENT_ID,
   E2E_BOUND_DOCUMENT_ID,
   E2E_BOUND_STEP_ID,
   E2E_WATCHTOWER_URL,
@@ -44,6 +46,7 @@ const REPOSITORY_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 
 export default async function setup(): Promise<() => Promise<void>> {
   loadTestEnv();
+  await requireFreePorts();
 
   const databaseUrl = resolveTestDatabaseUrl();
   await runMigrations(databaseUrl);
@@ -65,6 +68,7 @@ export default async function setup(): Promise<() => Promise<void>> {
     await repositories.agentVersions.create({ agentIr: brokenIr });
 
     await seedBoundDocument(repositories);
+    await seedBindableDocument(repositories);
   } finally {
     await handle.close();
   }
@@ -91,7 +95,9 @@ export default async function setup(): Promise<() => Promise<void>> {
   const web = startManagedProcess({
     name: 'watchtower',
     command: 'pnpm',
-    args: ['--filter', '@orbit/web', 'dev', '--port', String(E2E_WEB_PORT)],
+    // `--strictPort` so Vite fails rather than quietly moving to the next free
+    // port, which would leave the tests driving whatever answers on this one.
+    args: ['--filter', '@orbit/web', 'dev', '--port', String(E2E_WEB_PORT), '--strictPort'],
     cwd: REPOSITORY_ROOT,
     env: { ORBIT_API_URL: E2E_API_URL },
   });
@@ -123,6 +129,37 @@ export default async function setup(): Promise<() => Promise<void>> {
   process.stdout.write(`\nWatchtower stack ready: ${E2E_WATCHTOWER_URL} -> ${E2E_API_URL}\n`);
 
   return stopAll;
+}
+
+/**
+ * Refuses to start when something already holds one of the stack's ports.
+ *
+ * Not defensiveness for its own sake. Vite moves to the next free port when the
+ * one it was given is taken, and the readiness probe is satisfied by *any* HTTP
+ * answer, so an unrelated dev server on this port leaves the suite driving that
+ * server instead: every UI test then fails on a thirty-second element timeout,
+ * several minutes of them, and nothing in the output says why. One line here
+ * says why.
+ */
+async function requireFreePorts(): Promise<void> {
+  const taken: string[] = [];
+
+  for (const [port, description] of [
+    [E2E_API_PORT, 'the API'],
+    [E2E_WEB_PORT, 'Watchtower'],
+  ] as const) {
+    if (await isPortOpen(port)) {
+      taken.push(`${port} (${description})`);
+    }
+  }
+
+  if (taken.length > 0) {
+    throw new Error(
+      `The Watchtower end-to-end stack needs ports ${E2E_API_PORT} and ${E2E_WEB_PORT}, but ` +
+        `something is already listening on ${taken.join(' and ')}. ` +
+        `Stop whatever holds it and run again.`,
+    );
+  }
 }
 
 /**
@@ -190,4 +227,29 @@ async function seedBoundDocument(
   // application cannot produce.
   await repositories.executionBindings.submitForReview(binding.id);
   await repositories.executionBindings.approve(binding.id, { reviewNote: 'Seeded for the E2E.' });
+}
+
+/**
+ * A drafted SOP document with no bindings at all.
+ *
+ * The state a guided workflow is actually in when someone opens it: refused by
+ * the compiler for `missing_binding`, with no way out before ADR-027. The
+ * end-to-end test binds one of its steps from Watchtower, which is why this is
+ * a separate document — doing that to the one above would move what the
+ * binding-visibility tests observe.
+ */
+async function seedBindableDocument(
+  repositories: ReturnType<typeof createRepositories>,
+): Promise<void> {
+  const document = await repositories.sopDocuments.create({
+    id: E2E_BINDABLE_DOCUMENT_ID as never,
+    title: 'Escalation review, drafted and unbound',
+    sourceText: 'Sign in to the portal and review the escalation.',
+  });
+
+  await repositories.sopGraphRevisions.create({
+    documentId: document.id,
+    graph: escalationReviewGraph(),
+    provenance: { kind: 'generated', model: 'fake', provider: 'fake', promptVersion: 'e2e' },
+  });
 }
