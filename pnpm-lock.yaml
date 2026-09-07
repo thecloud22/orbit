@@ -519,6 +519,9 @@ importers:
 
   packages/sop-service:
     dependencies:
+      '@orbit/agent-ir':
+        specifier: workspace:*
+        version: link:../agent-ir
       '@orbit/agent-ir-compiler':
         specifier: workspace:*
         version: link:../agent-ir-compiler
@@ -531,9 +534,6 @@ importers:
       '@orbit/execution-mapping':
         specifier: workspace:*
         version: link:../execution-mapping
-      '@orbit/runtime':
-        specifier: workspace:*
-        version: link:../runtime
       '@orbit/sop-generation':
         specifier: workspace:*
         version: link:../sop-generation
