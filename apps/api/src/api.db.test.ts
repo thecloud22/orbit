@@ -31,6 +31,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createInProcessRunDispatcher } from './dispatch';
+import { createPlatformFacts } from './platform';
 import { createBindingSessionRegistry } from './recording/binding-session-registry';
 import { createWalkthroughSessionRegistry } from './recording/walkthrough-session-registry';
 import { createRecordingSessionRegistry } from './recording/session-registry';
@@ -122,6 +123,22 @@ describe('Orbit API over real persistence', () => {
         // reached mid-suite would fail them for a reason unrelated to what they
         // assert. The budget itself is tested where it lives.
         modelBudgets: {},
+        // The real implementation against the real test database, so the
+        // migration level the Admin page shows is read from PostgreSQL here
+        // rather than only from a stub.
+        platform: createPlatformFacts({
+          executor: getDatabase().db,
+          artifactRoot,
+          host: '127.0.0.1',
+          port: 3002,
+          modelSelection: {
+            configured: true,
+            family: 'anthropic',
+            invocation: 'direct',
+            model: 'claude-haiku-4-5',
+            reason: null,
+          },
+        }),
       },
     });
 
@@ -843,6 +860,43 @@ describe('Orbit API over real persistence', () => {
       });
 
       expect(started.statusCode).toBe(400);
+    });
+  });
+
+  describe('GET /v1/platform', () => {
+    it('reads the migration level from the database it is attached to', async () => {
+      // The test database is migrated by the harness, so a checkout in step
+      // with it must report current. This is the half `platform.test.ts` cannot
+      // cover: there, the migration level comes from a stub.
+      const response = await app.inject({ method: 'GET', url: '/v1/platform' });
+
+      expect(response.statusCode).toBe(200);
+
+      const platform = (response.json() as { data: Record<string, never> }).data;
+      const database = platform['database'] as unknown as {
+        readonly name: string;
+        readonly current: boolean;
+        readonly pending: readonly string[];
+        readonly migrationsApplied: number;
+        readonly latestApplied: string | null;
+      };
+
+      expect(database.current).toBe(true);
+      expect(database.pending).toEqual([]);
+      expect(database.migrationsApplied).toBeGreaterThan(0);
+      expect(database.latestApplied).not.toBeNull();
+      expect(database.name).toBe('orbit_test');
+    });
+
+    it('never puts a connection URL or a credential on the wire', async () => {
+      // `@orbit/db` returns a database name and never a URL, because a URL
+      // carries a password. Asserted on the raw body so a nested field cannot
+      // smuggle one past a field-by-field check.
+      const raw = (await app.inject({ method: 'GET', url: '/v1/platform' })).body;
+
+      expect(raw).not.toContain('postgres://');
+      expect(raw).not.toContain('postgresql://');
+      expect(raw).toContain('orbit_test');
     });
   });
 });

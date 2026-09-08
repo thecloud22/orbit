@@ -46,12 +46,21 @@ export type View =
    * answer a recovery proposal. `topic` deep-links to one entry, following the
    * pattern every other view already uses — a place in the app is a URL.
    */
-  | { readonly kind: 'wiki'; readonly topic?: string };
+  | { readonly kind: 'wiki'; readonly topic?: string }
+  /**
+   * Read-only platform operations: what this deployment is running with.
+   *
+   * Not settings. Nothing on it can be changed from the browser, because
+   * everything it shows is deployment configuration resolved when the API
+   * process started.
+   */
+  | { readonly kind: 'admin' };
 
 export const DOCUMENTS_VIEW = 'documents';
 export const AGENTS_VIEW = 'agents';
 export const RUNS_VIEW = 'runs';
 export const WIKI_VIEW = 'wiki';
+export const ADMIN_VIEW = 'admin';
 
 /**
  * Reads the view out of a URL's query string.
@@ -105,6 +114,10 @@ export function viewFromSearch(search: string): View {
     return topic === null || topic === '' ? { kind: 'wiki' } : { kind: 'wiki', topic };
   }
 
+  if (view === ADMIN_VIEW) {
+    return { kind: 'admin' };
+  }
+
   if (view === AGENTS_VIEW) {
     const agentVersionId = params.get('agentVersionId');
     return agentVersionId === null || agentVersionId === ''
@@ -149,6 +162,8 @@ export function searchForView(view: View): string {
       return view.topic === undefined
         ? `?view=${WIKI_VIEW}`
         : `?view=${WIKI_VIEW}&topic=${encodeURIComponent(view.topic)}`;
+    case 'admin':
+      return `?view=${ADMIN_VIEW}`;
   }
 }
 
@@ -160,8 +175,8 @@ export interface NavLink {
 }
 
 /**
- * The five places: arrive, author, run, observe — the order the work moves
- * through them — and then the handbook that explains all four.
+ * The six places: arrive, author, run, observe — the order the work moves
+ * through them — then the handbook that explains all four, and then Admin.
  *
  * "Studio", not "Workflows". "Agents vs Workflows" gave two names to what a
  * reader experiences as one idea and left neither of them meaning *authoring* —
@@ -174,11 +189,19 @@ export interface NavLink {
  * this navigation existed; renaming a query parameter to agree with a label
  * would break them and buy nothing, since nobody reads `?view=`.
  *
- * Wiki is last because it is not a step in the work. It sits in the same bar
- * rather than behind a help icon because the questions it answers — what a
- * binding is, why a run stopped, what to do with a recovery proposal — arrive
- * while someone is mid-task, and a reader who has to leave the app to find the
- * answer generally does not come back.
+ * Wiki is second to last because it is not a step in the work. It sits in the
+ * same bar rather than behind a help icon because the questions it answers —
+ * what a binding is, why a run stopped, what to do with a recovery proposal —
+ * arrive while someone is mid-task, and a reader who has to leave the app to
+ * find the answer generally does not come back.
+ *
+ * Admin is last, and it is deliberately a plain tab rather than something
+ * gated. There is nothing to gate: Orbit has no authentication, so a hidden
+ * link would only be hidden from the person looking for it. What the tab shows
+ * is read-only in the strongest sense — the values it reports are fixed when
+ * the API process starts and no request can change them — so it is closer to a
+ * label on the outside of the box than to a control panel, and the page says
+ * as much in its first paragraph.
  */
 const NAV_ITEMS = [
   { kind: 'home', label: 'Home' },
@@ -186,6 +209,7 @@ const NAV_ITEMS = [
   { kind: 'agents', label: 'Agents' },
   { kind: 'runs', label: 'Runs' },
   { kind: 'wiki', label: 'Wiki' },
+  { kind: 'admin', label: 'Admin' },
 ] as const;
 
 /**

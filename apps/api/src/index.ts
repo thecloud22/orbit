@@ -6,6 +6,7 @@ import { startApi } from './bootstrap';
 import { loadRootEnv, resolveRepositoryArtifactRoot } from './env';
 import { resolveModelBudgets, resolveModelRates } from './model-budget-env';
 import { resolveApiModelSelection } from './model-provider-env';
+import { summariseModelSelection } from './platform';
 
 /**
  * The API process.
@@ -54,6 +55,10 @@ try {
     sopProvider: createSopProvider(modelSelection),
     modelBudgets: resolveModelBudgets(),
     modelRates: resolveModelRates(),
+    // The three axes an operator reads on the Admin page, with the credential
+    // dropped here rather than anywhere downstream: `summariseModelSelection`
+    // is the only thing that sees the resolution, and it does not copy the key.
+    modelSelection: summariseModelSelection(modelSelection),
     databaseUrl: requireDatabaseUrl('DATABASE_URL'),
     artifactRoot: resolveRepositoryArtifactRoot(),
     port: Number(process.env['API_PORT'] ?? 3002),

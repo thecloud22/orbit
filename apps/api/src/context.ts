@@ -11,6 +11,7 @@ import type {
   SopRevisionService,
 } from '@orbit/sop-service';
 
+import type { PlatformFacts } from './platform';
 import type { BindingSessionRegistry } from './recording/binding-session-registry';
 import type { RecordingSessionRegistry } from './recording/session-registry';
 import type { WalkthroughSessionRegistry } from './recording/walkthrough-session-registry';
@@ -76,6 +77,14 @@ export interface ApiContext {
    * steps still waiting to be bound. It writes proposals and never a binding.
    */
   readonly walkthroughSessions: WalkthroughSessionRegistry;
+  /**
+   * Read-only facts about this deployment, for the Admin page.
+   *
+   * An interface like every other member, and one with no writer: what it
+   * reports is resolved at process start, so there is nothing here a request
+   * could change even if a route wanted to.
+   */
+  readonly platform: PlatformFacts;
   /**
    * The token ceilings this deployment is running with (ADR-029).
    *

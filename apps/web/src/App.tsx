@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import type { AgentVersionView, ModelUsageView, SopDraftView } from '@orbit/api/views';
 
+import { AdminPage } from './AdminPage';
 import { AgentsPage } from './AgentsPage';
 import {
   ApiRequestError,
@@ -28,11 +29,13 @@ import { WikiPage } from './WikiPage';
 /**
  * Watchtower.
  *
- * Five places, not one: Home (what Orbit is, the two ways in, and what is going
+ * Six places, not one: Home (what Orbit is, the two ways in, and what is going
  * on), Studio (everything drafted or recorded), Agents (what can be run), Runs
- * (what has been), and Wiki (how any of it is done). Everything rendered in the
- * first four comes from the API's view of durable server state; the Wiki is
- * static content compiled into the bundle and reaches no endpoint.
+ * (what has been), Wiki (how any of it is done), and Admin (what the deployment
+ * itself is running with). Everything rendered in the first four comes from the
+ * API's view of durable server state; the Wiki is static content compiled into
+ * the bundle and reaches no endpoint; Admin reads two endpoints and writes
+ * none, and owns its own fetching because nothing else on the page needs it.
  *
  * This component owns drafting and recording state rather than `HomePage`,
  * because both outlive the home view: a draft survives navigating away and back,
@@ -345,6 +348,8 @@ export function App() {
         />
       ) : view.kind === 'wiki' ? (
         <WikiPage onNavigate={navigate} topic={view.topic} />
+      ) : view.kind === 'admin' ? (
+        <AdminPage onNavigate={navigate} />
       ) : view.kind === 'runs' ? (
         <RunsPage onOpen={(runId) => navigate({ kind: 'run', runId })} />
       ) : view.kind === 'run' ? (

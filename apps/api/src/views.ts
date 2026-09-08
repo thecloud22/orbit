@@ -664,3 +664,65 @@ export interface RecoveryProposalsView {
   readonly recoveryEnabled: boolean;
   readonly proposals: readonly RecoveryProposalView[];
 }
+
+/**
+ * What this deployment is, as the Admin page shows it.
+ *
+ * Read-only, and every field is deployment configuration resolved before the
+ * first request: which model family and invocation are in force, where artifact
+ * bytes are written, what the process is listening on, and how far the database
+ * has been migrated. Nothing here can be changed by a request, which is the
+ * same rule `ModelUsageView` follows for budgets and for the same reason — a
+ * ceiling a client could lift is not a ceiling.
+ *
+ * Three things are absent by construction, not by omission: the API key
+ * (`ModelSelectionSummary` drops it before a projection can see it), the
+ * database URL (`@orbit/db` never returns one, because a URL carries a
+ * password), and the artifact *contents*.
+ */
+export interface PlatformView {
+  /** The address the API process is listening on. */
+  readonly api: { readonly host: string; readonly port: number };
+  /**
+   * Stated on the wire rather than assumed by the page.
+   *
+   * Orbit has no authentication, no user table and no session, so anyone who
+   * can reach Watchtower can read this. When that stops being true, this field
+   * must change type and every consumer will be made to notice.
+   */
+  readonly authentication: 'none';
+  readonly artifactRoot: string;
+  readonly model: PlatformModelView;
+  readonly database: PlatformDatabaseView;
+}
+
+/** Which model is in force. Never the credential that reaches it. */
+export interface PlatformModelView {
+  readonly configured: boolean;
+  /** `anthropic` or `gemini`. Null when nothing is configured. */
+  readonly family: string | null;
+  /** `direct` or `bedrock`. Null when nothing is configured. */
+  readonly invocation: string | null;
+  readonly model: string | null;
+  /** Names the missing variable when nothing is configured. Never a value. */
+  readonly reason: string | null;
+}
+
+/** How far the database this process is attached to has been migrated. */
+export interface PlatformDatabaseView {
+  readonly name: string;
+  readonly serverVersion: string;
+  readonly migrationsCommitted: number;
+  readonly migrationsApplied: number;
+  /** Committed migrations this database is missing, in journal order. */
+  readonly pending: readonly string[];
+  /** The newest committed migration that has been applied. */
+  readonly latestApplied: string | null;
+  /**
+   * Applied rows matching no committed migration: a database migrated by a
+   * newer checkout than the one running. No migration command fixes it.
+   */
+  readonly unrecognised: number;
+  /** True when nothing is pending and nothing is unrecognised. */
+  readonly current: boolean;
+}

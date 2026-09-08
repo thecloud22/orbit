@@ -128,12 +128,35 @@ export interface DatabaseCheck {
 }
 
 /**
- * Connects, reports what it found, and disconnects.
+ * Reports what a connection Orbit already holds is attached to.
  *
- * The connection is asked which database it is actually attached to rather than
- * trusting the URL's path, for the same reason the test harness does: a URL can
- * be overridden by PG* variables, a service file, or a pooler.
+ * Split out from `checkDatabase` so a long-lived process can answer the same
+ * two questions without opening a second pool for each answer — which is what
+ * the API's read-only platform route needs. The connection is asked which
+ * database it is actually attached to rather than trusting a URL's path, for
+ * the same reason the test harness does: a URL can be overridden by PG*
+ * variables, a service file, or a pooler.
  */
+export async function inspectDatabase(
+  executor: Executor,
+  options: { readonly migrationsFolder?: string; readonly fallbackDatabaseName?: string } = {},
+): Promise<DatabaseCheck> {
+  const identity = await executor.execute<{ name: string; version: string }>(
+    sql`select current_database() as name, current_setting('server_version') as version`,
+  );
+
+  const row = identity.rows[0];
+  const timestamps = await appliedMigrationTimestamps(executor);
+  const journal = readMigrationJournal(options.migrationsFolder ?? MIGRATIONS_FOLDER);
+
+  return {
+    databaseName: row?.name ?? options.fallbackDatabaseName ?? 'unknown',
+    serverVersion: row?.version ?? 'unknown',
+    migrations: migrationLevel(journal, timestamps),
+  };
+}
+
+/** Connects, delegates to `inspectDatabase`, and disconnects. */
 export async function checkDatabase(
   url: string,
   options: { readonly migrationsFolder?: string } = {},
@@ -141,19 +164,10 @@ export async function checkDatabase(
   const handle = createDatabase({ url, maxConnections: 1 });
 
   try {
-    const identity = await handle.db.execute<{ name: string; version: string }>(
-      sql`select current_database() as name, current_setting('server_version') as version`,
-    );
-
-    const row = identity.rows[0];
-    const timestamps = await appliedMigrationTimestamps(handle.db);
-    const journal = readMigrationJournal(options.migrationsFolder ?? MIGRATIONS_FOLDER);
-
-    return {
-      databaseName: row?.name ?? databaseNameFromUrl(url),
-      serverVersion: row?.version ?? 'unknown',
-      migrations: migrationLevel(journal, timestamps),
-    };
+    return await inspectDatabase(handle.db, {
+      ...options,
+      fallbackDatabaseName: databaseNameFromUrl(url),
+    });
   } finally {
     await handle.close();
   }

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import {
+  E2E_API_PORT,
   E2E_API_URL,
   E2E_BINDABLE_DOCUMENT_ID,
   E2E_BINDABLE_STEP_ID,
@@ -1081,6 +1082,37 @@ describe('Watchtower end to end', () => {
       await page.close();
     });
 
+    it('opens Admin from the nav and reports this deployment, read-only', async () => {
+      const page = await open();
+
+      await page.getByTestId('nav-admin').click();
+      await expect.poll(() => page.getByTestId('admin-page').count(), { timeout: 20_000 }).toBe(1);
+      expect(await page.getByTestId('nav-admin').getAttribute('aria-current')).toBe('page');
+
+      // The page must say, before anything else, that it is not protected.
+      // Orbit has no authentication, and a page called Admin implies one.
+      await expect
+        .poll(() => page.getByTestId('admin-access-notice').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      // Real values from the real endpoint, not a placeholder dashboard: the
+      // end-to-end stack's own database is fully migrated, and the artifact
+      // root is the disposable one this harness was started with.
+      await expect
+        .poll(() => page.getByTestId('admin-migrations-current').count(), { timeout: 20_000 })
+        .toBe(1);
+      expect(await page.getByTestId('admin-fact-artifact-root').textContent()).toContain('/');
+      expect(await page.getByTestId('admin-fact-api-address').textContent()).toContain(
+        String(E2E_API_PORT),
+      );
+
+      // This entry point composes the deterministic fake, and says so rather
+      // than naming a family it never selected.
+      expect(await page.getByTestId('admin-model-headline').textContent()).toContain('e2e-fake');
+
+      await page.close();
+    });
+
     it('opens a run from the Runs list on its own page', async () => {
       const { runId } = await succeededRun();
 
@@ -1103,6 +1135,7 @@ describe('Watchtower end to end', () => {
       expect(await page.getByTestId('nav-studio').getAttribute('href')).toBe('?view=documents');
       expect(await page.getByTestId('nav-home').getAttribute('href')).toBe('/');
       expect(await page.getByTestId('nav-wiki').getAttribute('href')).toBe('?view=wiki');
+      expect(await page.getByTestId('nav-admin').getAttribute('href')).toBe('?view=admin');
 
       await page.close();
     });

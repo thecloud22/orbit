@@ -123,6 +123,7 @@ describe('searchForView', () => {
       { kind: 'recording', sessionId: 'rec_abc' },
       { kind: 'wiki' },
       { kind: 'wiki', topic: 'drift-recovery' },
+      { kind: 'admin' },
     ];
 
     for (const view of views) {
@@ -136,16 +137,18 @@ describe('searchForView', () => {
 });
 
 describe('navLinks', () => {
-  it('offers Home, Studio, Agents, Runs and Wiki, in that order', () => {
+  it('offers Home, Studio, Agents, Runs, Wiki and Admin, in that order', () => {
     // Authoring sits between arriving and running, because that is the order
-    // the work actually moves through them. The Wiki is last because it is not
-    // a step in the work; it explains the other four.
+    // the work actually moves through them. The Wiki explains the other four,
+    // and Admin describes the deployment they all run in; neither is a step in
+    // the work, so both come after it.
     expect(navLinks({ kind: 'home' }).map((link) => link.label)).toEqual([
       'Home',
       'Studio',
       'Agents',
       'Runs',
       'Wiki',
+      'Admin',
     ]);
   });
 

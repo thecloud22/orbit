@@ -135,6 +135,16 @@ try {
     port: Number(process.env['API_PORT'] ?? 3102),
     host: process.env['API_HOST'] ?? '127.0.0.1',
     logLevel: process.env['LOG_LEVEL'] ?? 'warn',
+    // The deterministic fake, reported as itself. This entry point resolves no
+    // environment, so the honest answer to "which model is in force" is the
+    // double it composed rather than a family it never selected.
+    modelSelection: {
+      configured: true,
+      family: 'fake',
+      invocation: 'in-process',
+      model: 'e2e-fake',
+      reason: null,
+    },
   });
 } catch (error) {
   process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);

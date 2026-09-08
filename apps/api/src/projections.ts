@@ -8,7 +8,7 @@ import type {
   SopDocumentRecord,
   SopGraphRevisionRecord,
 } from '@orbit/db';
-import { stepChecksum, type ModelUsageTotals } from '@orbit/db';
+import { isMigrationLevelCurrent, stepChecksum, type ModelUsageTotals } from '@orbit/db';
 import {
   ASSUMED_TOKENS_PER_CALL,
   MODEL_BUDGET_SCOPE_LABELS,
@@ -29,6 +29,7 @@ import {
 } from '@orbit/sop-graph';
 import type { ArtifactLink, ArtifactMetadata, EventEnvelope } from '@orbit/contracts';
 
+import type { PlatformSnapshot } from './platform';
 import type { BindingSessionState } from './recording/binding-session-registry';
 import type { WalkthroughSessionState } from './recording/walkthrough-session-registry';
 import {
@@ -57,6 +58,7 @@ import {
   type ModelUsageTotalsView,
   type ModelUsageView,
   type RecoveryProposalView,
+  type PlatformView,
   type WalkthroughSessionView,
 } from './views';
 
@@ -701,5 +703,42 @@ function toTotalsView(totals: ModelUsageTotals): ModelUsageTotalsView {
     outputTokens: totals.outputTokens,
     totalTokens: totals.totalTokens,
     estimatedCostMicroUsd: totals.estimatedCostMicroUsd,
+  };
+}
+
+/**
+ * The deployment, field by field.
+ *
+ * Built explicitly rather than spread, which is the rule the rest of this
+ * module follows and the reason it is worth following here in particular: the
+ * snapshot's model summary has already dropped the API key, and building the
+ * view by naming each field means a future field on the snapshot cannot reach
+ * a response body by accident.
+ */
+export function toPlatformView(snapshot: PlatformSnapshot): PlatformView {
+  const { migrations } = snapshot.database;
+  const applied = migrations.applied;
+
+  return {
+    api: { host: snapshot.api.host, port: snapshot.api.port },
+    authentication: 'none',
+    artifactRoot: snapshot.artifactRoot,
+    model: {
+      configured: snapshot.model.configured,
+      family: snapshot.model.family,
+      invocation: snapshot.model.invocation,
+      model: snapshot.model.model,
+      reason: snapshot.model.reason,
+    },
+    database: {
+      name: snapshot.database.databaseName,
+      serverVersion: snapshot.database.serverVersion,
+      migrationsCommitted: migrations.committed.length,
+      migrationsApplied: applied.length,
+      pending: migrations.pending,
+      latestApplied: applied.length === 0 ? null : (applied[applied.length - 1] ?? null),
+      unrecognised: migrations.unrecognised,
+      current: isMigrationLevelCurrent(migrations),
+    },
   };
 }

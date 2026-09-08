@@ -73,7 +73,7 @@ An unknown request such as `SR-9999` should complete with the valid business out
 
 ```text
 apps/                  # 6
-  web/                 # Orbit Watchtower: Home, Studio, Agents, Runs, Wiki
+  web/                 # Orbit Watchtower: Home, Studio, Agents, Runs, Wiki, Admin
   api/                 # Orbit Fastify API; also executes runs (ADR-011)
   browser-worker/      # Composition root; `pnpm agent:run` executes one run
   recorder/            # Composition root; `pnpm record:binding`, `record:workflow`
@@ -884,10 +884,11 @@ pins the refusal rather than leaving it to prose. See **ADR-021**.
 
 ## Watchtower
 
-Watchtower has a persistent header with five tabs — **Home**, **Studio**,
-**Agents**, **Runs** and **Wiki**. Navigation is query parameters, not a router
-(ADR-031) — a run is reopened with `?runId=`, a workflow with `?documentId=`,
-Studio is `?view=documents`, and a wiki topic is `?view=wiki&topic=…`. The view
+Watchtower has a persistent header with six tabs — **Home**, **Studio**,
+**Agents**, **Runs**, **Wiki** and **Admin**. Navigation is query parameters, not
+a router (ADR-031) — a run is reopened with `?runId=`, a workflow with
+`?documentId=`, Studio is `?view=documents`, and a wiki topic is
+`?view=wiki&topic=…`. The view
 is derived from the URL on every history event, so a link, a bookmark, a reload
 and the back button all agree, and every nav item is a real anchor that opens in
 a new tab like any other link.
@@ -899,6 +900,7 @@ a new tab like any other link.
 | Agents | Published Agent Versions and their declared inputs |
 | Runs | Every run, newest first |
 | Wiki | In-app, task-oriented help; static content compiled into the bundle, reaching no endpoint |
+| Admin | Read-only platform facts: the model in force, spend against the ceilings, migration level, artifact root, API address. No controls, and no authentication protecting it — see `docs/guides/configuration.md` > Administration |
 
 Studio's URL value stays `documents` (ADR-031): review links were shared before
 the navigation existed, and renaming a query parameter to agree with a label
@@ -1174,7 +1176,8 @@ new version from a recording that visits it.
 
 ### Implemented
 
-- Watchtower: Home, Studio, Agents, Runs and an in-app Wiki.
+- Watchtower: Home, Studio, Agents, Runs, an in-app Wiki, and a read-only Admin
+  page reporting what the deployment is running with.
 - Two ways to author a workflow: recording a demonstration, or drafting from
   free text and correcting the result.
 - Immutable, checksummed SOP Graph revisions; review, edit, insert, reorder,

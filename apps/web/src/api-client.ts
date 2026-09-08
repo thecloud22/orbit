@@ -16,6 +16,7 @@ import type {
   PublishedAgentVersionView,
   SopDocumentSummaryView,
   ModelUsageView,
+  PlatformView,
   SopDraftView,
   SopReviewView,
   WalkthroughSessionView,
@@ -160,6 +161,17 @@ export async function fetchArtifact(url: string): Promise<Blob> {
 export async function getModelUsage(documentId?: string): Promise<ModelUsageView> {
   const query = documentId === undefined ? '' : `?documentId=${encodeURIComponent(documentId)}`;
   return getJson(`/v1/model-usage${query}`);
+}
+
+/**
+ * What this deployment is running with, for the Admin page.
+ *
+ * A `GET` with no companion writer, which is the endpoint's whole design: every
+ * value it reports is deployment configuration resolved when the API process
+ * started, so there is nothing here a client could set.
+ */
+export async function getPlatform(): Promise<PlatformView> {
+  return getJson('/v1/platform');
 }
 
 export async function createSopDraft(sourceText: string): Promise<SopDraftView> {

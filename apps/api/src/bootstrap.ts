@@ -21,6 +21,11 @@ import { createWalkthroughSessionRegistry } from './recording/walkthrough-sessio
 import type { FastifyInstance } from 'fastify';
 
 import type { ApiContext } from './context';
+import {
+  createPlatformFacts,
+  UNREPORTED_MODEL_SELECTION,
+  type ModelSelectionSummary,
+} from './platform';
 import type { RecordingSessionFactory } from './recording/session-registry';
 import { createInProcessRunDispatcher } from './dispatch';
 import { buildServer } from './server';
@@ -64,6 +69,17 @@ export interface ApiBootstrapOptions {
   readonly modelBudgets?: ModelBudgets;
   /** Per-model rates for the cost estimate. */
   readonly modelRates?: ModelRates;
+  /**
+   * Which model this deployment resolved, for the Admin page to report.
+   *
+   * A *summary*, not the selection: the credential is dropped by
+   * `summariseModelSelection` in the entry point, so no API key is ever passed
+   * into this function and none can reach a response body. Optional, because a
+   * caller that composes its own provider — the end-to-end entry point does —
+   * has no environment resolution to report, and saying so is better than
+   * inventing one.
+   */
+  readonly modelSelection?: ModelSelectionSummary;
 }
 
 export interface StartedApi {
@@ -126,6 +142,17 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
       bindingSessions,
       walkthroughSessions,
       modelBudgets: options.modelBudgets ?? {},
+      // Reads the connection this process already holds rather than opening a
+      // second pool, and re-reads the migration level per request: a database
+      // can be migrated underneath a running API, which is the case an operator
+      // opens the Admin page to check.
+      platform: createPlatformFacts({
+        executor: handle.db,
+        artifactRoot: options.artifactRoot,
+        host: options.host,
+        port: options.port,
+        modelSelection: options.modelSelection ?? UNREPORTED_MODEL_SELECTION,
+      }),
       dispatcher: createInProcessRunDispatcher({
         database: handle.db,
         storage,

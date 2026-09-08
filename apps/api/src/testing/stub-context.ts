@@ -31,6 +31,7 @@ import type { WalkthroughSessionRegistry } from '../recording/walkthrough-sessio
 import type { RecordingSessionRegistry } from '../recording/session-registry';
 
 import type { ApiContext } from '../context';
+import type { PlatformFacts } from '../platform';
 import type { RunDispatcher } from '../dispatch';
 
 /**
@@ -86,6 +87,7 @@ export interface StubContextOptions {
   readonly walkthroughSessions?: Partial<WalkthroughSessionRegistry>;
   readonly bindingRecoveryProposals?: Partial<BindingRecoveryProposalRepository>;
   readonly modelBudgets?: ModelBudgets;
+  readonly platform?: Partial<PlatformFacts>;
 }
 
 export function createStubContext(options: StubContextOptions = {}): ApiContext {
@@ -114,6 +116,7 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
         options.bindingRecoveryProposals ?? {},
       ),
     },
+    platform: stubbed('platform', options.platform ?? {}),
     artifactService: stubbed('artifactService', options.artifactService ?? {}),
     dispatcher: stubbed('dispatcher', options.dispatcher ?? {}),
     sopDraftService: stubbed('sopDraftService', options.sopDraftService ?? {}),

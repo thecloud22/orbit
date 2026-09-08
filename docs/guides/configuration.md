@@ -235,19 +235,95 @@ appears on the laptop.
 There is no authentication, no user table and no session anywhere in this build.
 This is the whole of Orbit's notion of who did something.
 
+## Administration
+
+Watchtower's **Admin** tab (`http://localhost:3000/?view=admin`) shows what the
+running deployment resolved. It reads two endpoints and writes none.
+
+| Shown | Read from | Why it is there |
+|---|---|---|
+| The address the API bound | `GET /v1/platform` | Says which process answered |
+| Model family, invocation and model id in force | `GET /v1/platform` | The three axes of ADR-034, or the missing variable's name when nothing is configured |
+| Global spend and the three token ceilings | `GET /v1/model-usage` | Headroom before drafting is refused; the cost figure is an estimate, never a bill |
+| Migration level: applied, pending, and rows this checkout does not recognise | `GET /v1/platform` | The same reading as `pnpm db:check`, from the browser |
+| Artifact storage root | `GET /v1/platform` | Where evidence bytes are written |
+| Database name and PostgreSQL server version | `GET /v1/platform` | Asked of the connection, never parsed from a URL |
+
+**The Admin page has no controls.** Every value it shows is resolved when the API
+process starts, so changing one means restarting the process with a different
+environment — see the section below.
+
+**It is not protected, and it says so on the page.** Orbit has no
+authentication, no user accounts and no sessions, so anyone who can reach
+Watchtower can open Admin, and can also start a run. Restricting access is the
+job of a network boundary or a reverse proxy in front of the deployment.
+
+### `GET /v1/platform`
+
+Read-only. No parameters, and no companion writer.
+
+```json
+{
+  "data": {
+    "api": { "host": "127.0.0.1", "port": 3002 },
+    "authentication": "none",
+    "artifactRoot": "/…/orbit/data/artifacts",
+    "model": {
+      "configured": true,
+      "family": "anthropic",
+      "invocation": "direct",
+      "model": "claude-haiku-4-5",
+      "reason": null
+    },
+    "database": {
+      "name": "orbit",
+      "serverVersion": "17.4",
+      "migrationsCommitted": 11,
+      "migrationsApplied": 11,
+      "pending": [],
+      "latestApplied": "0010_proposals_from_demonstration",
+      "unrecognised": 0,
+      "current": true
+    }
+  }
+}
+```
+
+Three things are absent by construction rather than by omission:
+
+- **The API key.** The resolved model selection carries one; the API's
+  `summariseModelSelection` drops it before anything downstream can see it, and
+  a test asserts a planted credential never appears in the response body.
+- **The Bedrock region.** Not a secret, but not needed to answer "which model is
+  in force", so it is not published either.
+- **The connection URL.** `@orbit/db` never returns one, because a URL carries a
+  password. Callers get a database name.
+
+`unrecognised` is the case worth understanding: applied migration rows matching
+no committed migration mean the database was migrated by a **newer** checkout
+than the one running. Nothing is pending, so a count-only check would call that
+healthy. `pnpm db:migrate` does not fix it — update the checkout.
+
+**`GET /health` is not on this page.** It is the API's own liveness endpoint and
+returns `{"status":"ok"}`, but the web dev server proxies only `/v1`, so
+Watchtower cannot call it from the browser and does not pretend to. Point an
+external monitor at the API directly.
+
 ## What is not configurable, and why
 
-**Nothing on this page is editable from Watchtower.** Provider selection and every
-ceiling are resolved once at process start. That is a decision rather than a gap:
-a cap a client could raise for itself is not a cap. Watchtower *displays* spend
-against the ceilings in force; it cannot change them.
+**Nothing on this page is editable from Watchtower, including from the Admin
+tab.** Provider selection and every ceiling are resolved once at process start.
+That is a decision rather than a gap: a cap a client could raise for itself is
+not a cap — and with no authentication, "a client" means anyone who can reach
+Watchtower. Admin *displays* spend against the ceilings in force; it cannot
+change them.
 
 Two settings are per document rather than per deployment, and belong to the
 document instead of the environment:
 
 | Setting | Where |
 |---|---|
-| The recovery grant | `POST /v1/sop-documents/{documentId}/recovery` with `{"enabled": true}`. **No UI control exists for it in this build** |
+| The recovery grant | `POST /v1/sop-documents/{documentId}/recovery` with `{"enabled": true}`. **No UI control exists for it in this build**; Admin links to where proposals are answered but does not mirror the grant, because a per-deployment switch would grant the capability to workflows nobody reviewed |
 | Per-agent spend before publication | `GET /v1/model-usage?documentId=…` (ADR-029) |
 
 And three are compiled into a published Agent Version and immutable thereafter
