@@ -27,8 +27,10 @@ record of why Orbit is shaped as it is.
 | **Deprecated** | In force but being retired |
 | **Proposed** | Not decided. Nothing depends on it |
 
-No ADR is currently **Superseded**, **Deprecated** or **Proposed** outright.
-Every decision here still holds in its core; nine carry a qualifier.
+No ADR is currently **Superseded** or **Deprecated**. Every accepted decision
+here still holds in its core; nine carry a qualifier. ADR-037 is **Proposed** —
+it is the subject of an open review gate (sub-phase 3.1) and nothing depends on
+it yet.
 
 **Nothing in this file is speculative except where a status says so.** Two
 decisions describe capabilities that do not exist yet — ADR-010's S3 adapter and
@@ -75,6 +77,8 @@ real Gemini or Bedrock service.
 | [ADR-033](#adr-033-recover-from-ui-drift-by-proposing-a-reviewed-binding-never-by-applying-one) | Recover from UI drift by proposing a reviewed binding, never by applying one | Accepted |
 | [ADR-034](#adr-034-one-selection-layer-for-every-model-call-with-family-and-invocation-as-separate-axes) | One selection layer for every model call, with family and invocation as separate axes | Accepted — not exercised against a real Gemini or Bedrock service |
 | [ADR-035](#adr-035-bind-a-whole-workflow-from-one-walkthrough-by-proposing-an-alignment-nobody-has-to-trust) | Bind a whole workflow from one walkthrough, by proposing an alignment nobody has to trust | Accepted |
+| [ADR-036](#adr-036-revising-a-published-workflow-forks-a-new-draft-and-binding-stays-available-without-it) | Revising a published workflow forks a new draft, and binding stays available without it | Accepted |
+| [ADR-037](#adr-037-give-every-execution-surface-its-own-permission-section-addressing-vocabulary-and-evidence-set) | Give every execution surface its own permission section, addressing vocabulary, and evidence set | Proposed |
 
 ---
 
@@ -1788,3 +1792,135 @@ Reopening was the obvious alternative and it is wrong on the merits. An approved
 | Leave the walkthrough offer as its own section | The adjacency was the defect: the fast route and the slow route to one outcome, side by side, reading as two separate pieces of work |
 | Derive "has unpublished changes" by comparing graph checksums | The candidate row already records the revision it was compiled from. Re-deriving the same fact from bytes would be a second answer to a question that already has one |
 | Block republishing a fork nobody changed | Detecting it means defining "changed" across a graph and its bindings, to prevent something harmless. Versions are cheap and immutable |
+
+## ADR-037: Give every execution surface its own permission section, addressing vocabulary, and evidence set
+
+**Status:** Proposed
+
+**Phase:** 3
+
+> Not decided and nothing depends on it. This record exists to be reviewed
+> *before* sub-phase 3.1 writes the contract it describes, because the shape it
+> proposes lands inside immutable published Agent Versions and ADR-005 and
+> ADR-014 forbid migrating those afterwards. Move to **Accepted** when 3.1 lands,
+> or rewrite it.
+
+### Context
+
+Orbit automates one surface, and that is a type-level fact rather than a
+preference. `permissionsSchema` makes `browser` a **required** section, so a
+workflow that never opens a browser must still declare a browser grant to be
+valid at all. `STEP_TYPE_TO_BROWSER_ACTION` states that a step's permission *is*
+a browser permission. `BrowserExecutor`'s every page-touching method takes the
+browser-only `Locator`. The interpreter opens exactly one executor per run and
+calls `finishTrace()` on it unconditionally — a Playwright concept sitting in the
+generic run loop. Evidence grants are read from `permissions.browser.allowedActions`.
+Half the error taxonomy is named after a browser: `BROWSER_TIMEOUT`,
+`LOCATOR_NOT_FOUND`, `UNEXPECTED_UI_STATE`.
+
+ADR-008 anticipated this. It put Playwright behind an executor boundary
+specifically so "an API executor can be added later without replacing runtime
+semantics," and ADR-002 kept SOP Graph separate from Agent IR because "coupling
+the process model directly to Playwright would make the product brittle and limit
+future execution adapters." Both were right about the seam and neither designed
+what goes through it. The seam that exists is browser-shaped: it mixes generic
+lifecycle concerns (`close`) with DOM concerns (`captureDom`, `describeElement`)
+in one interface.
+
+The pressure is a terminal (3270/5250) surface and an HTTP API surface. A green
+screen is not a page and an endpoint is not an element, but both need exactly
+what a page needed: a way to say what an agent is allowed to reach, a way to name
+a thing without writing a program that finds it, and evidence a reviewer can read
+afterwards.
+
+### Decision
+
+**A surface is the unit. Each one brings three things, and a surface that cannot
+supply all three does not get added.**
+
+**1. Its own permission section.** `permissions.browser` becomes optional, and
+each surface gets a sibling section: `permissions.terminal`, `permissions.api`,
+`permissions.credentials`. Absent means not permitted. This is not a new pattern
+— `permissions.model` and `permissions.recovery` already work exactly this way,
+for the reason stated in ADR-032 and ADR-033: a model call and a repair proposal
+are different capabilities from anything a browser does, and smuggling one in
+under a browser grant would mean an agent granted `click` had quietly been
+granted judgement too. Reaching a mainframe is a different capability from
+reaching a webpage by the same argument.
+
+The step→permission map becomes step type → `{ surface, action }`, kept as a
+`satisfies` table so a step type with no permission mapping fails to compile.
+
+**2. Its own closed addressing vocabulary.** `Locator`'s three strategies —
+`test_id`, `role_and_name`, `label` — exist so that no raw CSS or XPath is
+*representable*, because a selector string is a small program for walking the DOM
+(ADR-018). That property is what every surface must reproduce, and it is why
+`Locator` is **not** widened to cover screens or endpoints. A terminal names a
+field by `field_at(row, col)`, `field_after_label(text)` or `named_field(id)` —
+never a raw buffer offset and never a regex over screen text. An API names an
+operation by its id in a catalog imported from an OpenAPI or GraphQL document —
+never a URL template typed into a box, because a template with interpolation is a
+small program for constructing a request.
+
+Widening one type to serve every surface would produce exactly the generic
+string-shaped locator the closed vocabulary exists to prevent. Three narrow
+vocabularies that cannot express each other are the point, not duplication.
+
+**3. Its own evidence set.** ADR-004 makes evidence a product feature rather than
+debug output, and Watchtower's expected-versus-observed view assumes
+screenshot/DOM/trace. A surface that produces no evidence would render as a gap
+in a run timeline and quietly weaken the central claim. So a terminal step's
+evidence is the screen buffer as text — diffable, greppable, and better than an
+image — and an API step's is a request/response envelope with headers redacted.
+
+**Executors are split, not widened.** A surface-neutral lifecycle interface
+(`close()`, `finishEvidence()`) plus per-surface capability interfaces. There is
+deliberately no generic `perform(action)` and no widening of `BrowserExecutor`
+into something surface-agnostic: `ports.ts` already argues that the set of things
+Orbit can do to a browser is a list, and that widening it is an interface change
+which must show up in review. One `ExecutorSet` keyed by surface, opened lazily,
+so an agent that never reaches a terminal step never opens a terminal session.
+
+**Contract changes are additive, permanently.** `permissions` and `errorCode` are
+fields inside published, immutable Agent Versions. `BROWSER_TIMEOUT` and
+`LOCATOR_NOT_FOUND` keep their browser-flavoured names forever; new surfaces get
+new codes. No existing code is renamed and no published version is migrated,
+because ADR-005 and ADR-014 forbid it.
+
+### Consequences
+
+**An agent can be published that never touches a browser**, which has not been
+true before. The validator refuses a step whose surface section is absent, so the
+capability is opt-in per published version and visible in review — the same
+property `permissions.model` has.
+
+**Evidence stays comparable across surfaces or the failure is visible.** A run
+spanning two surfaces must render as one timeline (ADR-031), and that is the
+acceptance test for whether this generalized rather than fragmented.
+
+**The step vocabulary grows per surface rather than being generalized.** There is
+no `surface.act` step with a payload; there are `terminal.type` and `api.request`
+with their own fields. The discriminated union stays exhaustive and the
+interpreter's `switch` keeps no `default`, so an unhandled step type is a compile
+error rather than a run-time surprise.
+
+**ADR-016's static non-executability scan needs extending**, which its own record
+predicted: the denylist is text matching over browser terms and "will need
+extending if a new execution surface appears." It is a floor, not a proof, and a
+new surface lowers it until the terms are added.
+
+**Three surfaces' worth of vocabulary is more code than one generic one.** That
+is accepted deliberately. The alternative collapses to a string, and a string is
+the thing ADR-018 exists to prevent.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Widen `Locator` with a `strategy` per surface | It becomes a generic string-shaped address that can name anything, which is precisely what the closed three-member vocabulary exists to prevent (ADR-018). A screen field and a DOM element have nothing in common to unify |
+| Add a generic `perform(action, payload)` to the executor interface | `ports.ts` already refuses this for the browser: the set of things Orbit can do is a list, and widening it must show up in review. A generic method makes every future capability invisible |
+| Keep `permissions.browser` required and let non-browser agents declare an empty grant | A required field nobody means is a field that stops being read. It would also make "does this agent touch a browser?" unanswerable from the contract |
+| One `permissions.surfaces[]` array instead of named sections | Named sections are what `model` and `recovery` already are, and a typed section can carry surface-specific shape — `allowedDomains` for a browser, `allowedOperations` for an API — which a uniform array cannot |
+| Rename browser-flavoured error codes to surface-neutral ones | `errorCode` is inside published immutable Agent Versions. A rename would invalidate history that ADR-005 and ADR-014 guarantee |
+| Defer the seam and special-case the first new adapter into the browser path | Produces a second seam that never gets merged, and the second adapter pays the cost again. The whole point of ADR-008's boundary was to avoid this |
+| One shared evidence format for every surface | A screenshot, a screen buffer and an HTTP envelope are not the same artifact. Forcing one shape would mean storing the weakest common denominator, when the terminal's text buffer is *better* evidence than an image |

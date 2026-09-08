@@ -16,17 +16,19 @@ silently.
 3. `docs/tasks/phase-1-backlog.md` — the completed Phase 1 task sequence.
 4. `docs/tasks/phase-2-sop-graph-requirements.md` — the Phase 2 direction and sub-phase
    sequence; work one approved task at a time.
-5. `docs/contracts/agent-ir.md` — the Agent IR contract.
-6. `docs/contracts/events-and-evidence.md` — the event envelope and artifact/evidence contract.
-7. `docs/contracts/api.md` — the Phase 1 HTTP API contract, including the run-scoped
+5. `docs/tasks/phase-3-execution-surfaces.md` — the Phase 3 direction, sub-phase
+   sequence, settled decisions and review gates. Read before any Phase 3 task.
+6. `docs/contracts/agent-ir.md` — the Agent IR contract.
+7. `docs/contracts/events-and-evidence.md` — the event envelope and artifact/evidence contract.
+8. `docs/contracts/api.md` — the Phase 1 HTTP API contract, including the run-scoped
    artifact route and the evidence-access rules.
-8. `docs/architecture/decisions.md` — accepted ADRs; do not silently supersede one.
-9. `docs/architecture/phase-1-system-design.md` — the Phase 1 system architecture.
-10. `docs/testing/phase-1-test-strategy.md` — required test layers and coverage.
-11. `docs/sop/find-service-request.md` — the one Phase 1 business procedure.
-12. `fixtures/find-service-request.agent.yaml` — the seeded Agent IR fixture.
-13. Relevant existing source under `packages/` and `apps/` for the area being changed.
-14. The most recent report under `docs/tasks/reports/` for the last completed task, for current
+9. `docs/architecture/decisions.md` — accepted ADRs; do not silently supersede one.
+10. `docs/architecture/phase-1-system-design.md` — the Phase 1 system architecture.
+11. `docs/testing/phase-1-test-strategy.md` — required test layers and coverage.
+12. `docs/sop/find-service-request.md` — the one Phase 1 business procedure.
+13. `fixtures/find-service-request.agent.yaml` — the seeded Agent IR fixture.
+14. Relevant existing source under `packages/` and `apps/` for the area being changed.
+15. The most recent report under `docs/tasks/reports/` for the last completed task, for current
     state and known limitations.
 
 ## Current state
@@ -469,6 +471,28 @@ Read the Task 16 report's limitations section first, then Task 15's, Task 14's, 
 `NOT_FOUND` missing from the error taxonomy; no server-side duplicate-dispatch suppression; no
 recovery for runs orphaned by a killed API process; no retention or orphan reconciliation; and
 database-level enforcement of immutability and append-only still deferred (ADR-014).
+
+### Phase 3 — Execution surfaces
+
+**Direction approved; no code written.** Phase 3 gives Orbit execution surfaces beyond the browser —
+a terminal (3270/5250) surface and an HTTP API surface — and the surface-neutral seam both need.
+Read `docs/tasks/phase-3-execution-surfaces.md` for the sub-phase sequence, settled decisions and
+review gates before starting any Phase 3 task.
+
+**Sub-phase 3.0 is next**: choose an independent open-source 3270 test target and a transport, and
+report. No production code. No real mainframe is available, so the terminal track will deliver a
+capability demo rather than a validated integration, and protocol correctness will rest entirely on
+that test peer being code Orbit did not write.
+
+**ADR-037 is *Proposed*, not accepted** — the only ADR in that state. It describes the per-surface
+permission section, addressing vocabulary and evidence set that sub-phase 3.1 will freeze, and it is
+recorded before the code because the shape lands inside immutable published Agent Versions, which
+ADR-005 and ADR-014 forbid migrating afterwards. It moves to *Accepted* when 3.1 lands, or it is
+rewritten.
+
+Database, Document/OCR, spreadsheet and inbound triggers are **parked**: designed for in ADR-037 so
+the contract has room for them, but no task is open for any of them. Desktop/RPA and RDP/Citrix are
+**declined**, with the reasoning recorded in the Phase 3 document.
 
 ## Historical task reading
 
