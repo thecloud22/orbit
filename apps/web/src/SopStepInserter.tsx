@@ -1,6 +1,13 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 
-import { EDITABLE_STEP_KINDS, fieldsForStepKind, pruneEmptyFields } from './sop-review-view-model';
+import { listApiSystems } from './api-client';
+
+import {
+  EDITABLE_STEP_KINDS,
+  fieldsForStepKind,
+  pruneEmptyFields,
+  stepKindLabel,
+} from './sop-review-view-model';
 import { StepField } from './SopStepEditor';
 
 export interface SopStepInserterProps {
@@ -38,9 +45,21 @@ export interface SopStepInserterProps {
  */
 export function SopStepInserter({ index, isSaving, onInsert, onCancel }: SopStepInserterProps) {
   const [kind, setKind] = useState<string>(EDITABLE_STEP_KINDS[0] ?? 'navigate');
+  const [apiSystems, setApiSystems] = useState<readonly string[]>([]);
+
+  // Loaded once, so the "Which system" field can offer what Admin registered
+  // rather than asking a person to remember a catalog id. A failure is silent:
+  // the field falls back to free text, which is what it was before.
+  useEffect(() => {
+    listApiSystems()
+      .then((result) => {
+        setApiSystems(result.systems.map((system) => system.catalogId));
+      })
+      .catch(() => undefined);
+  }, []);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [note, setNote] = useState('');
-  const specs = fieldsForStepKind(kind);
+  const specs = fieldsForStepKind(kind, { apiSystems });
 
   function set(name: string, value: unknown) {
     setValues((current) => ({ ...current, [name]: value }));
@@ -83,7 +102,7 @@ export function SopStepInserter({ index, isSaving, onInsert, onCancel }: SopStep
         >
           {EDITABLE_STEP_KINDS.map((option) => (
             <option key={option} value={option}>
-              {option}
+              {stepKindLabel(option)}
             </option>
           ))}
         </select>
@@ -115,8 +134,11 @@ export function SopStepInserter({ index, isSaving, onInsert, onCancel }: SopStep
       </div>
 
       <p className="mt-3 text-xs text-slate-500">
-        A step added here has not been shown on a real page yet, so it will need binding before this
-        workflow can be published.
+        {kind === 'call'
+          ? apiSystems.length === 0
+            ? 'No API systems are registered yet. Register one in Admin, then this field becomes a picker.'
+            : 'This step still needs mapping to an operation before the workflow can be published.'
+          : 'A step added here has not been shown on a real page yet, so it will need binding before this workflow can be published.'}
       </p>
 
       <div className="mt-3 flex gap-2">

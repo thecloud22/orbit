@@ -6,8 +6,9 @@ import { SOP_STEP_KINDS } from '@orbit/sop-graph';
 
 import { ApiRequestError } from './api-client';
 import {
-  describeReviewFailure,
   EDITABLE_STEP_KINDS,
+  STEP_KIND_LABELS,
+  describeReviewFailure,
   fieldsForStepKind,
   pruneEmptyFields,
   publishBlockedReason,
@@ -15,6 +16,7 @@ import {
   reviewPhase,
   reviseConfirmation,
   stateLabel,
+  stepKindLabel,
 } from './sop-review-view-model';
 
 const REVIEW: SopReviewView = {
@@ -366,5 +368,21 @@ describe('reviseConfirmation', () => {
     expect(reviseConfirmation({ ...REVIEW, editable: false }).points[2]).toBe(
       'Nothing that is running changes until you publish again.',
     );
+  });
+});
+
+describe('step kind labels', () => {
+  it('names every kind a person can choose, in their words', () => {
+    // The picker rendered the internal identifier until `call` arrived and said
+    // nothing about an API. A missing label would silently fall back to the
+    // identifier again, which is the failure this catches.
+    const unlabelled = EDITABLE_STEP_KINDS.filter((kind) => STEP_KIND_LABELS[kind] === undefined);
+
+    expect(unlabelled).toEqual([]);
+    expect(stepKindLabel('call')).toBe('Call an API');
+  });
+
+  it('falls back to the identifier rather than to nothing', () => {
+    expect(stepKindLabel('not_a_kind')).toBe('not_a_kind');
   });
 });

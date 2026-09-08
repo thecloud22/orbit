@@ -347,11 +347,68 @@ const FIELDS_BY_KIND: Readonly<Record<string, readonly StepFieldSpec[]>> = {
   ],
 };
 
-export function fieldsForStepKind(kind: string): readonly StepFieldSpec[] {
-  return FIELDS_BY_KIND[kind] ?? [];
+export interface StepFieldContext {
+  /**
+   * Catalog ids of the API systems registered in Admin.
+   *
+   * Passed in rather than fetched here: this module is pure view-model logic and
+   * the component that renders the form is what already knows how to load.
+   */
+  readonly apiSystems?: readonly string[];
+}
+
+export function fieldsForStepKind(
+  kind: string,
+  context: StepFieldContext = {},
+): readonly StepFieldSpec[] {
+  const specs = FIELDS_BY_KIND[kind] ?? [];
+
+  if (kind !== 'call' || (context.apiSystems ?? []).length === 0) {
+    // With nothing registered the field stays free text rather than becoming an
+    // empty picker. An empty select tells a person their only option is
+    // nothing; a text box at least lets them record the intent and register the
+    // system afterwards.
+    return specs;
+  }
+
+  return specs.map((spec) =>
+    spec.name === 'systemHint'
+      ? {
+          kind: 'select' as const,
+          name: 'systemHint',
+          label: 'Which system',
+          options: [...(context.apiSystems ?? [])],
+        }
+      : spec,
+  );
 }
 
 export const EDITABLE_STEP_KINDS = Object.keys(FIELDS_BY_KIND);
+
+/**
+ * What each step kind is called, for a person choosing one.
+ *
+ * The picker used to render the internal identifier. That was survivable while
+ * every kind was a browser verb -- `navigate`, `fill` and `click` happen to read
+ * as English -- and stopped being survivable with `call`, which says nothing
+ * about an API to anyone who has not read the schema. A vocabulary a business
+ * user picks from should be in their words, not the type system's.
+ */
+export const STEP_KIND_LABELS: Readonly<Record<string, string>> = {
+  navigate: 'Go to a page',
+  fill: 'Type into a field',
+  click: 'Click something',
+  extract: 'Read values from the page',
+  call: 'Call an API',
+  decision: 'Branch on a condition',
+  outcome: 'Finish with an outcome',
+  manual_review: 'Hand off to a person',
+};
+
+/** The label for a kind, falling back to the identifier rather than to nothing. */
+export function stepKindLabel(kind: string): string {
+  return STEP_KIND_LABELS[kind] ?? kind;
+}
 
 /**
  * Drops empty optional values before the step is sent.
