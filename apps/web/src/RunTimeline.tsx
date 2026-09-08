@@ -9,6 +9,13 @@ import {
   type TimelineStep,
 } from './run-timeline-view-model';
 
+/** One muted colour per surface, so a mixed run is scannable without reading. */
+const SURFACE_CLASSES: Record<'browser' | 'terminal' | 'api', string> = {
+  browser: 'bg-sky-50 text-sky-700',
+  terminal: 'bg-emerald-50 text-emerald-700',
+  api: 'bg-violet-50 text-violet-700',
+};
+
 const STEP_STATUS_CLASSES: Record<string, string> = {
   pending: 'bg-slate-100 text-slate-600',
   running: 'bg-sky-100 text-sky-800',
@@ -48,6 +55,11 @@ export interface RunTimelineProps {
  */
 export function RunTimeline({ run }: RunTimelineProps) {
   const timeline = buildRunTimeline(run);
+  // A badge per step is only informative when there is more than one surface
+  // to distinguish. Derived here rather than passed in, so the timeline stays
+  // the thing that knows what it contains.
+  const spansSurfaces =
+    new Set(timeline.steps.map((entry) => entry.surface).filter((one) => one !== null)).size > 1;
 
   return (
     <div className="flex flex-col gap-4" data-testid="run-timeline">
@@ -86,6 +98,7 @@ export function RunTimeline({ run }: RunTimelineProps) {
               <StepEntry
                 entry={entry}
                 isLast={index === timeline.steps.length - 1}
+                showSurfaces={spansSurfaces}
                 key={entry.step.id}
               />
             ))}
@@ -147,8 +160,16 @@ export function RunTimeline({ run }: RunTimelineProps) {
  * exists to solve. Density is managed instead by keeping each step's summary to
  * one line and by never loading a screenshot until it is asked for.
  */
-function StepEntry({ entry, isLast }: { readonly entry: TimelineStep; readonly isLast: boolean }) {
-  const { step, events, evidence, branch, judged, durationLabel } = entry;
+function StepEntry({
+  entry,
+  isLast,
+  showSurfaces,
+}: {
+  readonly entry: TimelineStep;
+  readonly isLast: boolean;
+  readonly showSurfaces: boolean;
+}) {
+  const { step, surface, events, evidence, branch, judged, durationLabel } = entry;
   const details = stepDetails(step);
   const hasBody =
     branch !== null ||
@@ -174,6 +195,19 @@ function StepEntry({ entry, isLast }: { readonly entry: TimelineStep; readonly i
           <span className="text-xs text-slate-400">{step.sequence}</span>
           <span className="font-medium text-slate-900">{step.agentStepId}</span>
           <span className="text-xs text-slate-500">{humanizeStepType(step.stepType)}</span>
+          {/*
+            Shown only when a run actually spans surfaces. On a browser-only run
+            -- every agent published before Phase 3 -- a badge on every step
+            would be noise stating the one thing that never varies.
+          */}
+          {surface !== null && showSurfaces && (
+            <span
+              className={`rounded px-1.5 py-0.5 text-xs font-medium ${SURFACE_CLASSES[surface]}`}
+              data-testid={`step-surface-${step.agentStepId}`}
+            >
+              {surface}
+            </span>
+          )}
           {durationLabel !== null && (
             <span className="text-xs text-slate-400">{durationLabel}</span>
           )}

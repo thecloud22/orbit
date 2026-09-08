@@ -8,6 +8,7 @@ import {
   humanizeEventType,
   humanizeLocator,
   stepDetails,
+  surfaceOf,
 } from './run-timeline-view-model';
 
 function step(overrides: Partial<RunStepView> = {}): RunStepView {
@@ -321,5 +322,28 @@ describe('stepDetails', () => {
     expect(stepDetails(step({ output: { httpStatus: 200 } }))).toEqual([
       { key: 'httpStatus', label: 'Http status', value: '200' },
     ]);
+  });
+});
+
+describe('a run that spans more than one surface', () => {
+  it('names the surface each step ran on, and none for a terminator', () => {
+    expect(surfaceOf('browser.click')).toBe('browser');
+    expect(surfaceOf('terminal.press')).toBe('terminal');
+    expect(surfaceOf('api.request')).toBe('api');
+
+    // These touch no surface, so labelling one would be a claim that is not true.
+    expect(surfaceOf('complete')).toBeNull();
+    expect(surfaceOf('fail')).toBeNull();
+    expect(surfaceOf('model.decide')).toBeNull();
+  });
+
+  it('keeps a surface prefix on an event that is not the browser', () => {
+    // "typed" alone is ambiguous in a run that also fills browser fields.
+    expect(humanizeEventType('terminal.typed')).toBe('terminal typed');
+    expect(humanizeEventType('api.request.completed')).toBe('api request completed');
+
+    // Browser stays bare: it is the implicit surface for every agent published
+    // before Phase 3, and prefixing it would churn every existing run's reading.
+    expect(humanizeEventType('browser.fill.completed')).toBe('fill completed');
   });
 });

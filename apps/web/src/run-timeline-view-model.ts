@@ -18,8 +18,27 @@ import { describeEvidence, humanizeKey, type EvidenceItem } from './run-view-mod
  * are testable without a DOM.
  */
 
+/**
+ * Which surface a step ran on, for a run that spans more than one.
+ *
+ * `null` for `complete`, `fail` and `model.decide`, which touch no surface. A
+ * reader following a workflow that looks something up over an API, does the work
+ * on a green screen and writes the result back needs to see where each step
+ * happened; without it the timeline reads as one undifferentiated list and the
+ * expected-versus-observed view loses the context that explains the evidence
+ * under each step (ADR-031, ADR-037).
+ */
+export type StepSurface = 'browser' | 'terminal' | 'api';
+
+export function surfaceOf(stepType: string): StepSurface | null {
+  const prefix = stepType.split('.')[0];
+  return prefix === 'browser' || prefix === 'terminal' || prefix === 'api' ? prefix : null;
+}
+
 export interface TimelineStep {
   readonly step: RunStepView;
+  /** The surface this step ran on, or null for a step that touches none. */
+  readonly surface: StepSurface | null;
   readonly events: readonly RunEventView[];
   readonly evidence: readonly EvidenceItem[];
   /** Present only for a deterministic step that chose its own successor. */
@@ -43,8 +62,9 @@ export interface RunTimeline {
    */
   readonly runEvents: readonly RunEventView[];
   /**
-   * Evidence belonging to the run rather than to any step — in practice the
-   * Playwright trace, which covers the whole session.
+   * Evidence belonging to the run rather than to any step — a Playwright trace,
+   * a terminal's captured screens, an API exchange log. One entry per surface
+   * the run opened.
    *
    * Never dropped. Attaching it to an arbitrary step would misattribute it, and
    * omitting it would lose it, so it gets its own place.
@@ -182,6 +202,10 @@ export function formatDuration(startedAt: string | null, finishedAt: string | nu
  * the raw type is still available in the raw event stream for anyone debugging.
  */
 export function humanizeEventType(eventType: string): string {
+  // Only the browser prefix is dropped. A run that spans surfaces should say
+  // which one each line belongs to, and "typed" alone is ambiguous where
+  // "terminal typed" is not. Browser stays bare because it is the implicit
+  // surface for every agent published before Phase 3.
   const withoutPrefix = eventType.startsWith('browser.')
     ? eventType.slice('browser.'.length)
     : eventType;
@@ -314,6 +338,7 @@ export function buildRunTimeline(run: RunDetailView): RunTimeline {
     .map((step) => ({
       step,
       events: eventsByStep.get(step.id) ?? [],
+      surface: surfaceOf(step.stepType),
       evidence: describeEvidence(artifactsByStep.get(step.id) ?? []),
       branch: describeBranch(step),
       judged: describeJudgedDecision(step),
