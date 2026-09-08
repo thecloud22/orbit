@@ -479,10 +479,23 @@ a terminal (3270/5250) surface and an HTTP API surface — and the surface-neutr
 Read `docs/tasks/phase-3-execution-surfaces.md` for the sub-phase sequence, settled decisions and
 review gates before starting any Phase 3 task.
 
-**Sub-phase 3.0 is next**: choose an independent open-source 3270 test target and a transport, and
-report. No production code. No real mainframe is available, so the terminal track will deliver a
-capability demo rather than a validated integration, and protocol correctness will rest entirely on
-that test peer being code Orbit did not write.
+**Sub-phase 3.0 is complete.** See `docs/tasks/reports/TASK-P3-000-test-target-and-transport-report.md`.
+Its conclusion changed the terminal track's shape: **Orbit will not implement the 3270 protocol.**
+`@orbit/executor-x3270` will drive `b3270` — the JSON-speaking back end of Paul Mattes' x3270, v4.5ga6,
+BSD-3-Clause — as a subprocess, which is the same architectural shape as `@orbit/executor-playwright`
+driving Chromium, and is authorised by the same ADR-008 boundary. The npm TN3270E packages were all
+rejected on provenance and maintenance; one ships an unedited `YOUR_USERNAME` placeholder as its
+repository URL. Round trip verified in both directions against a byte-emitter host: field attributes,
+cursor, geometry, keyboard-lock state, typed input and AID keys.
+
+Two consequences worth carrying forward. Non-display is a 3270 **field attribute**, so terminal
+password redaction is protocol-derived rather than heuristic — strictly better than the browser
+recorder's known limitation — though a non-display field still transmits in clear, so evidence
+capture must redact from the attribute. And the test suite never needs a mainframe: golden captures
+and a byte-emitter host cover CI, with Hercules + TK5 reserved for an on-demand layer that
+regenerates the captures. MVS was **not** booted; that layer is designed, not proven.
+
+**Sub-phase 3.1 is next**, and it is the phase's one blocking review gate.
 
 **ADR-037 is *Proposed*, not accepted** — the only ADR in that state. It describes the per-surface
 permission section, addressing vocabulary and evidence set that sub-phase 3.1 will freeze, and it is
