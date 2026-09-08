@@ -13,7 +13,7 @@
  */
 
 export type View =
-  /** Creating a workflow — Guided path via AI, or Record your own. */
+  /** The landing page: what Orbit is, the two ways in, and what is going on. */
   | { readonly kind: 'home' }
   /** Triggering a published agent. `agentVersionId` highlights one, e.g. one just published. */
   | { readonly kind: 'agents'; readonly agentVersionId?: string }
@@ -21,6 +21,7 @@ export type View =
   | { readonly kind: 'runs' }
   /** One run's status, timeline and evidence, reopened by id. */
   | { readonly kind: 'run'; readonly runId: string }
+  /** Studio: everything drafted or recorded, on its way to becoming an agent. */
   | { readonly kind: 'documents' }
   /**
    * One workflow's review page. `bindingSessionId` is present while a browser
@@ -118,14 +119,26 @@ export interface NavLink {
   readonly current: boolean;
 }
 
+/**
+ * The four places, in the order the work moves through them: arrive, author,
+ * run, observe.
+ *
+ * "Studio", not "Workflows". "Agents vs Workflows" gave two names to what a
+ * reader experiences as one idea and left neither of them meaning *authoring* —
+ * a published agent came from a workflow, so which tab holds the thing you are
+ * about to edit was a coin toss. Studio is this product's own word for the
+ * authoring surface, opposite Watchtower as the observability one, and it names
+ * what the place is for instead of what it happens to list.
+ *
+ * The URL value stays `documents` (ADR-031). Review links were shared before
+ * this navigation existed; renaming a query parameter to agree with a label
+ * would break them and buy nothing, since nobody reads `?view=`.
+ */
 const NAV_ITEMS = [
   { kind: 'home', label: 'Home' },
+  { kind: 'documents', label: 'Studio' },
   { kind: 'agents', label: 'Agents' },
   { kind: 'runs', label: 'Runs' },
-  // "Workflows", not "Documents": the page itself has always called this list
-  // Workflows, and the nav label disagreeing with the page it opens is exactly
-  // the kind of small inconsistency that reads as unpolished.
-  { kind: 'documents', label: 'Workflows' },
 ] as const;
 
 /**

@@ -1,0 +1,7 @@
+-Add an How-To/Wiki/FAQ to the platform on how to use. We will keep refinining as we build. 
+- Add an Admin page. Decide that features need to come in this
+- Clean up some of the ADRs. Limit it to only what we implemented. 
+- Update the Product vision document
+- Update the Architecture document
+- Update the Readme file
+- Create an installation script. 

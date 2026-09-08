@@ -12,9 +12,15 @@ import { describe, expect, it } from 'vitest';
  * calling a model. The tempting way to arrange that is a branch in `index.ts`
  * selecting a fake when some variable is set — and that is precisely a live path
  * to a test double in a real deployment, gated by something someone could set by
- * accident. So there is no such branch: the shipped entry point constructs the
- * real provider unconditionally, and a separate test-only entry point under
- * `src/testing/` passes the fake to the same `startApi`.
+ * accident. So there is no such branch: the shipped entry point builds a *real*
+ * provider through `createSopProvider`, and a separate test-only entry point
+ * under `src/testing/` passes the fake to the same `startApi`.
+ *
+ * Sub-phase 2.11 added a choice between two real providers, Anthropic and
+ * Bedrock (ADR-031). That is not the branch this guard forbids: the hazard is a
+ * live path to a test double in a real deployment, not configuration selecting
+ * between two things that both call a real model. The assertions below are
+ * about reachability of the fake, and they are unchanged.
  *
  * This is the guard that proves it, and it is transitive rather than
  * file-local: a single import three modules deep would defeat a shallower
@@ -130,11 +136,13 @@ describe('the fake model provider stays out of the shipped API', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('has no provider switch in the shipped entry point', () => {
+  it('builds a real provider in the shipped entry point, and cannot build a fake one', () => {
     const contents = readFileSync(entry, 'utf8');
 
-    // The real provider, chosen unconditionally.
-    expect(contents).toContain('createAnthropicSopProvider');
+    // A real provider, built through the factory. Which real one — Anthropic or
+    // Bedrock — is configuration (ADR-031); the guard below is about the thing
+    // that is not configuration.
+    expect(contents).toContain('createSopProvider');
 
     // And nothing that could select otherwise. The fake is checked against the
     // parsed imports rather than the raw text on purpose: this file's own

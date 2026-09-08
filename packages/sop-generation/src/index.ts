@@ -10,7 +10,8 @@
  * artifact bytes with metadata is @orbit/artifact-service's.
  *
  * It legitimately reaches the network, but only in one direction and only from
- * one file: `anthropic-provider.ts` calls the configured model provider. Nothing
+ * the two provider modules — `anthropic-provider.ts` and `bedrock-provider.ts`,
+ * one of which a deployment selects through `createSopProvider`. Nothing
  * here ever fetches, navigates, probes, or resolves a URL that appears *inside*
  * a graph. Those remain untrusted draft references, exactly as they were in
  * sub-phase 2.1 (ADR-016), all the way through generation and persistence.
@@ -21,8 +22,11 @@
 export const PACKAGE_NAME = '@orbit/sop-generation' as const;
 
 export * from './anthropic-provider';
+export * from './bedrock-provider';
 export * from './budget';
 export * from './generate';
 export * from './prompt';
 export * from './proposal';
 export * from './provider';
+export * from './provider-factory';
+export * from './structured-response';

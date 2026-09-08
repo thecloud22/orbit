@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AgentVersionView, ModelUsageView, SopDraftView } from '@orbit/api/views';
 
 import { AgentsPage } from './AgentsPage';
-import { ApiErrorNotice } from './ApiErrorNotice';
 import {
   ApiRequestError,
   archiveAgent,
@@ -14,16 +13,10 @@ import {
   startRecording,
 } from './api-client';
 import { APP_INFO } from './app-info';
-import {
-  describeSopDraftFailure,
-  summarizeModelSpend,
-  type SopDraftFailure,
-} from './sop-draft-view-model';
-import { SopDraftForm } from './SopDraftForm';
-import { SopDraftPanel } from './SopDraftPanel';
+import { describeSopDraftFailure, type SopDraftFailure } from './sop-draft-view-model';
 import { DocumentsPage } from './DocumentsPage';
+import { HomePage } from './HomePage';
 import { RecordingSessionPage } from './RecordingSessionPage';
-import { RecordWorkflowForm } from './RecordWorkflowForm';
 import { Nav } from './Nav';
 import { searchForView, viewFromSearch, type View } from './navigation';
 import { RunPage } from './RunPage';
@@ -34,9 +27,15 @@ import { useRun } from './useRun';
 /**
  * Watchtower.
  *
- * Four places, not one: create a workflow, trigger an agent, watch one run,
- * and review what has been drafted or recorded. Everything rendered comes
- * from the API's view of durable server state.
+ * Four places, not one: Home (what Orbit is, the two ways in, and what is going
+ * on), Studio (everything drafted or recorded), Agents (what can be run), and
+ * Runs (what has been). Everything rendered comes from the API's view of
+ * durable server state.
+ *
+ * This component owns drafting and recording state rather than `HomePage`,
+ * because both outlive the home view: a draft survives navigating away and back,
+ * and starting a recording navigates to the recording page while the request is
+ * still in flight.
  */
 export function App() {
   const [agentVersions, setAgentVersions] = useState<readonly AgentVersionView[]>([]);
@@ -288,7 +287,7 @@ export function App() {
             onClick={() => navigate({ kind: 'documents' })}
             type="button"
           >
-            ← Back to workflows
+            ← Back to Studio
           </button>
           <SopReviewPage
             bindingSessionId={view.bindingSessionId ?? null}
@@ -342,77 +341,17 @@ export function App() {
           run={run.run}
         />
       ) : (
-        <>
-          {/*
-            The two ways to create a workflow, given equal top billing as
-            named peers rather than one being a fallback for the other: one is
-            faster when you can describe the task, the other is exact when you
-            would rather just do it once.
-          */}
-          <section className="flex flex-col gap-3">
-            <h2 className="text-base font-semibold text-slate-900">Create a workflow</h2>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <section
-                className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
-                data-testid="guided-path-card"
-              >
-                <h3 className="text-sm font-semibold text-slate-900">Guided path via AI</h3>
-                <p className="mt-1 text-xs text-slate-600">
-                  Describe the procedure in your own words. Orbit reads it and proposes a
-                  structured, reviewable workflow.
-                </p>
-                <div className="mt-3">
-                  <SopDraftForm
-                    isGenerating={isGeneratingDraft}
-                    onGenerate={(sourceText) => void generateDraft(sourceText)}
-                    spend={summarizeModelSpend(modelUsage)}
-                  />
-                </div>
-              </section>
-
-              <section
-                className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
-                data-testid="record-own-card"
-              >
-                <h3 className="text-sm font-semibold text-slate-900">Record your own</h3>
-                <p className="mt-1 text-xs text-slate-600">
-                  Do the task once in a real browser. Orbit writes down every step and the exact
-                  element it acted on.
-                </p>
-                <div className="mt-3">
-                  <RecordWorkflowForm
-                    isStarting={isStartingRecording}
-                    onStart={(title, startUrl) => void beginRecording(title, startUrl)}
-                  />
-                </div>
-              </section>
-            </div>
-
-            {recordingError !== null && (
-              <ApiErrorNotice
-                error={recordingError}
-                testId="recording-start-error"
-                title="The recording could not be started"
-              />
-            )}
-
-            {draft !== null && (
-              <div>
-                <button
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-                  data-testid="open-draft-review"
-                  onClick={() => navigate({ kind: 'review', documentId: draft.documentId })}
-                  type="button"
-                >
-                  Review and edit this draft
-                </button>
-              </div>
-            )}
-
-            <SopDraftPanel draft={draft} failure={draftFailure} />
-          </section>
-        </>
+        <HomePage
+          draft={draft}
+          draftFailure={draftFailure}
+          isGeneratingDraft={isGeneratingDraft}
+          isStartingRecording={isStartingRecording}
+          modelUsage={modelUsage}
+          onGenerate={(sourceText) => void generateDraft(sourceText)}
+          onNavigate={navigate}
+          onStartRecording={(title, startUrl) => void beginRecording(title, startUrl)}
+          recordingError={recordingError}
+        />
       )}
     </Shell>
   );

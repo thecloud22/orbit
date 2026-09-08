@@ -2,7 +2,6 @@ import type { RunDetailView } from '@orbit/api/views';
 
 import { ApiErrorNotice } from './ApiErrorNotice';
 import type { ApiRequestError } from './api-client';
-import { EvidenceList } from './EvidenceList';
 import { RunStatusPanel } from './RunStatusPanel';
 import { RunTimeline } from './RunTimeline';
 
@@ -22,6 +21,11 @@ export interface RunPageProps {
  * from, with the result appended underneath. A run is the thing being
  * inspected here — status, outcome, steps, events, evidence — and it gets a
  * page of its own rather than sharing one with the button that created it.
+ *
+ * Below the status panel there is now one timeline rather than three parallel
+ * lists. Evidence is no longer a section of its own: a screenshot is rendered
+ * under the step that captured it, which is the question a reader actually has
+ * when they look at one (ADR-031). `RunTimeline` owns that join.
  */
 export function RunPage({
   run,
@@ -52,7 +56,6 @@ export function RunPage({
             run={run}
           />
           <RunTimeline run={run} />
-          <EvidenceList run={run} />
         </>
       )}
 

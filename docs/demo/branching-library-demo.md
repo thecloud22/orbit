@@ -82,6 +82,49 @@ step. The panel walks the branches one at a time — "Branch 1 of 2: the title i
 borrow" — and each capture is held until every branch has one. Only then is a single binding written.
 Abandoning a half-demonstrated decision leaves nothing behind.
 
+### Draft it with AI instead
+
+The fixture above is hand-written, which is the right way to *prove* branching but not how a person
+would arrive at this workflow. The drafting flow reaches the same shape from a description: paste the
+prompt below into **Describe it in your own words** on Home.
+
+It is written the way somebody who actually does this job would write it — no step numbers, no
+mention of selectors, decisions stated as the conditions a person would check — because that is the
+input the drafting flow is built for, and a prompt written in Orbit's vocabulary would prove nothing.
+
+```text
+When someone asks for a book, I look it up in our catalog by its ISBN and check whether we
+have a copy on the shelf.
+
+If a copy is available, I borrow it out to them: I put in their member ID, press Borrow, and
+then read back the confirmation so I know which copy went out and when it is due. That one
+ends as borrowed.
+
+If every copy is already on loan, I can't lend it, so instead I put them in the queue: same
+thing, their member ID, but I press Hold, and then read back their place in the queue and
+roughly when it should come free. That one ends as held.
+
+Either way I need their member ID up front, and it's the same ID whichever way it goes.
+```
+
+Two things to expect, and neither is a fault:
+
+- **The draft is not runnable yet.** It has the decision and both branches, but no step has been
+  shown to Orbit against a real page — a graph never contains a selector. Every bindable step,
+  including the decision (branch by branch), needs demonstrating on the review page before the
+  workflow can be published. That is the system working, not a gap: nothing reaches a running agent
+  until a person has confirmed it against the page it will act on.
+- **The outcome names are the workflow's own.** Since **ADR-030** a business outcome is a declared
+  identifier rather than one of two names inherited from the Phase 1 demo, so a draft that says
+  "ends as borrowed" and "ends as held" gets `borrowed` and `held`. There is nothing to map them onto
+  and no question asked at publish time. If the draft names them differently, that is what the runs
+  will record — rename them on the review page if you want the fixture's exact words.
+
+Review the result against *The workflow* at the top of this page. A drafted graph will not be
+identical to the fixture — step ids and wording differ — and it does not need to be; what matters is
+that it has one decision with two branches, a member ID input shared by both, and a distinct outcome
+on each.
+
 ## Limitations
 
 - ~~**The business outcome vocabulary is still Phase 1's.**~~ **Fixed in sub-phase 2.10 (ADR-030).**

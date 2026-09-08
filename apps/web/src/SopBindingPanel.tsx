@@ -65,7 +65,7 @@ export function SopBindingPanel({
       data-testid="sop-bindings"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold text-slate-900">Mapping to a real page</h3>
+        <h3 className="text-sm font-semibold text-slate-900">What each step does on the page</h3>
         {isFullyApproved(bindings) && (
           <span
             className="rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-900"
@@ -82,11 +82,16 @@ export function SopBindingPanel({
         </p>
       )}
 
+      <p className="mt-2 text-sm text-slate-700" data-testid="sop-bindings-lead">
+        The workflow above says <em>what</em> to do. This is <em>where</em> — someone showed Orbit,
+        in a real browser, the exact box to type in and the exact button to press for each step.
+        Until a step has been shown, Orbit does not know how to perform it and will not run it.
+      </p>
+
       <p className="mt-1 text-xs text-slate-500">
-        Bind a step here, or from a terminal with{' '}
-        <span className="font-mono">pnpm record:binding</span>. Either way, a person demonstrates
-        the step in a real browser. Approving or turning down someone else's binding is not done
-        from here.
+        Show a step here, or from a terminal with{' '}
+        <span className="font-mono">pnpm record:binding</span>. Either way a person does it once,
+        for real. Approving or turning down what someone else recorded is not done from here.
       </p>
 
       {startUrl !== null && (

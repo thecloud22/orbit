@@ -77,14 +77,18 @@ describe('the SOP generation network boundary', () => {
     expect(offences).toEqual([]);
   });
 
-  it('reaches the model provider from exactly one file', () => {
+  it('reaches the model provider from the provider modules and nowhere else', () => {
     // The point of this assertion is containment, not tidiness: if the provider
     // client spreads across the package, "which code can talk to the network?"
-    // stops having a one-word answer.
+    // stops having a short answer. It is two files rather than one now, and the
+    // list is exhaustive on purpose — a third provider must be added here
+    // deliberately, and the shared response reader stays on the near side of
+    // the boundary because it imports no client at all.
     const importers = files.filter((file) => readFileSync(file, 'utf8').includes('@langchain/'));
 
-    expect(importers.map((file) => file.replace(SOURCE_ROOT, ''))).toEqual([
+    expect(importers.map((file) => file.replace(SOURCE_ROOT, '')).sort()).toEqual([
       'anthropic-provider.ts',
+      'bedrock-provider.ts',
     ]);
   });
 

@@ -101,12 +101,14 @@ describe('searchForView', () => {
 });
 
 describe('navLinks', () => {
-  it('offers Home, Agents, Runs and Workflows', () => {
+  it('offers Home, Studio, Agents and Runs, in that order', () => {
+    // Authoring sits between arriving and running, because that is the order
+    // the work actually moves through them.
     expect(navLinks({ kind: 'home' }).map((link) => link.label)).toEqual([
       'Home',
+      'Studio',
       'Agents',
       'Runs',
-      'Workflows',
     ]);
   });
 
@@ -126,15 +128,15 @@ describe('navLinks', () => {
 
     // A recording is something you are doing, not a place in the app.
     expect(links.find((link) => link.label === 'Home')?.current).toBe(true);
-    expect(links.find((link) => link.label === 'Workflows')?.current).toBe(false);
+    expect(links.find((link) => link.label === 'Studio')?.current).toBe(false);
   });
 
-  it('keeps Workflows current while reading a document', () => {
+  it('keeps Studio current while reading a document', () => {
     // A reader who has drilled into one document should still see where they
     // are, rather than the bar going blank.
     const links = navLinks({ kind: 'review', documentId: 'sopdoc_123' });
 
-    expect(links.find((link) => link.label === 'Workflows')?.current).toBe(true);
+    expect(links.find((link) => link.label === 'Studio')?.current).toBe(true);
     expect(links.find((link) => link.label === 'Home')?.current).toBe(false);
   });
 
@@ -150,5 +152,12 @@ describe('navLinks', () => {
       expect(link.href).not.toBe('');
     }
     expect(navLinks({ kind: 'home' })[0]?.href).toBe('/');
+  });
+
+  it('keeps Studio at the URL its shared links already use', () => {
+    // The label changed; the address deliberately did not (ADR-031).
+    expect(navLinks({ kind: 'home' }).find((link) => link.label === 'Studio')?.href).toBe(
+      '?view=documents',
+    );
   });
 });

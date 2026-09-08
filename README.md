@@ -369,15 +369,60 @@ provider that could not be reached. The API reports them as `201`, `422` with th
 issues in `details`, and `500`.
 
 This task legitimately calls the network — to the configured model provider, from
-one file, `packages/sop-generation/src/anthropic-provider.ts`. It never contacts a
+two files and no others, `packages/sop-generation/src/anthropic-provider.ts` and
+`bedrock-provider.ts`. It never contacts a
 URL that appears *inside* a graph: `urlHint` and `systemHint` stay untrusted draft
 references, and a test replaces global `fetch` with a spy to prove it.
 
 ### Configuration
 
-Set `ANTHROPIC_API_KEY` in `.env` (see `.env.example`). Without it the API still
-starts and every other route works; the draft route reports that generation is
-unavailable. `ORBIT_LLM_MODEL` overrides the default, `claude-sonnet-5`.
+Nothing here is required to boot. With no model configured the API still starts
+and every other route works; `POST /v1/sop-drafts` reports that generation is
+unavailable and names the variable that is missing. The one exception is an
+unrecognised `ORBIT_LLM_PROVIDER`, which stops the API deliberately — see below.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ORBIT_LLM_PROVIDER` | `anthropic` | `anthropic` or `bedrock`. Anything else **stops the API from starting**. |
+| `ORBIT_LLM_MODEL` | `claude-haiku-4-5`, or `anthropic.claude-haiku-4-5` on Bedrock | The model, for whichever provider is selected. |
+| `ANTHROPIC_API_KEY` | — | Required by the `anthropic` provider. A real credential: keep it in `.env`, which is gitignored. |
+| `ORBIT_BEDROCK_REGION`, else `AWS_REGION`, else `AWS_DEFAULT_REGION` | — | Required by the `bedrock` provider. Bedrock is region-scoped. |
+
+**The default is the cheapest current Claude model.** Drafting is bounded
+structured extraction behind a strict schema and a repair loop: what makes the
+output trustworthy is `parseSopGraphDocument`, not model size. A larger model is
+a purchase a deployment can make with one variable, not a requirement.
+
+A mistyped provider name is refused rather than defaulted, on the same reasoning
+as a mistyped budget ceiling: a deployment that wrote `bedrok` meant Bedrock, and
+silently serving it Anthropic — over the public internet, quite possibly from an
+account that intended never to leave itself — is not a recovery.
+
+#### Amazon Bedrock
+
+`ORBIT_LLM_PROVIDER=bedrock` reaches the same Claude models through
+`ChatBedrockConverse`. It satisfies the identical `LLMProvider` contract,
+including the token-usage reporting the spend ledger depends on, so all three
+budget scopes and the cost estimate behave the same whichever provider is
+active. Nothing downstream of `LLMProvider` knows which one it got.
+
+**Orbit holds no AWS credentials and offers no variable for one.** Credentials
+resolve through the AWS SDK's default credential provider chain — environment
+variables, a shared profile, SSO, an instance role, IRSA — which is the mechanism
+everything else in an AWS account already uses. Inventing a scheme beside it
+would be a second place a secret could be typed.
+
+Bedrock model ids carry an `anthropic.` prefix, and a cross-region inference
+profile carries a geography prefix on top of it (`us.anthropic.claude-haiku-4-5`).
+Rates are keyed by that id, so a profile id needs its own
+`ORBIT_LLM_RATES_USD_PER_MTOK` entry or it falls to the conservative fallback
+rate.
+
+> **Bedrock is wired but untested here.** There are no AWS credentials in this
+> repository's environment. Its correctness is *structural* — the contract, the
+> wiring, the failure path and the descriptor are covered by tests against a
+> stubbed model — and it has **not** been demonstrated against real Bedrock.
+> Treat the first real call as the test.
 
 ### Model spend limits (Phase 2.8)
 
@@ -403,7 +448,9 @@ Generate button reflects it, but the **server** is the gate: an over-budget
 Generate is refused with 429 whether or not any UI rendered.
 
 Cost is an **estimate**, computed from rates in `ORBIT_LLM_RATES_USD_PER_MTOK`
-(with built-in defaults). Nothing fetches a price list, and every surface that
+(with built-in defaults, including the Bedrock ids for the same models at the
+first-party rates — an approximation, since Bedrock is partner-operated and
+prices separately). Nothing fetches a price list, and every surface that
 shows the figure says it is approximate. See **ADR-029**.
 
 ### The deterministic fake provider

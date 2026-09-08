@@ -2,7 +2,7 @@ import { ChatAnthropic } from '@langchain/anthropic';
 
 import { sopGraphProposalSchema, type SopGraphProposal } from './proposal';
 import { buildGenerationMessage, SOP_GENERATION_SYSTEM_PROMPT } from './prompt';
-import type { ModelCallUsage } from './budget';
+import { unvalidatedArguments, usageOf } from './structured-response';
 import {
   SopProviderError,
   type LLMProvider,
@@ -13,10 +13,11 @@ import {
 /**
  * The Anthropic-backed provider.
  *
- * This is the only module in the package that imports LangChain, and a test
- * asserts it stays that way. Everything else — the schema, the prompt, the
- * pipeline, the repair policy — is ordinary code that runs with no network and
- * no model, which is what makes the rest of this package testable at all.
+ * This and `bedrock-provider.ts` are the only modules in the package that
+ * import LangChain, and a test asserts it stays that way. Everything else — the
+ * schema, the prompt, the pipeline, the repair policy — is ordinary code that
+ * runs with no network and no model, which is what makes the rest of this
+ * package testable at all.
  *
  * LangChain is used at the model layer only: a chat model, a schema bound to
  * it, one call. No agent, no chain, no memory, no retrieval, no graph. A single
@@ -27,12 +28,19 @@ import {
 export const ANTHROPIC_PROVIDER_NAME = 'anthropic';
 
 /**
- * Sonnet by default.
+ * The cheapest current Claude model, by default.
  *
  * This is bounded structured extraction behind a strict schema and a repair
- * loop: what makes the output trustworthy is the validator, not model size.
+ * loop: what makes the output trustworthy is the validator, not model size. The
+ * default was Sonnet, which was paying for judgement this task does not ask for
+ * — every proposal is parsed by `parseSopGraphDocument` before it is persisted,
+ * and a weaker model that slips is corrected by the same repair pass that
+ * already exists rather than trusted.
+ *
+ * Overridable per deployment; a deployment that finds Haiku's first attempt
+ * needs repairing too often can buy its way out with one variable.
  */
-export const DEFAULT_SOP_GENERATION_MODEL = 'claude-sonnet-5';
+export const DEFAULT_SOP_GENERATION_MODEL = 'claude-haiku-4-5';
 
 export interface AnthropicSopProviderOptions {
   readonly apiKey: string;
@@ -40,70 +48,6 @@ export interface AnthropicSopProviderOptions {
   /** Deterministic by default; this is extraction, not composition. */
   readonly temperature?: number;
   readonly maxRetries?: number;
-}
-
-/**
- * Pulls the model's own output back out of the response.
- *
- * `includeRaw` is set so LangChain returns the tool call rather than throwing
- * when the arguments do not satisfy the bound schema. That matters: an invalid
- * proposal has to arrive at the validator as data, so the repair loop can tell
- * the model exactly what was wrong. If it surfaced as a thrown provider error
- * instead, every schema slip would look like an outage and no repair would ever
- * be attempted.
- */
-function unvalidatedArguments(response: {
-  readonly raw: unknown;
-  readonly parsed: SopGraphProposal;
-}): unknown {
-  const raw = response.raw;
-
-  if (typeof raw === 'object' && raw !== null && 'tool_calls' in raw) {
-    const toolCalls = (raw as { readonly tool_calls?: unknown }).tool_calls;
-
-    if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-      const first: unknown = toolCalls[0];
-
-      if (typeof first === 'object' && first !== null && 'args' in first) {
-        return (first as { readonly args: unknown }).args;
-      }
-    }
-  }
-
-  // No tool call to read: fall back to whatever LangChain parsed, which may be
-  // undefined when the model answered in prose. The validator decides.
-  return response.parsed;
-}
-
-/**
- * The token counts the provider reported, or null when it reported none.
- *
- * Read off the raw `AIMessage`, which is available only because `includeRaw` is
- * already set for the repair loop's sake. Read defensively — the shape is
- * LangChain's rather than ours — and a call whose usage cannot be read is
- * recorded as unknown rather than as zero: a budget that silently treats an
- * unreadable call as free is a budget with a hole in it, and the pipeline
- * charges an assumed cost for one instead.
- */
-function usageOf(raw: unknown): ModelCallUsage | null {
-  if (typeof raw !== 'object' || raw === null || !('usage_metadata' in raw)) {
-    return null;
-  }
-
-  const metadata = (raw as { readonly usage_metadata?: unknown }).usage_metadata;
-
-  if (typeof metadata !== 'object' || metadata === null) {
-    return null;
-  }
-
-  const input = (metadata as { readonly input_tokens?: unknown }).input_tokens;
-  const output = (metadata as { readonly output_tokens?: unknown }).output_tokens;
-
-  if (typeof input !== 'number' || typeof output !== 'number') {
-    return null;
-  }
-
-  return { inputTokens: input, outputTokens: output };
 }
 
 export function createAnthropicSopProvider(options: AnthropicSopProviderOptions): LLMProvider {

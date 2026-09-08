@@ -799,7 +799,16 @@ describe('Watchtower end to end', () => {
       expect(buttons).not.toContain('Approve');
       expect(buttons).not.toContain('Reject');
       expect((await panel.textContent()) ?? '').toContain(
-        "Approving or turning down someone else's binding is not done from here",
+        'Approving or turning down what someone else recorded is not done from here',
+      );
+
+      // The heading and the lead explain the panel without the word "binding",
+      // which is the point of ADR-031's rename: three separate people asked what
+      // "Mapping to a real page" meant.
+      const text = (await panel.textContent()) ?? '';
+      expect(text).toContain('What each step does on the page');
+      expect((await page.getByTestId('sop-bindings-lead').textContent()) ?? '').not.toContain(
+        'binding',
       );
 
       // A manual_review step routes to a person; there is nothing to bind.
@@ -896,13 +905,13 @@ describe('Watchtower end to end', () => {
         .poll(() => page.getByTestId('watchtower-nav').count(), { timeout: 20_000 })
         .toBe(1);
       expect(await page.getByTestId('nav-home').getAttribute('aria-current')).toBe('page');
-      expect(await page.getByTestId('nav-workflows').getAttribute('aria-current')).toBeNull();
+      expect(await page.getByTestId('nav-studio').getAttribute('aria-current')).toBeNull();
 
-      await page.getByTestId('nav-workflows').click();
+      await page.getByTestId('nav-studio').click();
       await expect
         .poll(() => page.getByTestId('documents-page').count(), { timeout: 20_000 })
         .toBe(1);
-      expect(await page.getByTestId('nav-workflows').getAttribute('aria-current')).toBe('page');
+      expect(await page.getByTestId('nav-studio').getAttribute('aria-current')).toBe('page');
 
       await page.close();
     });
@@ -942,7 +951,7 @@ describe('Watchtower end to end', () => {
 
       // Anchors rather than buttons: middle-click and copy-link must keep
       // working, which a button silently breaks.
-      expect(await page.getByTestId('nav-workflows').getAttribute('href')).toBe('?view=documents');
+      expect(await page.getByTestId('nav-studio').getAttribute('href')).toBe('?view=documents');
       expect(await page.getByTestId('nav-home').getAttribute('href')).toBe('/');
 
       await page.close();

@@ -35,8 +35,8 @@ silently.
 checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
-**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5, 2.6, 2.7, 2.8 and
-2.10** are complete.
+**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5, 2.6, 2.7, 2.8, 2.10 and
+2.11** are complete.
 `@orbit/sop-graph` provides the non-executable graph contract and its validation;
 `@orbit/sop-generation` turns free text into a proposed graph; `@orbit/sop-service` persists drafts
 and drives review; `@orbit/execution-mapping` defines the Execution Binding and the runtime verifies
@@ -200,16 +200,62 @@ Inserting in front of the entry step moves `entryStepId`, or the new step would 
 demonstrates it — that is the system working, not a gap.** Deleting a step is deliberately not
 implemented (**ADR-030**).
 
+**Sub-phase 2.11 is complete: the app says what it is, a run reads as one thing, and the model is
+configurable.**
+
+**The authoring tab is Studio.** Home · Studio · Agents · Runs, in the order the work moves through
+them. "Agents vs Workflows" gave two names to one idea and left neither meaning *authoring*; Studio
+is this product's own word for that surface, opposite Watchtower as the observability one. The URL
+value stays `?view=documents` — review links were shared before this navigation existed, and renaming
+a query parameter to agree with a label breaks them for nothing (**ADR-031**).
+
+**A run is one timeline, not three lists.** `RunPage` rendered Steps, Events and Evidence side by
+side and left the reader to join them by timestamp. The join was never missing from the data:
+`RunEventView.runStepId` and `ArtifactView.runStepId` both name their step. Each step now carries its
+own events and its own evidence inline; run-level events (the four with a null `runStepId`) keep
+their own group; the trace gets its own place; and a `browser.expect_one_of` step reports "took the
+*request not found* branch, and continued at `complete_not_found`" rather than an array index. The
+raw event stream is kept verbatim in a collapsed section, because the woven view is a reading aid and
+the stream is the record — an event naming a step outside the run's step list appears only there.
+`run-timeline-view-model.ts` holds the join as pure functions; `EvidenceList.tsx` no longer exports a
+page-level list, only the group and row the timeline places under each step.
+
+**Home is a landing page.** A hero stating what Orbit is, the two ways in as named peers, and
+at-a-glance state — published agents, recent runs, what is waiting in Studio — each linking into the
+tab that owns it. Read from three endpoints that already existed; none was added. A genuinely fresh
+deployment (all three empty, not just one) gets one instruction instead of three empty boxes.
+
+**The binding panel is headed "What each step does on the page"**, with a lead that explains it
+without the word *binding*. The old heading, "Mapping to a real page", had to be explained three
+times, and at that point the label is the defect.
+
+**The model provider is a seam, and the default is the cheapest current Claude model.**
+`createSopProvider` selects between `anthropic` (default) and `bedrock` from configuration;
+`ORBIT_LLM_PROVIDER` chooses, `ORBIT_LLM_MODEL` overrides the model, and the default is
+`claude-haiku-4-5` — drafting is bounded structured extraction behind a strict schema and a repair
+loop, so the validator is what makes the output trustworthy, not model size. The Bedrock provider
+satisfies the identical `LLMProvider` contract including Task 8's token-usage reporting, so the spend
+ledger and all three budget scopes behave the same either way, and the rate table gained the
+`anthropic.*` ids so a Bedrock call is not silently costed at the fallback rate. Credentials come from
+the AWS default provider chain — Orbit holds none and offers no variable for one. A missing key or
+region still fails on the one route that needs a model rather than at boot; a *mistyped provider
+name* is the one thing that stops the API, deliberately. **Bedrock is untested against real AWS:
+there are no credentials in this environment, so its correctness is structural, not demonstrated.**
+
 **The branching demo** is `docs/demo/branching-library-demo.md`: search the library catalog, then
 borrow the title or place a hold on it depending on what the page shows. Both branches are driven in
 a real browser against the real library portal (port 3020) by
 `apps/browser-worker/src/library-borrow-or-hold.runtime.test.ts`. It is deliberately not seeded into
 `orbit_dev`.
 
+It now also carries a **"Draft it with AI instead"** section: a ready-to-paste prompt, written in the
+register a real person would use, that produces the borrow-or-hold workflow including its decision
+step. The draft still needs its steps demonstrated before it can be published, and its outcomes are
+its own words (ADR-030).
+
 Known, and recorded rather than left to be discovered: a decision's fingerprints are **not**
 re-verified at run time, because `expect_one_of` resolves by visibility and does not call the drift
-check; and Agent IR still declares only Phase 1's two business outcomes, so the demo maps
-`borrowed`/`held` onto them.
+check.
 
 ### Where the pieces live
 

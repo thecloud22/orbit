@@ -87,6 +87,27 @@ export const DEFAULT_MODEL_RATES: ModelRates = {
   'claude-sonnet-5': { inputPerMillionUsd: 3, outputPerMillionUsd: 15 },
   'claude-opus-5': { inputPerMillionUsd: 15, outputPerMillionUsd: 75 },
   'claude-haiku-4-5': { inputPerMillionUsd: 1, outputPerMillionUsd: 5 },
+
+  /**
+   * The same models under their Bedrock ids.
+   *
+   * A rate table is keyed by `descriptor.model`, and Bedrock reports a
+   * different string for the same model — so without these rows every Bedrock
+   * call would silently fall to `FALLBACK_MODEL_RATE` and a deployment would
+   * read one estimate before switching provider and a different one after,
+   * having changed nothing about what it spends.
+   *
+   * The numbers are the first-party Anthropic rates, which is an approximation
+   * and is stated as one: Bedrock is partner-operated and prices separately.
+   * That makes these a better estimate than the fallback and a worse one than
+   * an invoice — which is what every surface showing them already says. A
+   * deployment that knows its real Bedrock rates should set
+   * ORBIT_LLM_RATES_USD_PER_MTOK, and a cross-region inference profile
+   * (`us.anthropic.…`) needs its own entry, because the id is the key.
+   */
+  'anthropic.claude-haiku-4-5': { inputPerMillionUsd: 1, outputPerMillionUsd: 5 },
+  'anthropic.claude-sonnet-5': { inputPerMillionUsd: 3, outputPerMillionUsd: 15 },
+  'anthropic.claude-opus-5': { inputPerMillionUsd: 15, outputPerMillionUsd: 75 },
 };
 
 export const MODEL_RATES_ENV_VAR = 'ORBIT_LLM_RATES_USD_PER_MTOK';

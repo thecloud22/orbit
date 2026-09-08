@@ -81,7 +81,13 @@ export function DocumentsPage({ onOpen }: DocumentsPageProps) {
 
   return (
     <section className="flex flex-col gap-3" data-testid="documents-page">
-      <h2 className="text-sm font-semibold text-slate-900">Workflows</h2>
+      <div>
+        <h2 className="text-base font-semibold text-slate-900">Studio</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Every workflow you have drafted or recorded, and how far each one has got towards becoming
+          an agent you can run.
+        </p>
+      </div>
 
       {rows.length === 0 ? (
         <p

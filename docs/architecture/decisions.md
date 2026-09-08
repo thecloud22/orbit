@@ -1232,3 +1232,54 @@ The grammar is `^[a-z][a-z0-9_]{0,63}$` — the same shape as the SOP Graph's ow
 | Validate only the inserted step | An insert can strand the step it displaced, read a value produced after it, or leave a path that never reaches an outcome — none of which is visible from the step alone |
 | Add delete alongside insert | Deleting can strand a branch that targets the deleted step. Handling that honestly is a separate decision, and a half-answer would be worse than the current absence |
 | Make the inserted step publishable without a binding | It would let a step nothing has confirmed against a real page reach a running agent, which is the line ADR-025 and ADR-027 draw |
+
+## ADR-031: Name the authoring surface Studio, and read a run as one timeline
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+Two information-architecture decisions, both prompted by watching somebody use the product, and both recorded together because they share a premise: Watchtower already held the information, and was arranging it in a way that made the reader do work the system had already done.
+
+**"Agents vs Workflows" gave two names to one idea.** The tabs were Home, Agents, Runs, Workflows. A published agent came from a workflow; a workflow was on its way to becoming an agent. Neither label meant *authoring*, so "which tab holds the thing I am about to edit?" was a coin toss — and the user asked exactly that. The product already had the right word: `CLAUDE.md` has named **Studio** as the authoring surface, opposite Watchtower as the observability one, since Phase 1. The tab was named after what it listed rather than what it was for.
+
+**A run was three parallel lists.** `RunPage` rendered Steps, Events and Evidence side by side, each complete, each in its own order. Answering "what happened at the click, and what did the page look like afterwards?" meant joining three lists by timestamp in the reader's head. The join was never missing from the data: `RunEventView.runStepId` and `ArtifactView.runStepId` both name the step they belong to, and the runtime has recorded them since Phase 1. Watchtower was declining to use an attribution it was already storing, and asking a person to reconstruct it instead.
+
+A third, smaller instance of the same failure: the review page's binding panel was headed **"Mapping to a real page"**. The user asked three times what it meant. When a label needs explaining three times, the label is the defect.
+
+### Decision
+
+**The authoring tab is Studio, and the tab order follows the work.** Home · Studio · Agents · Runs — arrive, author, run, observe. `navigation.ts` owns the labels and the order; `Nav` derives its `data-testid` from the label, so `nav-workflows` became `nav-studio`.
+
+**The URL value stays `?view=documents`.** Review and document links were shared before this navigation existed. Renaming a query parameter so it agrees with a label breaks those links and buys nothing, because nobody reads `?view=`. The label is what a person sees; the query value is an address, and an address's job is to keep resolving.
+
+**A run is one timeline.** One row per step in `sequence` order, with that step's own events and its own evidence rendered underneath it. Run-level events — the four with a null `runStepId` — keep a group of their own, because `run.started` appearing between two steps read as though it were one of them. Run-level evidence, in practice the Playwright trace, gets its own place rather than being attached to an arbitrary step.
+
+**The raw event stream is kept verbatim, collapsed, in the document.** The woven view is a *reading aid*; the stream is the record. It stays in the DOM rather than being conditionally rendered, so nothing is lost and nothing has to be re-fetched to see it.
+
+**A decision reports the branch it took, not the index.** `browser.expect_one_of` records `selectedAlternativeIndex`, `matchedLocator` and `next`. The index is an artifact of Agent IR's array ordering and means nothing to a reader; the matched element and the step that followed describe the decision in the workflow's own terms. Watchtower renders "took the *request not found* branch, and continued at `complete_not_found`".
+
+**The binding panel is headed "What each step does on the page",** with a lead line that explains it without the word *binding*: the workflow says what to do, this is where someone showed Orbit exactly where to do it in a real browser.
+
+### Consequences
+
+- `apps/web/src/run-timeline-view-model.ts` is new and holds the join, the branch description and the humanising, as pure functions. `RunTimeline.tsx` renders what it returns and decides nothing — the same arrangement as `run-view-model.ts` beside it, and what makes the rules testable without a DOM.
+- `EvidenceList.tsx` no longer exports a page-level list. It exports `EvidenceGroup` and `EvidenceRow`, which the timeline places under each step. The screenshot preview is unchanged, including its lazy fetch through the API client — which is what keeps a page of seven steps from loading seven screenshots nobody asked for.
+- **Step rows are deliberately not collapsible.** Collapsing would shorten the page by putting the evidence back behind a click, which is the problem this change exists to solve. Density is managed by keeping each step's summary to one line and never loading a screenshot until it is asked for.
+- An event naming a step that is not in the run's step list is *not* placed under one. It appears only in the raw stream. That is a real, if unlikely, gap in the woven view and is precisely why the raw stream is kept rather than replaced.
+- `data-testid` churn is confined to `nav-workflows` → `nav-studio`. Every evidence and step test id is unchanged, so the end-to-end suite's assertions about evidence, downloads and step status still hold against the new arrangement — which is worth having, because they now assert it about evidence rendered *under its step*.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Rename Workflows to "Drafts" or "Authoring" | Accurate but foreign. Studio is already this product's word for the surface, and inventing a third name for it would be the same mistake again |
+| Also change the URL to `?view=studio` | Breaks links people already hold, to make a query parameter agree with a label nobody cross-references |
+| Merge Studio and Agents into one tab | They are genuinely different states with different actions — one is editable and unpublishable, the other is immutable and runnable. One tab would need a filter, which is two tabs with extra steps |
+| Interleave run-level events into the step list by timestamp | It is what made the old list confusing. `run.started` is not a step and should not sit where one would |
+| Drop the raw event stream now that events are attributed | The woven view is derived. Deleting the record it derives from to save a collapsed section trades a debugging capability for nothing |
+| Collapse each step by default, expanding failures | Puts evidence back behind a click for six steps out of seven to save scrolling on a page nobody arrives at casually |
+| Show `selectedAlternativeIndex` with a friendlier label | The number is not more truthful for being labelled; it is an array position a reader has no way to resolve |
+| Explain "binding" better in the panel body | Three attempts had already failed. The heading was doing the damage, and a longer body under a wrong heading is a longer wrong answer |
