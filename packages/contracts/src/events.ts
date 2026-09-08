@@ -29,6 +29,10 @@ export const eventTypeSchema = z.enum([
   'browser.fill.completed',
   'browser.click.completed',
   'browser.extract.completed',
+  'terminal.connected',
+  'terminal.typed',
+  'terminal.key.pressed',
+  'terminal.read.completed',
 
   'assertion.passed',
   'assertion.failed',

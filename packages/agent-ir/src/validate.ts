@@ -12,6 +12,7 @@ import {
   EVIDENCE_TO_BROWSER_ACTION,
   grantsSurface,
   stepPermissionFor,
+  type ExecutionSurface,
   type BrowserAction,
 } from './permissions';
 import { isTerminalStep, type AgentIrStep } from './steps';
@@ -43,6 +44,7 @@ export const AGENT_IR_ISSUE_CODES = [
   'INVALID_URL',
   'UNSUPPORTED_URL_PROTOCOL',
   'DOMAIN_NOT_PERMITTED',
+  'HOST_NOT_PERMITTED',
   'SURFACE_NOT_PERMITTED',
   'CREDENTIAL_NOT_PERMITTED',
   'ACTION_NOT_PERMITTED',
@@ -289,9 +291,15 @@ function checkControlFlow(context: Context): void {
 }
 
 function checkPermissions(context: Context): void {
-  const browser = context.agentIr.permissions.browser;
+  const permissions = context.agentIr.permissions;
+  const browser = permissions.browser;
   const allowedDomains = browser?.allowedDomains ?? [];
   const granted = new Set<BrowserAction>(browser?.allowedActions ?? []);
+
+  /** The actions granted on one surface. Absent section means none. */
+  function grantedOn(surface: ExecutionSurface): ReadonlySet<string> {
+    return new Set<string>(permissions[surface]?.allowedActions ?? []);
+  }
 
   context.agentIr.steps.forEach((step, index) => {
     const required = stepPermissionFor(step.type);
@@ -308,11 +316,11 @@ function checkPermissions(context: Context): void {
         ['steps', index, 'type'],
         step.id,
       );
-    } else if (required !== undefined && !granted.has(required.action)) {
+    } else if (required !== undefined && !grantedOn(required.surface).has(required.action)) {
       add(
         context,
         'ACTION_NOT_PERMITTED',
-        `Step type "${step.type}" requires the browser action "${required.action}", which is not in permissions.browser.allowedActions.`,
+        `Step type "${step.type}" requires the ${required.surface} action "${required.action}", which is not in permissions.${required.surface}.allowedActions.`,
         ['steps', index, 'type'],
         step.id,
       );
@@ -344,6 +352,22 @@ function checkPermissions(context: Context): void {
           );
         }
       }
+    }
+
+    if (step.type === 'terminal.connect') {
+      // The same two-gate shape a navigation has: checked here at publish, and
+      // again in the runtime before the socket is opened. Exact match, because a
+      // neighbouring LPAR is a different system (ADR-022).
+      if (!(permissions.terminal?.allowedHosts ?? []).includes(step.host)) {
+        add(
+          context,
+          'HOST_NOT_PERMITTED',
+          `Host "${step.host}" is not in permissions.terminal.allowedHosts.`,
+          ['steps', index, 'host'],
+          step.id,
+        );
+      }
+      return;
     }
 
     if (step.type !== 'browser.navigate') {

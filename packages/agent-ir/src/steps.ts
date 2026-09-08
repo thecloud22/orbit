@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { assertionSchema } from './assertions';
 import { identifierSchema } from './declarations';
 import { locatorSchema } from './locator';
+import { screenAddressSchema, screenFingerprintSchema } from '@orbit/screen-mapping';
 
 /** Agent IR step identifiers are workflow-local names, not persisted entity IDs. */
 export const stepIdSchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
@@ -208,6 +209,117 @@ export const modelDecideStepSchema = z
 
 export type ModelDecideStep = z.infer<typeof modelDecideStepSchema>;
 
+/**
+ * The keys a 3270 keyboard can send that mean "act on what I typed".
+ *
+ * A closed enum, not a string. An AID key is the moment a screen's contents are
+ * transmitted to the host and a transaction happens, so which key is pressed is
+ * the most consequential single value in a terminal workflow -- `PF3` backs out
+ * where `Enter` commits. A free-text key name would put that behind a typo.
+ */
+export const aidKeySchema = z.enum([
+  'enter',
+  'clear',
+  'pa1',
+  'pa2',
+  'pa3',
+  'pf1',
+  'pf2',
+  'pf3',
+  'pf4',
+  'pf5',
+  'pf6',
+  'pf7',
+  'pf8',
+  'pf9',
+  'pf10',
+  'pf11',
+  'pf12',
+  'pf13',
+  'pf14',
+  'pf15',
+  'pf16',
+  'pf17',
+  'pf18',
+  'pf19',
+  'pf20',
+  'pf21',
+  'pf22',
+  'pf23',
+  'pf24',
+]);
+export type AidKey = z.infer<typeof aidKeySchema>;
+
+/**
+ * Opens a terminal session against a host the version declares.
+ *
+ * The host is a value on the step and is checked against
+ * `permissions.terminal.allowedHosts` at publish and again before the socket is
+ * opened -- the same two-gate shape `browser.navigate` has (ADR-022).
+ */
+export const terminalConnectStepSchema = z.strictObject({
+  ...stepBase,
+  type: z.literal('terminal.connect'),
+  host: z.string().min(1),
+  timeoutMs: timeoutMsSchema.optional(),
+  evidence: evidenceSchema.optional(),
+});
+
+/**
+ * Types a value into a field.
+ *
+ * Typing does not transmit. A 3270 keyboard fills the local buffer and nothing
+ * reaches the host until an AID key is pressed, so this step is always safe in a
+ * way `browser.fill` is not -- and `terminal.press` is where the consequence is.
+ */
+export const terminalTypeStepSchema = z.strictObject({
+  ...stepBase,
+  type: z.literal('terminal.type'),
+  address: screenAddressSchema,
+  value: z.string().min(1),
+  timeoutMs: timeoutMsSchema.optional(),
+  evidence: evidenceSchema.optional(),
+});
+
+/** Sends an AID key. This is the step that makes something happen on the host. */
+export const terminalPressStepSchema = z.strictObject({
+  ...stepBase,
+  type: z.literal('terminal.press'),
+  key: aidKeySchema,
+  timeoutMs: timeoutMsSchema.optional(),
+  evidence: evidenceSchema.optional(),
+});
+
+/** Reads named fields off the current screen into declared variables. */
+export const terminalReadStepSchema = z.strictObject({
+  ...stepBase,
+  type: z.literal('terminal.read'),
+  fields: z
+    .record(identifierSchema, screenAddressSchema)
+    .refine((fields) => Object.keys(fields).length > 0, 'must declare at least one field'),
+  assign: z
+    .record(identifierSchema, z.string().min(1))
+    .refine((assign) => Object.keys(assign).length > 0, 'must assign at least one variable'),
+  timeoutMs: timeoutMsSchema.optional(),
+  evidence: evidenceSchema.optional(),
+});
+
+/**
+ * Asserts the host is showing the screen this workflow expects.
+ *
+ * The terminal equivalent of a fingerprint check, and it is a step rather than
+ * an implicit guard because a green-screen workflow is a sequence of screens:
+ * saying which one should be present is the workflow's own logic, not a
+ * safety net bolted underneath it.
+ */
+export const terminalExpectScreenStepSchema = z.strictObject({
+  ...stepBase,
+  type: z.literal('terminal.expect_screen'),
+  fingerprint: screenFingerprintSchema,
+  timeoutMs: timeoutMsSchema.optional(),
+  evidence: evidenceSchema.optional(),
+});
+
 export const completeStepSchema = z.strictObject({
   ...stepBase,
   type: z.literal('complete'),
@@ -229,6 +341,11 @@ export const agentIrStepSchema = z.discriminatedUnion('type', [
   browserAssertStepSchema,
   browserExpectOneOfStepSchema,
   browserExtractStepSchema,
+  terminalConnectStepSchema,
+  terminalTypeStepSchema,
+  terminalPressStepSchema,
+  terminalReadStepSchema,
+  terminalExpectScreenStepSchema,
   modelDecideStepSchema,
   completeStepSchema,
   failStepSchema,

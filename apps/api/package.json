@@ -22,6 +22,7 @@
     "@orbit/execution-mapping": "workspace:*",
     "@orbit/execution-recorder": "workspace:*",
     "@orbit/executor-playwright": "workspace:*",
+    "@orbit/executor-x3270": "workspace:*",
     "@orbit/model-budget": "workspace:*",
     "@orbit/model-provider": "workspace:*",
     "@orbit/runtime": "workspace:*",

@@ -17,6 +17,14 @@ export const artifactKindSchema = z.enum([
   'error_context',
   /** The exact text a judged decision was shown. Redacted before it is stored. */
   'decision_input',
+  /**
+   * A terminal screen, as text.
+   *
+   * Better evidence than a screenshot rather than a poorer substitute for one:
+   * diffable, greppable, and small. Non-display fields are masked before it is
+   * stored, from the field attribute rather than from a guess (ADR-037).
+   */
+  'terminal_screen',
 ]);
 export type ArtifactKind = z.infer<typeof artifactKindSchema>;
 
@@ -48,6 +56,7 @@ export const artifactLinkRoleSchema = z.enum([
   'error_context',
   'extracted_json',
   'decision_input',
+  'screen_after_action',
 ]);
 export type ArtifactLinkRole = z.infer<typeof artifactLinkRoleSchema>;
 

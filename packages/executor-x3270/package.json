@@ -1,5 +1,5 @@
 {
-  "name": "@orbit/agent-ir",
+  "name": "@orbit/executor-x3270",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -15,10 +15,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@orbit/contracts": "workspace:*",
+    "@orbit/runtime": "workspace:*",
     "@orbit/screen-mapping": "workspace:*",
-    "yaml": "^2.9.0",
-    "zod": "^4.5.4"
+    "@orbit/agent-ir": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.0"

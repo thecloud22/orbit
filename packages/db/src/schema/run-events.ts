@@ -22,6 +22,11 @@ export const EVENT_TYPES = [
   'browser.click.completed',
   'browser.extract.completed',
 
+  'terminal.connected',
+  'terminal.typed',
+  'terminal.key.pressed',
+  'terminal.read.completed',
+
   'assertion.passed',
   'assertion.failed',
 

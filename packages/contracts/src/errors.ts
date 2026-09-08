@@ -37,6 +37,16 @@ export const errorCodeSchema = z.enum([
   /** A spend cap was reached, so no call was made. */
   'DECISION_BUDGET_EXHAUSTED',
 
+  /**
+   * Terminal-surface failures. Named separately from their browser equivalents
+   * rather than shared: `BROWSER_TIMEOUT` and `LOCATOR_NOT_FOUND` are embedded in
+   * published immutable Agent Versions and keep their names forever, so a second
+   * surface gets its own codes rather than a rename (ADR-037).
+   */
+  'TERMINAL_TIMEOUT',
+  'TERMINAL_CONNECT_FAILED',
+  'FIELD_NOT_FOUND',
+  'UNEXPECTED_SCREEN',
   'WORKER_FAILURE',
   'ARTIFACT_STORAGE_ERROR',
   'INTERNAL_ERROR',

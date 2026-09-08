@@ -1,4 +1,5 @@
-import type { ExecutionSurface, Locator } from '@orbit/agent-ir';
+import type { AidKey, ExecutionSurface, Locator } from '@orbit/agent-ir';
+import type { Screen, ScreenPosition } from '@orbit/screen-mapping';
 import type {
   ComparisonMode,
   ElementFingerprint,
@@ -64,6 +65,7 @@ export interface SurfaceExecutor {
  */
 export interface SurfaceExecutors {
   readonly browser: BrowserExecutor;
+  readonly terminal: TerminalExecutor;
 }
 
 export type ExecutorFor<S extends ExecutionSurface> = SurfaceExecutors[S];
@@ -179,6 +181,56 @@ export interface WaitForTextResult {
 
 /** Opens one isolated browser session per run. */
 export type BrowserExecutorFactory = SurfaceExecutorFactory<'browser'>;
+
+/**
+ * A narrow terminal capability interface.
+ *
+ * Shaped by the same rule as `BrowserExecutor`, and one design choice carries
+ * it: **the executor reports the screen and the runtime decides what it means.**
+ * There is no `typeIntoFieldAfterLabel`. The executor hands back a `Screen`, the
+ * runtime resolves the step's closed `ScreenAddress` against it, and only then
+ * does it say where to type. Address resolution is workflow semantics, so it
+ * lives where drift checking lives (ADR-008, ADR-018) -- exactly the reasoning
+ * that made `describeElement` read-only.
+ *
+ * Consequently nothing here takes a `ScreenAddress`, and there is no way to ask
+ * the executor to find anything.
+ */
+export interface TerminalExecutor extends SurfaceExecutor {
+  connect(request: TerminalConnectRequest): Promise<void>;
+  /** The current screen as a structure. Read-only. */
+  screen(): Promise<Screen>;
+  /**
+   * Types into the field starting at a position the runtime resolved.
+   *
+   * Typing does not transmit: a 3270 keyboard fills the local buffer and nothing
+   * reaches the host until an AID key is sent. That is why this is separate from
+   * `press`, and why only `press` can change anything.
+   */
+  typeAt(request: TerminalTypeRequest): Promise<void>;
+  /** Sends an AID key and waits for the host to finish responding. */
+  press(request: TerminalPressRequest): Promise<void>;
+}
+
+export interface TerminalConnectRequest {
+  /** Already checked against the version's `allowedHosts` by the runtime. */
+  readonly host: string;
+  readonly timeoutMs: number;
+}
+
+export interface TerminalTypeRequest {
+  readonly position: ScreenPosition;
+  readonly value: string;
+  readonly timeoutMs: number;
+}
+
+export interface TerminalPressRequest {
+  readonly key: AidKey;
+  readonly timeoutMs: number;
+}
+
+/** Opens one isolated terminal session per run. */
+export type TerminalExecutorFactory = SurfaceExecutorFactory<'terminal'>;
 
 /**
  * The credential seam.

@@ -28,9 +28,17 @@ import { verifyBinding, type ExecutionBindingResolver } from './drift';
 import { captureEvidence, failureEvidence, successEvidence } from './evidence';
 import { resolveValue, type ResolutionScope } from './interpolate';
 import { silentLogger, type RuntimeLogger } from './logger';
+import {
+  compareScreen,
+  fingerprintOf,
+  resolveAddress,
+  type ScreenAddress,
+  type ScreenField,
+} from '@orbit/screen-mapping';
 import type {
   BrowserExecutor,
   CredentialResolver,
+  TerminalExecutor,
   ExecutorFactories,
   SurfaceExecutor,
   DecisionJudge,
@@ -39,7 +47,12 @@ import type {
   RunRecorder,
   RunStore,
 } from './ports';
-import { assertExecutableProfile, assertNavigable, timeoutFor } from './profile';
+import {
+  assertExecutableProfile,
+  assertNavigable,
+  assertTerminalHost,
+  timeoutFor,
+} from './profile';
 import type { RecoveryContext } from './recovery';
 
 /**
@@ -167,6 +180,7 @@ function describeLocator(locator: Locator): string {
  */
 interface OpenedExecutors {
   browser?: BrowserExecutor;
+  terminal?: TerminalExecutor;
 }
 
 /** Every executor actually opened, with the surface it drives, in open order. */
@@ -176,6 +190,9 @@ function openedExecutors(
   const all: { readonly surface: ExecutionSurface; readonly executor: SurfaceExecutor }[] = [];
   if (opened.browser !== undefined) {
     all.push({ surface: 'browser', executor: opened.browser });
+  }
+  if (opened.terminal !== undefined) {
+    all.push({ surface: 'terminal', executor: opened.terminal });
   }
   return all;
 }
@@ -215,6 +232,28 @@ async function openExecutorsFor(
           throw new RuntimeError({
             code: 'WORKER_FAILURE',
             message: 'The browser could not be started for this run.',
+            cause: error,
+          });
+        }
+        break;
+      }
+
+      case 'terminal': {
+        const factory = factories.terminal;
+
+        if (factory === undefined) {
+          throw new RuntimeError({
+            code: 'WORKER_FAILURE',
+            message: 'This workflow has terminal steps, but no terminal executor is configured.',
+          });
+        }
+
+        try {
+          opened.terminal = await factory.open();
+        } catch (error) {
+          throw new RuntimeError({
+            code: 'WORKER_FAILURE',
+            message: 'The terminal emulator could not be started for this run.',
             cause: error,
           });
         }
@@ -553,6 +592,62 @@ async function resolveCredential(
   return resolved;
 }
 
+/** The terminal executor for a step that needs one. */
+function terminalFor(context: {
+  readonly executors: OpenedExecutors;
+  readonly step: AgentIrStep;
+}): TerminalExecutor {
+  const executor = context.executors.terminal;
+
+  if (executor === undefined) {
+    throw new RuntimeError({
+      code: 'WORKER_FAILURE',
+      message: `Step "${context.step.id}" runs on the terminal surface, which was not opened for this run.`,
+      agentStepId: context.step.id,
+    });
+  }
+
+  return executor;
+}
+
+/**
+ * Resolves a screen address against the screen the host is showing.
+ *
+ * In the runtime rather than the executor, deliberately. Which field an address
+ * names is workflow semantics, so it lives where the drift check lives: the
+ * executor reports a `Screen` and never searches it (ADR-008, ADR-018).
+ */
+async function resolveField(
+  executor: TerminalExecutor,
+  address: ScreenAddress,
+  agentStepId: string,
+): Promise<ScreenField> {
+  const resolution = resolveAddress(await executor.screen(), address);
+
+  if (!resolution.resolved) {
+    throw new RuntimeError({
+      code: 'FIELD_NOT_FOUND',
+      message:
+        resolution.reason === 'ambiguous'
+          ? `Step "${agentStepId}" names a field that matches more than one place on this screen.`
+          : `Step "${agentStepId}" names a field this screen does not have.`,
+      details: [{ field: 'address', message: describeAddress(address) }],
+      agentStepId,
+    });
+  }
+
+  return resolution.field;
+}
+
+function describeAddress(address: ScreenAddress): string {
+  if (address.strategy === 'field_at') {
+    return `field_at ${String(address.row)},${String(address.column)}`;
+  }
+  return address.strategy === 'field_after_label'
+    ? `field_after_label "${address.label}"`
+    : `named_field ${address.name}`;
+}
+
 async function performStep(context: PerformStepInput): Promise<StepResult> {
   const { step, recorder, agentIr, inputs, variables } = context;
   const scope: ResolutionScope = { inputs, variables };
@@ -733,6 +828,122 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
       });
 
       return { output: { fields, variables: assigned } };
+    }
+
+    case 'terminal.connect': {
+      const executor = terminalFor(context);
+      assertTerminalHost(step.host, agentIr.permissions.terminal?.allowedHosts ?? [], step.id);
+      await executor.connect({ host: step.host, timeoutMs });
+
+      await recorder.appendEvent({
+        eventType: 'terminal.connected',
+        payload: { host: step.host, timeoutMs },
+        runStepId: context.runStepId,
+        agentStepId: step.id,
+      });
+
+      return { output: { host: step.host } };
+    }
+
+    case 'terminal.type': {
+      const executor = terminalFor(context);
+      const credential = credentialReferenceIn(step.value);
+      const value =
+        credential === undefined
+          ? resolveValue(step.value, 'value', scope, step.id)
+          : await resolveCredential(context, credential, step.id);
+
+      const field = await resolveField(executor, step.address, step.id);
+      await executor.typeAt({ position: field.start, value, timeoutMs });
+
+      await recorder.appendEvent({
+        eventType: 'terminal.typed',
+        payload: {
+          address: describeAddress(step.address),
+          row: field.start.row,
+          column: field.start.column,
+          valueSource: step.value,
+          // Withheld for a credential, and withheld again for a field the host
+          // marked non-display -- the attribute says this is a secret, so its
+          // length is information about one whatever the value came from.
+          ...(credential === undefined && !field.attributes.nonDisplay
+            ? { valueLength: value.length }
+            : {}),
+        },
+        runStepId: context.runStepId,
+        agentStepId: step.id,
+      });
+
+      return { output: { address: describeAddress(step.address) } };
+    }
+
+    case 'terminal.press': {
+      const executor = terminalFor(context);
+      await executor.press({ key: step.key, timeoutMs });
+
+      await recorder.appendEvent({
+        eventType: 'terminal.key.pressed',
+        payload: { key: step.key, timeoutMs },
+        runStepId: context.runStepId,
+        agentStepId: step.id,
+      });
+
+      return { output: { key: step.key } };
+    }
+
+    case 'terminal.read': {
+      const executor = terminalFor(context);
+      const screen = await executor.screen();
+      const fields: Record<string, string> = {};
+
+      for (const [name, address] of Object.entries(step.fields)) {
+        const resolution = resolveAddress(screen, address);
+
+        if (!resolution.resolved) {
+          throw new RuntimeError({
+            code: 'FIELD_NOT_FOUND',
+            message: `Step "${step.id}" reads "${name}", which this screen does not have.`,
+            details: [{ field: name, message: describeAddress(address) }],
+            agentStepId: step.id,
+          });
+        }
+
+        fields[name] = resolution.field.text.trim();
+      }
+
+      const resultScope: ResolutionScope = { ...scope, result: fields };
+      for (const [variable, reference] of Object.entries(step.assign)) {
+        variables[variable] = resolveValue(reference, 'assign', resultScope, step.id);
+      }
+
+      await recorder.appendEvent({
+        eventType: 'terminal.read.completed',
+        payload: { fields: Object.keys(step.fields) },
+        runStepId: context.runStepId,
+        agentStepId: step.id,
+      });
+
+      return { output: fields };
+    }
+
+    case 'terminal.expect_screen': {
+      const executor = terminalFor(context);
+      const observed = fingerprintOf(await executor.screen());
+      const comparison = compareScreen(step.fingerprint, observed);
+
+      if (!comparison.matches) {
+        throw new RuntimeError({
+          code: 'UNEXPECTED_SCREEN',
+          message: `Step "${step.id}" expected a different screen than the host is showing.`,
+          details: comparison.mismatches.map((mismatch) => ({
+            field: mismatch.field,
+            message: `expected ${mismatch.expected}, observed ${mismatch.observed}`,
+          })),
+          agentStepId: step.id,
+        });
+      }
+
+      return { output: { fieldCount: observed.fieldCount } };
     }
 
     case 'complete': {

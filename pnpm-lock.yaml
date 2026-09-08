@@ -65,6 +65,9 @@ importers:
       '@orbit/executor-playwright':
         specifier: workspace:*
         version: link:../../packages/executor-playwright
+      '@orbit/executor-x3270':
+        specifier: workspace:*
+        version: link:../../packages/executor-x3270
       '@orbit/model-budget':
         specifier: workspace:*
         version: link:../../packages/model-budget
@@ -332,6 +335,9 @@ importers:
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@orbit/screen-mapping':
+        specifier: workspace:*
+        version: link:../screen-mapping
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -576,6 +582,22 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
+  packages/executor-x3270:
+    dependencies:
+      '@orbit/agent-ir':
+        specifier: workspace:*
+        version: link:../agent-ir
+      '@orbit/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@orbit/screen-mapping':
+        specifier: workspace:*
+        version: link:../screen-mapping
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
   packages/model-budget:
     devDependencies:
       typescript:
@@ -627,6 +649,9 @@ importers:
       '@orbit/execution-mapping':
         specifier: workspace:*
         version: link:../execution-mapping
+      '@orbit/screen-mapping':
+        specifier: workspace:*
+        version: link:../screen-mapping
     devDependencies:
       typescript:
         specifier: ^5.9.0

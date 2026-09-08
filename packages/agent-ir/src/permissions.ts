@@ -14,7 +14,7 @@ import { z } from 'zod';
  * shape of a section that already exists, because `permissions` is embedded in
  * published, immutable Agent Versions (ADR-005, ADR-014).
  */
-export const EXECUTION_SURFACES = ['browser'] as const;
+export const EXECUTION_SURFACES = ['browser', 'terminal'] as const;
 export type ExecutionSurface = (typeof EXECUTION_SURFACES)[number];
 
 /**
@@ -41,6 +41,25 @@ export const browserPermissionsSchema = z.strictObject({
   allowedActions: z.array(browserActionSchema).min(1),
 });
 export type BrowserPermissions = z.infer<typeof browserPermissionsSchema>;
+
+/**
+ * Terminal capabilities an agent version is permitted to use.
+ *
+ * `allowedHosts` is the terminal counterpart of `allowedDomains` and exists for
+ * the same reason (ADR-022): containment is per agent, derived from what a
+ * recording actually reached, checked at publish and again before the socket is
+ * opened. A mainframe LPAR is a far more consequential thing to reach by
+ * accident than a web page, so the rule is exact-match here too -- a
+ * neighbouring host is a different system.
+ */
+export const terminalActionSchema = z.enum(['connect', 'type', 'press', 'read', 'expect_screen']);
+export type TerminalAction = z.infer<typeof terminalActionSchema>;
+
+export const terminalPermissionsSchema = z.strictObject({
+  allowedHosts: z.array(z.string().min(1)).min(1),
+  allowedActions: z.array(terminalActionSchema).min(1),
+});
+export type TerminalPermissions = z.infer<typeof terminalPermissionsSchema>;
 
 /**
  * Whether this agent may call a model at run time, and how often.
@@ -118,6 +137,7 @@ export type CredentialPermissions = z.infer<typeof credentialPermissionsSchema>;
 
 export const permissionsSchema = z.strictObject({
   browser: browserPermissionsSchema.optional(),
+  terminal: terminalPermissionsSchema.optional(),
   model: modelPermissionsSchema.optional(),
   recovery: recoveryPermissionsSchema.optional(),
   credentials: credentialPermissionsSchema.optional(),
@@ -131,7 +151,9 @@ export type Permissions = z.infer<typeof permissionsSchema>;
  * keeps its own action vocabulary and a typo cannot typecheck. A second member
  * joins it per surface.
  */
-export type StepPermission = { readonly surface: 'browser'; readonly action: BrowserAction };
+export type StepPermission =
+  | { readonly surface: 'browser'; readonly action: BrowserAction }
+  | { readonly surface: 'terminal'; readonly action: TerminalAction };
 
 /**
  * Maps each step type to the surface and action it consumes.
@@ -152,6 +174,11 @@ export const STEP_SURFACE_PERMISSION = {
   'browser.assert': { surface: 'browser', action: 'assert' },
   'browser.expect_one_of': { surface: 'browser', action: 'expect_one_of' },
   'browser.extract': { surface: 'browser', action: 'extract' },
+  'terminal.connect': { surface: 'terminal', action: 'connect' },
+  'terminal.type': { surface: 'terminal', action: 'type' },
+  'terminal.press': { surface: 'terminal', action: 'press' },
+  'terminal.read': { surface: 'terminal', action: 'read' },
+  'terminal.expect_screen': { surface: 'terminal', action: 'expect_screen' },
 } as const satisfies Record<string, StepPermission>;
 
 export type PermissionedStepType = keyof typeof STEP_SURFACE_PERMISSION;

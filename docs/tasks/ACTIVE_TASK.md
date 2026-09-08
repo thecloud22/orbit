@@ -570,6 +570,29 @@ changes every run — anchoring it would manufacture drift on every execution.
 Non-display is a 3270 **field attribute**, so terminal password redaction is protocol-derived rather
 than heuristic. The field still transmits in clear; redaction is Orbit's job, driven off the flag.
 
+**Sub-phase 3.6 is complete.** Orbit can execute a green-screen workflow end to end against a real
+emulator. See `docs/tasks/reports/TASK-P3-006-terminal-executor-report.md`. Five step types —
+`terminal.connect`, `.type`, `.press`, `.read`, `.expect_screen` — plus
+`permissions.terminal.allowedHosts` checked at publish and again before the socket opens, four new
+error codes, and screen-text evidence.
+
+**Orbit does not implement the 3270 protocol.** `@orbit/executor-x3270` drives `b3270` as a
+subprocess, the same relationship `executor-playwright` has with Chromium.
+
+Two design points carry the surface. The executor **reports** the screen and the runtime resolves the
+address against it — nothing on `TerminalExecutor` takes a `ScreenAddress`, so there is no way to ask
+it to find anything, which is `describeElement`'s reasoning applied to a buffer. And `type` does not
+transmit: a 3270 keyboard fills a local buffer until an AID key is sent, so every consequence is
+concentrated in `terminal.press`, and `AidKey` is a closed 29-value enum rather than a string.
+
+Non-display fields are masked in evidence from **the field attribute**, and `terminal.type` withholds
+`valueLength` for one — the host says the value is a secret whatever its source.
+
+Migration `0011` widens the `run_events` CHECK constraint for four `terminal.*` events. Additive.
+
+Tested against the real `b3270` driven at the byte-emitter host from 3.0, so the decoding under test
+is x3270's rather than Orbit's own.
+
 **Checkpoint C.** The foundation is done. The terminal track (3.5-3.8) and the API track (3.9-3.11)
 touch disjoint packages from here and can proceed independently.
 

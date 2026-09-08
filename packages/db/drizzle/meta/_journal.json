@@ -78,6 +78,13 @@
       "when": 1788839704016,
       "tag": "0010_proposals_from_demonstration",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788892349674,
+      "tag": "0011_strong_hannibal_king",
+      "breakpoints": true
     }
   ]
 }

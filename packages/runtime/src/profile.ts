@@ -35,6 +35,11 @@ export const SUPPORTED_STEP_TYPES = [
   'browser.expect_one_of',
   'browser.assert',
   'browser.extract',
+  'terminal.connect',
+  'terminal.type',
+  'terminal.press',
+  'terminal.read',
+  'terminal.expect_screen',
   'model.decide',
   'complete',
   'fail',
@@ -81,6 +86,15 @@ function locatorsOf(step: AgentIrStep): readonly (readonly [Locator, string])[] 
       );
     case 'browser.assert':
       return assertionLocators(step.assertion, 'assertion');
+    case 'terminal.connect':
+    case 'terminal.type':
+    case 'terminal.press':
+    case 'terminal.read':
+    case 'terminal.expect_screen':
+      // A screen address is not a Locator and is deliberately not convertible to
+      // one. Terminal addressing is checked by @orbit/screen-mapping's own
+      // vocabulary; there is nothing here for the browser profile to validate.
+      return [];
     case 'browser.expect_one_of':
       return step.alternatives.map(
         (alternative, index) =>
@@ -131,6 +145,29 @@ function assertionsOf(step: AgentIrStep): readonly (readonly [Assertion, string]
  * declared `allowedDomains`, so a version that never declared a host can never
  * reach it, however the URL came to be in the step.
  */
+/**
+ * The last gate before a terminal socket is opened.
+ *
+ * The counterpart of `assertNavigable`, and re-checked here for the same reason:
+ * the semantic validator proved this at publish, and this proves it again at the
+ * moment it matters, so a host can only be reached if the version declared it.
+ * Exact match -- a neighbouring LPAR is a different system.
+ */
+export function assertTerminalHost(
+  host: string,
+  allowedHosts: readonly string[],
+  agentStepId: string,
+): void {
+  if (!allowedHosts.includes(host)) {
+    throw new RuntimeError({
+      code: 'TERMINAL_CONNECT_FAILED',
+      message: `Step "${agentStepId}" connects to a host the Agent Version does not permit.`,
+      details: [{ field: 'host', message: host }],
+      agentStepId,
+    });
+  }
+}
+
 export function assertNavigable(
   url: string,
   allowedDomains: readonly string[],

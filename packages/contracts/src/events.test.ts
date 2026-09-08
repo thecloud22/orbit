@@ -56,9 +56,10 @@ describe('event envelope', () => {
 
   it('covers every documented Phase 1 event type', () => {
     // 14 in Phase 1, plus the three `decision.*` events sub-phase 2.9 added for
-    // judged decisions (ADR-032). The count is asserted rather than the list so
-    // that adding an event type is a deliberate edit here too.
-    expect(eventTypeSchema.options).toHaveLength(19);
+    // judged decisions (ADR-032), plus the four `terminal.*` events sub-phase 3.6
+    // added for the terminal surface (ADR-037). The count is asserted rather than
+    // the list so that adding an event type is a deliberate edit here too.
+    expect(eventTypeSchema.options).toHaveLength(23);
     expect(eventTypeSchema.options).toContain('artifact.created');
     expect(eventTypeSchema.options).toContain('assertion.failed');
   });
