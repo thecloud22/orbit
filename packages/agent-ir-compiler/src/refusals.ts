@@ -31,6 +31,16 @@ export const COMPILE_REFUSAL_CODES = [
   'ambiguous_branch_outcome',
   /** A `manual_review` step: routing to a human has no executable form. */
   'manual_review_unsupported',
+  /**
+   * A `call` step with no mapping from its intent to a catalog operation.
+   *
+   * Named rather than falling through to `missing_binding`, which would report
+   * that the step "reads a value but its mapping does not" -- true of an extract
+   * and meaningless for a call. A refusal that describes the wrong problem is
+   * worse than a generic one, because it sends the reader somewhere real and
+   * wrong (ADR-021).
+   */
+  'call_binding_unsupported',
   /** A step that needs an approved binding and has none. */
   'missing_binding',
   /** The bound step has changed since the binding was recorded. */

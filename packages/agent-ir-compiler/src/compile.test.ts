@@ -399,3 +399,31 @@ describe('refusals', () => {
     expect(refusalCodes(result)).toEqual(['missing_binding', 'missing_binding', 'missing_binding']);
   });
 });
+
+describe('a call step', () => {
+  it('refuses by name rather than as a mapping failure of some other kind', () => {
+    // Falling through to the extract branch would report that the step "reads a
+    // value but its mapping does not" — true of an extract and meaningless
+    // here. A refusal that describes the wrong problem sends the reader
+    // somewhere real and wrong.
+    const graph = findServiceRequestGraph();
+    const steps: SopStep[] = [
+      {
+        id: 'lookup_customer',
+        kind: 'call',
+        purpose: 'Find the customer record before deciding',
+        requestHint: 'the customer record for this request',
+        systemHint: 'Salesforce',
+      },
+      ...graph.steps,
+    ];
+
+    const result = compile({
+      graph: { ...graph, entryStepId: 'lookup_customer', steps },
+    });
+
+    const codes = refusalCodes(result);
+    expect(codes).toContain('call_binding_unsupported');
+    expect(codes).not.toContain('extract_coverage_gap');
+  });
+});

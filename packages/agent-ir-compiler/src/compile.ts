@@ -382,6 +382,21 @@ export function compileCandidate(input: CompileInput): CompileResult {
       continue;
     }
 
+    if (step.kind === 'call') {
+      // The intent kind exists and `api.request` executes, but nothing maps one
+      // to the other yet: binding a call to a catalog operation needs a review
+      // surface that has not been built. Refused by name so the gap is legible
+      // rather than appearing as a mapping failure of some other kind.
+      refusals.push(
+        refusal(
+          'call_binding_unsupported',
+          `Step "${step.id}" calls "${step.systemHint}", and mapping a call to an API operation is not built yet.`,
+          step.id,
+        ),
+      );
+      continue;
+    }
+
     if (step.kind === 'outcome') {
       // The outcome name passes straight through: a business outcome is the
       // workflow's own declared name, not a translation of it (ADR-030). The

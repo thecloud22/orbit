@@ -129,6 +129,32 @@ export const decisionStepSchema = z.strictObject({
   judgement: z.string().min(1).optional(),
 });
 
+/**
+ * Looking something up in, or handing something to, another system.
+ *
+ * Business intent only, like every other kind here. It says *what* is being
+ * asked for and roughly *where* -- "look up the customer record", "in
+ * Salesforce" -- and carries no endpoint, method, payload or authentication.
+ * Which API operation actually answers it is a separately reviewed mapping,
+ * exactly as which element a click lands on is (ADR-002).
+ *
+ * There is deliberately no `urlHint` counterpart to `navigate`'s. A URL a person
+ * typed into a draft is a plausible-looking thing that binding would be tempted
+ * to trust, and an endpoint is a more consequential thing to guess at than a
+ * page: a step named against a real contract can be checked, a step named
+ * against a remembered URL cannot.
+ */
+export const callStepSchema = z.strictObject({
+  ...stepBase,
+  kind: z.literal('call'),
+  /** What is being asked for, in the author's words. */
+  requestHint: z.string().min(1),
+  /** Which system, as the author named it. Never resolved or fetched. */
+  systemHint: z.string().min(1),
+  /** Values the call is expected to return, so downstream steps can be checked. */
+  produces: z.array(producedValueSchema).optional(),
+});
+
 export const outcomeStepSchema = z.strictObject({
   id: stepIdSchema,
   kind: z.literal('outcome'),
@@ -152,6 +178,7 @@ export const sopStepSchema = z.discriminatedUnion('kind', [
   fillStepSchema,
   clickStepSchema,
   extractStepSchema,
+  callStepSchema,
   decisionStepSchema,
   outcomeStepSchema,
   manualReviewStepSchema,
@@ -172,6 +199,7 @@ export const sopStepDraftSchema = z.discriminatedUnion('kind', [
   fillStepSchema.omit({ id: true }),
   clickStepSchema.omit({ id: true }),
   extractStepSchema.omit({ id: true }),
+  callStepSchema.omit({ id: true }),
   decisionStepSchema.omit({ id: true }),
   outcomeStepSchema.omit({ id: true }),
   manualReviewStepSchema.omit({ id: true }),
@@ -217,6 +245,7 @@ export const SOP_STEP_KINDS = [
   'fill',
   'click',
   'extract',
+  'call',
   'decision',
   'outcome',
   'manual_review',
@@ -235,7 +264,7 @@ export function producedBy(step: SopStep): readonly string[] {
     return step.fields.map((field) => field.name);
   }
 
-  if (step.kind === 'decision') {
+  if (step.kind === 'decision' || step.kind === 'call') {
     return (step.produces ?? []).map((produced) => produced.name);
   }
 
