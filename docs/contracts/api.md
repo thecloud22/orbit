@@ -1,8 +1,19 @@
 # Orbit API Contract — Phase 1
 
-**Status:** Active Phase 1 API contract
+**Status:** Active, and **narrower than the API**. This document specifies the six
+Phase 1 evidence endpoints and the conventions every route follows. It is not a
+catalogue of the surface.
 
 **Purpose:** Define the minimal HTTP API required for Watchtower to list agents, create manual runs, and retrieve run evidence.
+
+> **Scope.** The API serves **44 `/v1` routes plus `/health`**. Six are specified
+> here. The rest — SOP drafting and revision editing, candidate compilation and
+> approval, publishing, recording, binding and walkthrough sessions, recovery
+> proposals, agent archiving, model usage and platform facts — arrived in Phase 2
+> and are not documented here yet. The conventions and error envelope below apply
+> to all of them. **Treat `apps/api/src/routes/` as authoritative** for anything
+> this file does not specify, and do not read a route's absence here as evidence
+> that it does not exist.
 
 ## API conventions
 
@@ -239,14 +250,29 @@ contract change and has not been made.
 
 ## Non-goals
 
-Phase 1 API does not include:
+These were the Phase 1 non-goals. Phase 2 delivered several of them, so the list
+is split rather than left to read as if it still described the whole API.
+
+**Still absent from the API entirely:**
 
 - Authentication/SSO endpoints
 - User/role management
-- SOP authoring endpoints
-- Publishing endpoints
-- Webhook registration
-- Schedule management
-- Policy/approval endpoints
-- LLM endpoints
+- Webhook registration, schedule management, or any non-manual trigger
+- A policy engine, or policy/approval configuration endpoints
 - Multi-tenant administration
+- Any endpoint that takes a prompt, or returns raw model output
+
+**Delivered in Phase 2, and served today** — specified in
+`apps/api/src/routes/`, not in this document:
+
+- SOP authoring: `POST /v1/sop-drafts`, and the revision step, reorder, answer
+  and transition routes
+- Publishing: `POST /v1/agent-ir-candidates/:candidateId/publish`,
+  `POST /v1/sop-documents/:documentId/publish-bound`,
+  `POST /v1/sop-documents/:documentId/publish-recording`
+- Review lifecycle: candidate approval and revision transitions. This is a
+  review workflow, not the policy engine ADR-013 still describes as unbuilt
+- Model reporting: `GET /v1/model-usage`. It reports spend and the ceilings in
+  force; it cannot raise one, and there is no companion writer (see
+  `routes/model-usage.ts`)
+- Read-only platform facts: `GET /v1/platform`

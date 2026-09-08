@@ -38,7 +38,7 @@ Six, in `apps/`.
 
 | App | Process | Responsibility |
 |---|---|---|
-| `web` | Vite dev server, port 3000 | Watchtower: Home, Studio, Agents, Runs, Wiki |
+| `web` | Vite dev server, port 3000 | Watchtower: Home, Studio, Agents, Runs, Wiki, Admin |
 | `api` | Fastify, port 3002 | Every route; **also executes runs** (ADR-011) |
 | `browser-worker` | CLI | Composition root for `pnpm agent:run`. Its `dev` script only logs its identity |
 | `recorder` | CLI | Composition root for `record:binding` and `record:workflow` |
@@ -170,12 +170,20 @@ raw SOP text, raw model output or user-supplied code.
 | Gate | When | Determinism |
 |---|---|---|
 | Domain allowlist | Before every navigation | Deterministic. Per agent, from the published version (ADR-022) |
-| Drift check | Before every `browser.fill` and `browser.click` | Deterministic. No model (ADR-018) |
+| Drift check | Before every `browser.fill` and `browser.click` **that has a resolved binding** | Deterministic. No model (ADR-018) |
 | Judged decision | At a decision step, only if `permissions.model` is declared | **The one model call at run time.** Returns an index into a closed branch list (ADR-032) |
 
 The drift check runs at exactly two step types. `browser.expect_one_of` does not
 drift-check — it is a branch predicate, not an action on an approved element —
 and neither does `browser.extract`, whose text is the value being read.
+
+It also reaches only the agents that have bindings to check. The resolver reads
+the bindings of the **candidate the version was published from**, so an Agent
+Version with no `publishedFromCandidateId` resolves to none and is not
+drift-checked at all. That covers every agent published from a fixture,
+including the seeded `Find Service Request 0.1.0` — which is why turning the
+check on could not change how any pre-existing agent behaved
+(`packages/runtime/src/persistence/binding-resolver.ts`).
 
 ## 7. Drift recovery
 
@@ -320,7 +328,7 @@ Stated here rather than discovered:
   on it (ADR-013).
 - **Gemini and Bedrock are unexercised.** Structurally complete, never called
   against a real service (ADR-034).
-- **`docs/contracts/api.md` documents 6 of 43 `/v1` routes.** Treat
+- **`docs/contracts/api.md` documents 6 of 44 `/v1` routes.** Treat
   `apps/api/src/routes/` as authoritative.
 
 ## 13. Seams kept open

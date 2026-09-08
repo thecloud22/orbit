@@ -179,9 +179,9 @@ pnpm dev
 curl -s http://localhost:3002/health     # {"status":"ok"}
 ```
 
-Open `http://localhost:3000`. You should see Watchtower with five tabs — Home,
-Studio, Agents, Runs, Wiki — and the seeded **Find Service Request** agent under
-Agents.
+Open `http://localhost:3000`. You should see Watchtower with six tabs — Home,
+Studio, Agents, Runs, Wiki, Admin — and the seeded **Find Service Request**
+agent under Agents.
 
 Then prove the installation can actually execute a workflow:
 

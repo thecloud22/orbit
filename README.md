@@ -191,8 +191,11 @@ Local services:
 
 Ports **3010** and **3102** are **reserved** for the end-to-end test stack and
 are refused to every application, so a test run never collides with `pnpm dev`.
-`WEB_PORT`, `DEMO_PORTAL_PORT`, `API_PORT` and `API_HOST` are configurable; the
-library portal's 3020 is not.
+`API_PORT` and `API_HOST` move the API. The three Vite applications pin their
+ports with `strictPort: true` and no environment variable moves them — `WEB_PORT`
+and `DEMO_PORTAL_PORT` are in `.env.example` for reference but nothing reads
+them, so changing 3000, 3001 or 3020 means editing that application's
+`vite.config.ts`.
 
 A quick liveness check, once the API is up:
 
@@ -951,9 +954,9 @@ baked into the bundle. Set `ORBIT_API_URL` to point the proxy elsewhere.
 | `GET /v1/sop-documents/:documentId/bindings` | Execution Binding status per step; read-only |
 
 That table is the Phase 1 core, not the whole surface. The API currently serves
-**43 `/v1` routes plus `/health`** — candidates, publishing, recording, binding
-and walkthrough sessions, recovery proposals, and model usage are all served and
-not all listed above. `docs/contracts/api.md` documents the six Phase 1
+**44 `/v1` routes plus `/health`** — candidates, publishing, recording, binding
+and walkthrough sessions, recovery proposals, model usage and platform facts are
+all served and not all listed above. `docs/contracts/api.md` documents the six Phase 1
 endpoints and has not yet caught up; treat the route files under
 `apps/api/src/routes/` as authoritative until it does.
 
@@ -998,7 +1001,7 @@ What the sections cover:
 |---|---|
 | Process | `NODE_ENV`, `LOG_LEVEL` |
 | PostgreSQL | `DATABASE_URL`, `TEST_DATABASE_URL` |
-| Ports | `WEB_PORT`, `DEMO_PORTAL_PORT`, `API_PORT`, `API_HOST`, `ORBIT_API_URL` |
+| Ports | `API_PORT`, `API_HOST`, `ORBIT_API_URL` (read); `WEB_PORT`, `DEMO_PORTAL_PORT` (reference only, unread) |
 | Artifacts | `ARTIFACT_STORAGE_DIR` |
 | Model provider | `LLM_PROVIDER`, `LLM_INVOCATION`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `GOOGLE_API_KEY`, `ORBIT_BEDROCK_REGION`, `AWS_REGION` |
 | Drafting budgets | `ORBIT_LLM_TOKEN_BUDGET_GLOBAL`, `..._PER_AGENT`, `..._PER_RUN`, `ORBIT_LLM_RATES_USD_PER_MTOK` |
@@ -1039,9 +1042,11 @@ id belonging to a different family than the one selected.
 | `pnpm test:runtime` | Agent IR executed by real Chromium against the demo portal | + Chromium |
 | `pnpm test:e2e:watchtower` | The whole stack: browser → Watchtower → API → runtime → portal | + the stack |
 | `pnpm test:e2e` | The demo portal's own behaviour (Task 2) | + Chromium |
+| `pnpm test:e2e:library` | The library portal's own behaviour | + Chromium |
+| `pnpm smoke` | An *installation* can execute the seeded agent, not merely that it is set up | a migrated, seeded database + Chromium + the demo portal running |
 | `pnpm check:teardown` | No Orbit process or test port survived a run | nothing |
 | `pnpm verify` | typecheck, lint, format:check, test, test:db | PostgreSQL |
-| **`pnpm verify:phase1`** | **Everything above, in order — the Phase 1 acceptance gate** | all of it |
+| **`pnpm verify:phase1`** | **`verify`, then test:runtime, test:e2e:watchtower, test:e2e, check:teardown — the Phase 1 acceptance gate** | all of it |
 
 `pnpm test` deliberately requires nothing but a checkout. The other suites are
 separate Vitest projects because each needs more: `vitest.db.config.ts` needs a
@@ -1065,6 +1070,12 @@ never at `data/artifacts`.
 `pnpm verify` stops at `test:db` so it stays runnable without a browser.
 `pnpm verify:phase1` is the full gate and ends with `pnpm check:teardown`, which
 fails if any Orbit service process or test port survived the run.
+
+Neither `pnpm smoke` nor `pnpm test:e2e:library` is part of `verify:phase1`; run
+them separately. Smoke asks a different question than the suites do — whether
+*this installation* can execute a workflow — and it starts nothing itself,
+expecting a migrated, seeded database and an already-running demo portal, so it
+belongs after an install or an upgrade rather than in the acceptance gate.
 
 ### Browser tests
 

@@ -319,7 +319,8 @@ Two restart caveats that are not upgrade-specific but bite during one:
   portal 3020 — each refuses to relocate rather than quietly moving. 3010 and
   3102 are reserved for the end-to-end stack and no app may bind them. If a
   start fails on a port, something from before the upgrade is still running;
-  `pnpm check:teardown` reports what is holding 3000, 3001, 3002, 3010 and 3102.
+  `pnpm check:teardown` reports what is holding 3000, 3001, 3002, 3010, 3020 or
+  3102.
 
 ---
 

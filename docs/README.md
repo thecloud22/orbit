@@ -17,6 +17,7 @@ material behind that.
 |---|---|
 | Install Orbit on a clean machine | [`guides/installation.md`](./guides/installation.md) |
 | Get from nothing to a completed run | [`guides/quick-start.md`](./guides/quick-start.md) |
+| Upgrade an existing checkout | [`guides/upgrade.md`](./guides/upgrade.md) |
 | Configure a deployment | [`guides/configuration.md`](./guides/configuration.md), and [`.env.example`](../.env.example) |
 | Build and run your own workflow | [`guides/usage.md`](./guides/usage.md) |
 | Understand a run that stopped on drift | [`guides/ui-drift-recovery.md`](./guides/ui-drift-recovery.md) |
@@ -35,6 +36,7 @@ are the right place to look first.
 |---|---|
 | [`guides/installation.md`](./guides/installation.md) | Prerequisites, the database, the one-time setup sequence, verifying it worked |
 | [`guides/quick-start.md`](./guides/quick-start.md) | Ten minutes from a clean checkout to a run with evidence |
+| [`guides/upgrade.md`](./guides/upgrade.md) | Migrating an older checkout, and what drift enforcement means for agents that used to pass |
 | [`guides/configuration.md`](./guides/configuration.md) | Every environment variable, the port map, what is deliberately not configurable |
 | [`guides/usage.md`](./guides/usage.md) | Recording, drafting, reviewing, binding, publishing, running, reading evidence |
 | [`guides/ui-drift-recovery.md`](./guides/ui-drift-recovery.md) | The drift check, what recovery does, and the eight limits on what it may do |
@@ -71,7 +73,7 @@ ADR-013's tier-gated policy engine) and are marked accordingly.
 |---|---|---|
 | [`contracts/agent-ir.md`](./contracts/agent-ir.md) | The Agent IR contract | Phase 1 |
 | [`contracts/events-and-evidence.md`](./contracts/events-and-evidence.md) | Event types and the evidence model | Phase 1 |
-| [`contracts/api.md`](./contracts/api.md) | HTTP contract and the error envelope | **Behind the code.** Documents the 6 Phase 1 endpoints; the API serves 43 `/v1` routes plus `/health`. Treat `apps/api/src/routes/` as authoritative until it catches up |
+| [`contracts/api.md`](./contracts/api.md) | HTTP contract and the error envelope | **Behind the code.** Documents the 6 Phase 1 endpoints; the API serves 44 `/v1` routes plus `/health`. Treat `apps/api/src/routes/` as authoritative until it catches up |
 
 ## Demos
 

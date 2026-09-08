@@ -22,23 +22,27 @@ that echoed one would put it in a terminal and, from CI, in a log.
 
 | Port | Bound by | Configurable |
 |---|---|---|
-| 3000 | Watchtower | `WEB_PORT` |
-| 3001 | Demo service-request portal | `DEMO_PORTAL_PORT` |
+| 3000 | Watchtower | **No.** Pinned in `apps/web/vite.config.ts` |
+| 3001 | Demo service-request portal | **No.** Pinned in `apps/demo-portal/vite.config.ts` |
 | 3002 | API | `API_PORT`, `API_HOST` |
-| 3020 | Demo library portal | **No.** Hard-coded in `apps/library-portal/vite.config.ts` |
+| 3020 | Demo library portal | **No.** Pinned in `apps/library-portal/vite.config.ts` |
 | 3010 | Watchtower, end-to-end stack | **Reserved.** No application may bind it |
 | 3102 | API, end-to-end stack | **Reserved.** Same rule |
 | 5432 | PostgreSQL | Through `DATABASE_URL` (55432 for the optional Docker container) |
 
-Watchtower, the demo portal and the library portal all bind with `strictPort`, so
-a taken port is a loud failure rather than a silent move to another one.
+**Only the API's address is set by environment.** Watchtower, the demo portal and
+the library portal each pin their port in their own `vite.config.ts` with
+`strictPort`, so a taken port is a loud failure rather than a silent move to
+another one. `WEB_PORT` and `DEMO_PORTAL_PORT` appear in `.env.example` but
+**nothing reads them** — changing a Vite port means editing that application's
+`vite.config.ts`.
 
 The two reserved ports are how the end-to-end suite avoids colliding with a
 development session: it runs its own API and its own Watchtower against
 `orbit_test` and a disposable artifact root, never against `data/artifacts`.
 
-`pnpm check:teardown` probes 3000, 3001, 3002, 3010 and 3102. It does **not**
-probe 3020.
+`pnpm check:teardown` probes all six application ports — 3000, 3001, 3002, 3010,
+3020 and 3102 — and fails if any is still held after a test run.
 
 ## Process
 
@@ -112,7 +116,7 @@ through Bedrock once deployed, with no code change.
 | `ANTHROPIC_MODEL` | family `anthropic` | Model id |
 | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | family `gemini` | **A real credential** |
 | `GEMINI_MODEL` | family `gemini` | Model id |
-| `ORBIT_BEDROCK_REGION` / `AWS_REGION` | invocation `bedrock` | AWS region |
+| `ORBIT_BEDROCK_REGION`, else `AWS_REGION`, else `AWS_DEFAULT_REGION` | invocation `bedrock` | AWS region, read in that order of precedence |
 
 **A provider is entirely optional.** With none configured the API still starts and
 every other route works: `POST /v1/sop-drafts` reports that generation is

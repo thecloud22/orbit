@@ -227,7 +227,7 @@ export function navLinks(current: View): readonly NavLink[] {
     (kind === 'home' && current.kind === 'recording');
 
   return NAV_ITEMS.map(({ kind, label }) => {
-    // Every tab's own view is just its bare kind — none of the five carries a
+    // Every tab's own view is just its bare kind — none of the six carries a
     // parameter a nav link would need to supply. The wiki's optional `topic`
     // is for a deep link into one entry, never for the tab itself.
     const view = { kind } as View;

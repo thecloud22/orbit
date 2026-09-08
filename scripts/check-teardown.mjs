@@ -19,6 +19,7 @@ const PORTS = [
   { port: 3001, what: 'demo portal' },
   { port: 3002, what: 'API (development)' },
   { port: 3010, what: 'Watchtower (end-to-end)' },
+  { port: 3020, what: 'library portal' },
   { port: 3102, what: 'API (end-to-end)' },
 ];
 
@@ -30,6 +31,7 @@ const PROCESS_PATTERNS = [
   { pattern: 'apps/api/src/index.ts', what: 'API process' },
   { pattern: 'src/cli/run-agent.ts', what: 'browser-worker CLI' },
   { pattern: '@orbit/demo-portal', what: 'demo portal dev server' },
+  { pattern: '@orbit/library-portal', what: 'library portal dev server' },
   { pattern: '@orbit/web', what: 'Watchtower dev server' },
   { pattern: 'ms-playwright', what: 'Playwright browser' },
 ];

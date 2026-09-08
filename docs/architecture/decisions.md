@@ -22,6 +22,7 @@ record of why Orbit is shaped as it is.
 | **Partially implemented** | Decided, and part of it is built. The note under the status says which part is not, and that part is forward-looking |
 | **Accepted — amended by ADR-nnn** | Still in force, with one clause changed by a later decision. The note says which clause |
 | **Accepted — partly superseded by ADR-nnn** | The core stands; a named mechanism in it was replaced |
+| **Accepted — not exercised against …** | Decided and built, but a named path has never run against the real service it targets. The qualifier names that path |
 | **Superseded by ADR-nnn** | No longer in force. Retained for history |
 | **Deprecated** | In force but being retired |
 | **Proposed** | Not decided. Nothing depends on it |

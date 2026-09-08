@@ -424,7 +424,7 @@ const configuration: WikiTopic = {
     { kind: 'heading', text: 'Settings are deployment configuration' },
     {
       kind: 'paragraph',
-      text: 'The model provider, the model, and every token ceiling are read once when the process starts. None of them is editable from this application, and that is a decision rather than a gap: a cap a client could raise for itself is not a cap. Home displays what has been spent against the ceilings in force.',
+      text: 'The model provider, the model, and every token ceiling are read once when the process starts. None of them is editable from this application, and that is a decision rather than a gap: a cap a client could raise for itself is not a cap. The Admin tab displays what is in force — the model family and invocation, the artifact root, the API address, the migration level — and what has been spent against the ceilings; Home shows the spend too. Neither can change any of it.',
     },
     {
       kind: 'paragraph',
