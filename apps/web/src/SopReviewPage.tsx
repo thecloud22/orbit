@@ -29,6 +29,7 @@ import {
 import { isFullyBoundForPublish } from './sop-binding-view-model';
 import { describePublishRecordingFailure, type CompileFailure } from './publication-view-model';
 import { SopBindingPanel } from './SopBindingPanel';
+import { SopCallBindingPanel } from './SopCallBindingPanel';
 import { WalkthroughPanel } from './WalkthroughPanel';
 import {
   DECISION_NOTICE,
@@ -526,6 +527,14 @@ export function SopReviewPage({
         startUrlEditable={review.editable}
         steps={review.steps}
         walkthrough={walkthroughOffer}
+      />
+
+      <SopCallBindingPanel
+        bindings={bindings}
+        declaredInputs={review.inputs}
+        documentId={documentId}
+        onSaved={() => void load()}
+        steps={review.steps}
       />
 
       {review.clarifications.length > 0 && (

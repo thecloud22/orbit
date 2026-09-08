@@ -562,3 +562,47 @@ export async function deleteApiSystem(id: string): Promise<void> {
     throw await toApiError(response);
   }
 }
+
+export type CallArgumentSource =
+  | { readonly kind: 'input'; readonly inputId: string }
+  | { readonly kind: 'variable'; readonly name: string }
+  | { readonly kind: 'literal'; readonly value: string };
+
+export interface CreateCallBindingInput {
+  readonly catalogId: string;
+  readonly operationId: string;
+  /** Parameter name to where its value comes from. */
+  readonly arguments: Record<string, CallArgumentSource>;
+  /** New variable name to a JSON Pointer into the response body. */
+  readonly reads: Record<string, string>;
+}
+
+/**
+ * Maps a `call` step to a catalog operation.
+ *
+ * Unlike a browser binding, this is checked and approved synchronously: the
+ * server verifies the operation exists and every required parameter has a
+ * source before it stores anything, so there is no separate review step the
+ * way a demonstrated binding has (ADR-039's companion route,
+ * `call-bindings.ts`).
+ */
+export async function createCallBinding(
+  documentId: string,
+  stepId: string,
+  input: CreateCallBindingInput,
+): Promise<{ readonly id: string; readonly stepId: string; readonly operationId: string }> {
+  const response = await fetch(
+    `/v1/sop-documents/${encodeURIComponent(documentId)}/steps/${encodeURIComponent(stepId)}/call-binding`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+
+  return (await response.json()) as { id: string; stepId: string; operationId: string };
+}

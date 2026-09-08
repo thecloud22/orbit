@@ -65,11 +65,17 @@ export function describeBindingStatus(entry: SopStepBindingView): BindingStatusD
   }
 
   if (entry.status === null) {
-    return {
-      label: 'Not recorded',
-      tone: 'neutral',
-      detail: 'No one has demonstrated this step yet.',
-    };
+    return needsCallMapping(entry.kind)
+      ? {
+          label: 'Not mapped',
+          tone: 'neutral',
+          detail: 'No operation has been chosen for this call yet.',
+        }
+      : {
+          label: 'Not recorded',
+          tone: 'neutral',
+          detail: 'No one has demonstrated this step yet.',
+        };
   }
 
   const label = STATUS_LABELS[entry.status] ?? entry.status;
@@ -201,6 +207,21 @@ export const WATCHTOWER_BINDABLE_KINDS: readonly string[] = [
 ];
 
 /**
+ * Step kinds the compiler requires a binding for that a browser session
+ * cannot supply.
+ *
+ * A `call` step has nothing to demonstrate -- the contract already states
+ * what exists -- so it is mapped by declaration, not by opening a browser
+ * (`SopCallBindingPanel`, not `SopBindingPanel`). It still needs a binding
+ * before the compiler will accept it, which `WATCHTOWER_BINDABLE_KINDS`
+ * alone does not capture: that list is scoped to what a *session* can bind,
+ * and conflating it with "needs a binding at all" is exactly the bug that
+ * let a call step read as "No binding needed" while the compiler refused to
+ * publish it with `missing_binding`.
+ */
+export const CALL_MAPPED_KINDS: readonly string[] = ['call'];
+
+/**
  * Whether the compiler requires a binding for this kind of step.
  *
  * The one definition. Three things used to answer this separately — the
@@ -210,7 +231,12 @@ export const WATCHTOWER_BINDABLE_KINDS: readonly string[] = [
  * publish button correctly considered it ready.
  */
 export function isBindingRequired(kind: string): boolean {
-  return WATCHTOWER_BINDABLE_KINDS.includes(kind);
+  return WATCHTOWER_BINDABLE_KINDS.includes(kind) || CALL_MAPPED_KINDS.includes(kind);
+}
+
+/** Whether this step is mapped by declaration rather than by demonstration. */
+export function needsCallMapping(kind: string): boolean {
+  return CALL_MAPPED_KINDS.includes(kind);
 }
 
 /**
@@ -221,7 +247,7 @@ export function isBindingRequired(kind: string): boolean {
  * and a stale binding is the case where they differ.
  */
 export function canBindStep(row: BindingRow): boolean {
-  if (!isBindingRequired(row.kind)) {
+  if (!WATCHTOWER_BINDABLE_KINDS.includes(row.kind)) {
     return false;
   }
 

@@ -42,7 +42,17 @@ export function ApiSystemsPanel() {
         setError(null);
       })
       .catch((cause: unknown) => {
-        setError(cause instanceof ApiRequestError ? cause : null);
+        // A raw network failure (the API restarting, a dropped connection) is
+        // not an ApiRequestError, and discarding it here used to leave `error`
+        // at null with `systems` still `[]` -- rendering "No API systems are
+        // registered," which looks identical to a genuinely empty registry.
+        // Wrapped the way AdminPage already does, so the notice always has
+        // something to show rather than silently agreeing with the failure.
+        setError(
+          cause instanceof ApiRequestError
+            ? cause
+            : new ApiRequestError({ status: 0, message: 'The API could not be reached.' }),
+        );
       });
   }, []);
 
@@ -69,7 +79,14 @@ export function ApiSystemsPanel() {
         refresh();
       })
       .catch((cause: unknown) => {
-        setError(cause instanceof ApiRequestError ? cause : null);
+        // Same reasoning as the load path: a failure that is not a structured
+        // ApiRequestError must still produce something visible, or a person
+        // who just clicked Register sees nothing happen at all.
+        setError(
+          cause instanceof ApiRequestError
+            ? cause
+            : new ApiRequestError({ status: 0, message: 'The API could not be reached.' }),
+        );
       })
       .finally(() => {
         setIsSaving(false);
@@ -99,7 +116,20 @@ export function ApiSystemsPanel() {
       </p>
 
       {error !== null && (
-        <ApiErrorNotice error={error} testId="api-systems-error" title="That did not work" />
+        <div className="flex flex-col gap-2">
+          <ApiErrorNotice error={error} testId="api-systems-error" title="That did not work" />
+          {/* The load path only ever fires once, on mount. Without this, a
+              transient failure -- the API mid-restart, a dropped connection --
+              leaves the page stuck showing the error until a full reload,
+              which is a worse experience than the bug this replaced. */}
+          <button
+            className="self-start rounded-md border border-rose-300 px-3 py-1 text-xs font-medium text-rose-900"
+            onClick={refresh}
+            type="button"
+          >
+            Try again
+          </button>
+        </div>
       )}
 
       {isAdding && (

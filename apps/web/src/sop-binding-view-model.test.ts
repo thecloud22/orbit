@@ -12,8 +12,10 @@ import {
   canBindStep,
   describeBindingStatus,
   describeProposal,
+  isBindingRequired,
   isFullyApproved,
   isFullyBoundForPublish,
+  needsCallMapping,
   proposalForStep,
   summarizeBindings,
 } from './sop-binding-view-model';
@@ -305,6 +307,50 @@ describe('isFullyBoundForPublish', () => {
 
   it('is false when bindings could not be loaded', () => {
     expect(isFullyBoundForPublish(null)).toBe(false);
+  });
+});
+
+describe('a call step, which is mapped rather than demonstrated', () => {
+  it('needs a binding, unlike navigate and outcome', () => {
+    // The actual bug this closes: `call` used to fall through the same branch
+    // as `navigate`/`outcome` and read as "No binding needed" while the
+    // compiler refused to publish it with `missing_binding`.
+    expect(isBindingRequired('call')).toBe(true);
+    expect(needsCallMapping('call')).toBe(true);
+  });
+
+  it('reports "Not mapped" rather than "Not recorded" or "No binding needed"', () => {
+    const status = describeBindingStatus(entry({ kind: 'call', bindable: true, status: null }));
+    expect(status.label).toBe('Not mapped');
+    expect(status.detail).not.toMatch(/demonstrat/i);
+  });
+
+  it('offers no browser-session bind button, since there is nothing to demonstrate', () => {
+    expect(
+      canBindStep({
+        stepId: 'lookup',
+        position: 1,
+        label: 'Look up the item',
+        kind: 'call',
+        status: describeBindingStatus(entry({ kind: 'call', status: null })),
+        binding: entry({ kind: 'call', status: null }),
+      }),
+    ).toBe(false);
+  });
+
+  it('blocks isFullyBoundForPublish until it is mapped and approved', () => {
+    // The publish-gate half of the same bug: a workflow with an unmapped call
+    // step used to read as fully bound because `call` was excluded from the
+    // required set entirely.
+    expect(
+      isFullyBoundForPublish(bindings([entry({ kind: 'call', bindable: true, status: null })])),
+    ).toBe(false);
+
+    expect(
+      isFullyBoundForPublish(
+        bindings([entry({ kind: 'call', bindable: true, status: 'approved', stale: false })]),
+      ),
+    ).toBe(true);
   });
 });
 
