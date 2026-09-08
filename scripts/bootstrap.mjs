@@ -483,6 +483,10 @@ process.stdout.write(
     '    http://localhost:3002/health     API health\n' +
     '    http://localhost:3020            demo library portal\n' +
     '\n' +
+    '  Prove it end to end (needs the demo portal running):\n' +
+    '    pnpm smoke --preflight   readiness only, writes nothing\n' +
+    '    pnpm smoke               executes both documented scenarios\n' +
+    '\n' +
     '  Verify the checkout:\n' +
     '    pnpm verify        typecheck, lint, format:check, test, test:db\n' +
     '\n' +

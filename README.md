@@ -137,6 +137,7 @@ From a clean checkout, after creating the role and the two databases
 ```bash
 pnpm bootstrap           # prerequisites, install, .env, migrate, seed, Chromium, readiness
 pnpm dev                 # starts five processes; see the table below
+pnpm smoke               # in another shell: executes the seeded agent end to end
 ```
 
 `pnpm bootstrap` is the sequence below, executed and checked. It is idempotent,

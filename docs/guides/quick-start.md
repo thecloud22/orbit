@@ -56,6 +56,16 @@ Five processes start. Four of them serve something:
 The fifth, the browser worker, only logs its identity — there is no queue, and
 the API executes runs (ADR-011).
 
+## Check it works
+
+```bash
+pnpm smoke
+```
+
+It runs both scenarios below end to end and reads the evidence back out of the
+database. `pnpm smoke --preflight` checks readiness without executing anything.
+Neither starts a service, and neither resets a database.
+
 ## Run the seeded agent
 
 1. Open `http://localhost:3000`.

@@ -183,6 +183,35 @@ Open `http://localhost:3000`. You should see Watchtower with five tabs — Home,
 Studio, Agents, Runs, Wiki — and the seeded **Find Service Request** agent under
 Agents.
 
+Then prove the installation can actually execute a workflow:
+
+```bash
+pnpm smoke --preflight    # readiness only: executes nothing, writes nothing
+pnpm smoke                # runs both documented scenarios end to end
+```
+
+`pnpm smoke` drives the seeded agent through a real Chromium against the running
+demo portal, for `SR-1001` and `SR-9999`, and then reads each run back **out of
+PostgreSQL** — status, business outcome, extracted values, steps, every required
+event type, and the screenshot, DOM snapshot and trace artifacts. It checks the
+persisted evidence rather than the value the runtime returned, because the
+evidence is the thing Watchtower will show.
+
+It starts nothing. The demo portal must already be running (`pnpm dev`, or
+`pnpm --filter @orbit/demo-portal dev`); a portal that is not answering produces
+the command to start it. It resets no database — it adds runs to `DATABASE_URL`
+exactly as pressing **Start run** in Watchtower does.
+
+Every phase is bounded, so a broken installation fails in seconds rather than
+hanging. `--timeout <ms>` changes the per-run bound; on a timeout the check
+closes the browser it opened and says that the run row is left as the runtime
+last wrote it.
+
+**What it does not prove.** It is not a clean-machine installation test: it runs
+against whatever this checkout and this database already are. It does not
+exercise the API, Watchtower, recording, SOP drafting, judged decisions or drift
+recovery — only the deterministic execution path of the seeded Phase 1 agent.
+
 `pnpm verify` runs typecheck, lint, format:check, test and test:db together.
 `pnpm verify:phase1` additionally runs the runtime, end-to-end and browser
 suites, and a teardown check; it needs Chromium and takes roughly twenty

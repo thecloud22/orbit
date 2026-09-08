@@ -34,6 +34,7 @@
     "test:runtime": "vitest run --config vitest.runtime.config.ts",
     "test:e2e:watchtower": "vitest run --config vitest.e2e.config.ts",
     "bootstrap": "node scripts/bootstrap.mjs",
+    "smoke": "pnpm --filter @orbit/browser-worker smoke",
     "check:teardown": "node scripts/check-teardown.mjs",
     "verify:phase1": "pnpm verify && pnpm test:runtime && pnpm test:e2e:watchtower && pnpm test:e2e && pnpm check:teardown"
   },
