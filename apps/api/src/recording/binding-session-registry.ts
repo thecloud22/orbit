@@ -448,6 +448,12 @@ export function createBindingSessionRegistry(
       // browser. Checked before the page is touched so a closed window is a
       // typed refusal like every other outcome here, rather than a
       // TargetClosedError escaping as a 500.
+      //
+      // Only re-aiming needs this. `bind` deliberately does not check: a
+      // capture is derived when it happens and held in memory, so saving one
+      // needs no live page. Guarding it too -- which this first did -- threw
+      // away work somebody had already demonstrated, which is worse than the
+      // 500 it was meant to fix.
       if (open.session.isClosed()) {
         return { ok: false, reason: 'browser_closed' };
       }
@@ -479,12 +485,6 @@ export function createBindingSessionRegistry(
 
       if (open === undefined) {
         return { ok: false, reason: 'not_found' };
-      }
-
-      // Saving reads the captured element from the live page, so a closed
-      // window has to refuse here too rather than part-writing a binding.
-      if (open.session.isClosed()) {
-        return { ok: false, reason: 'browser_closed' };
       }
 
       const revision = await currentGraph(open.documentId);

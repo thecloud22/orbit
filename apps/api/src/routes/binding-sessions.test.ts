@@ -179,7 +179,6 @@ describe('POST /v1/binding-sessions', () => {
     // outcome is a typed refusal. A person cannot act on a 500.
     const app = server({
       target: () => Promise.resolve({ ok: false, reason: 'browser_closed' }),
-      bind: () => Promise.resolve({ ok: false, reason: 'browser_closed' }),
     });
     await app.ready();
 
@@ -193,14 +192,6 @@ describe('POST /v1/binding-sessions', () => {
     // workflow", which is the opposite problem and reads differently.
     expect(targeted.statusCode).toBe(410);
     expect(targeted.json().error.message).toContain('closed');
-
-    const bound = await app.inject({
-      method: 'POST',
-      url: '/v1/binding-sessions/bind_1/binding',
-      payload: { captureId: 'capture-1' },
-    });
-
-    expect(bound.statusCode).toBe(410);
 
     await app.close();
   });
