@@ -8,6 +8,7 @@ import { registerArtifactRoutes } from './routes/artifacts';
 import { registerRunRoutes } from './routes/runs';
 import { registerRecordingRoutes } from './routes/recording';
 import { registerBindingSessionRoutes } from './routes/binding-sessions';
+import { registerWalkthroughSessionRoutes } from './routes/walkthrough-sessions';
 import { registerCandidateRoutes } from './routes/candidates';
 import { registerPublishingRoutes } from './routes/publishing';
 import { registerPublishRecordingRoutes } from './routes/publish-recording';
@@ -52,6 +53,7 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
   registerSopBindingRoutes(app, options.context);
   registerRecordingRoutes(app, options.context);
   registerBindingSessionRoutes(app, options.context);
+  registerWalkthroughSessionRoutes(app, options.context);
 
   app.setNotFoundHandler((_request, reply) => {
     const error = new ApiError({

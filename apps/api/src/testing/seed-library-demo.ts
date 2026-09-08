@@ -24,6 +24,22 @@ import { loadRootEnv } from '../env';
 
 const DEMO_TITLE = 'Borrow a title, or place a hold';
 
+/**
+ * `--unbound`: seed the workflow with no Execution Bindings at all.
+ *
+ * The default seeds the bindings too, which is right for the branching and
+ * drift demos — both need a workflow that already runs. It is exactly wrong for
+ * demonstrating a walkthrough (ADR-035), whose whole subject is a drafted
+ * workflow with nine unbound steps: with bindings present there is nothing to
+ * propose and the walkthrough is refused before a browser opens.
+ *
+ * A flag rather than a second seed script, because the workflow is the same
+ * workflow. The title is suffixed so both can exist side by side and neither
+ * idempotence check trips on the other.
+ */
+const unbound = process.argv.includes('--unbound');
+const title = unbound ? `${DEMO_TITLE} (unbound)` : DEMO_TITLE;
+
 loadRootEnv();
 
 const url = requireDatabaseUrl('DATABASE_URL');
@@ -34,7 +50,7 @@ try {
 
   const result = await withTransaction(handle.db, async (repositories) => {
     const existing = await repositories.sopDocuments.list();
-    const already = existing.find((document) => document.title === DEMO_TITLE);
+    const already = existing.find((document) => document.title === title);
 
     if (already !== undefined) {
       return { created: false as const, documentId: already.id };
@@ -45,7 +61,7 @@ try {
       // off by default for every other document, and it grants one thing: that
       // Orbit may *propose* a repair. Nothing applies one.
       recoveryEnabled: true,
-      title: DEMO_TITLE,
+      title,
       sourceText:
         'Open the library catalog and search for a title by ISBN. If the title is available, ' +
         'borrow it with a member ID. If it is on loan, place a hold instead.',
@@ -66,7 +82,7 @@ try {
     // with, so the fixture's placeholder revision id is replaced by the real
     // one. A binding pointing at a revision that does not exist would read as
     // stale the moment the page loaded.
-    for (const binding of borrowOrHoldBindings()) {
+    for (const binding of unbound ? [] : borrowOrHoldBindings()) {
       const created = await repositories.executionBindings.create({
         documentId: document.id,
         binding: { ...binding, capturedAgainstRevisionId: revision.id },
@@ -85,11 +101,14 @@ try {
   });
 
   process.stdout.write(
-    `${result.created ? 'Seeded' : 'Already present'}: "${DEMO_TITLE}" (${result.documentId}).\n` +
+    `${result.created ? 'Seeded' : 'Already present'}: "${title}" (${result.documentId}).\n` +
       `Open it at http://localhost:3000/?documentId=${result.documentId}\n` +
       `Start the library portal with: pnpm --filter @orbit/library-portal dev\n` +
-      `Drift demo: publish, then run against http://localhost:3020/catalog?drift=1 — ` +
-      `see docs/demo/drift-recovery-demo.md\n`,
+      (unbound
+        ? `No bindings were seeded. Bind all nine steps in one sitting — ` +
+          `see docs/demo/walkthrough-binding-demo.md\n`
+        : `Drift demo: publish, then run against http://localhost:3020/catalog?drift=1 — ` +
+          `see docs/demo/drift-recovery-demo.md\n`),
   );
 } finally {
   await handle.close();

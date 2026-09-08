@@ -32,6 +32,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createInProcessRunDispatcher } from './dispatch';
 import { createBindingSessionRegistry } from './recording/binding-session-registry';
+import { createWalkthroughSessionRegistry } from './recording/walkthrough-session-registry';
 import { createRecordingSessionRegistry } from './recording/session-registry';
 import {
   createFakeRecordingSessionFactory,
@@ -110,6 +111,12 @@ describe('Orbit API over real persistence', () => {
         bindingSessions: createBindingSessionRegistry({
           database: getDatabase().db,
           factory: bindingFactory,
+        }),
+        // Present so the context is whole; walkthroughs have their own
+        // integration test, where the sequence can be scripted per case.
+        walkthroughSessions: createWalkthroughSessionRegistry({
+          database: getDatabase().db,
+          factory: createFakeRecordingSessionFactory(),
         }),
         // Uncapped: these tests are about routes and persistence, and a ceiling
         // reached mid-suite would fail them for a reason unrelated to what they

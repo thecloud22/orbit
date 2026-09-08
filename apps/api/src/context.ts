@@ -13,6 +13,7 @@ import type {
 
 import type { BindingSessionRegistry } from './recording/binding-session-registry';
 import type { RecordingSessionRegistry } from './recording/session-registry';
+import type { WalkthroughSessionRegistry } from './recording/walkthrough-session-registry';
 
 import type { RunDispatcher } from './dispatch';
 
@@ -67,6 +68,14 @@ export interface ApiContext {
    * directory for the same reason (ADR-020, ADR-027).
    */
   readonly bindingSessions: BindingSessionRegistry;
+  /**
+   * Walkthrough sessions the API is holding open (ADR-035).
+   *
+   * The third, and the last one this directory's exemption covers: one browser
+   * in which a person performs the whole task, aligned afterwards against the
+   * steps still waiting to be bound. It writes proposals and never a binding.
+   */
+  readonly walkthroughSessions: WalkthroughSessionRegistry;
   /**
    * The token ceilings this deployment is running with (ADR-029).
    *

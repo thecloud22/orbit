@@ -27,6 +27,7 @@ import type {
 } from '@orbit/sop-service';
 
 import type { BindingSessionRegistry } from '../recording/binding-session-registry';
+import type { WalkthroughSessionRegistry } from '../recording/walkthrough-session-registry';
 import type { RecordingSessionRegistry } from '../recording/session-registry';
 
 import type { ApiContext } from '../context';
@@ -82,6 +83,7 @@ export interface StubContextOptions {
   readonly recoveryProposals?: Partial<RecoveryProposalService>;
   readonly recordingSessions?: Partial<RecordingSessionRegistry>;
   readonly bindingSessions?: Partial<BindingSessionRegistry>;
+  readonly walkthroughSessions?: Partial<WalkthroughSessionRegistry>;
   readonly bindingRecoveryProposals?: Partial<BindingRecoveryProposalRepository>;
   readonly modelBudgets?: ModelBudgets;
 }
@@ -129,5 +131,6 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
     ),
     recordingSessions: stubbed('recordingSessions', options.recordingSessions ?? {}),
     bindingSessions: stubbed('bindingSessions', options.bindingSessions ?? {}),
+    walkthroughSessions: stubbed('walkthroughSessions', options.walkthroughSessions ?? {}),
   };
 }

@@ -36,7 +36,7 @@ checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
 **Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10,
-2.11, 2.12 and 2.13** are complete.
+2.11, 2.12, 2.13 and 2.14** are complete.
 `@orbit/sop-graph` provides the non-executable graph contract and its validation;
 `@orbit/sop-generation` turns free text into a proposed graph; `@orbit/sop-service` persists drafts
 and drives review; `@orbit/execution-mapping` defines the Execution Binding and the runtime verifies
@@ -335,6 +335,8 @@ test.
 | Drift diagnosis and proposal writing | `@orbit/drift-recovery` (Phase 2 Task 12, ADR-033) |
 | Drift observation at the moment it happens | `@orbit/runtime` over the `RecoveryProposer` port (Phase 2 Task 12) |
 | Accepting or dismissing a proposal, and the per-document grant | `@orbit/sop-service` (Phase 2 Task 12) |
+| Aligning one walkthrough against a drafted workflow's unbound steps | `@orbit/sop-recording` (Phase 2 Task 14, ADR-035) |
+| Turning that alignment into validated proposals | `@orbit/sop-service` (Phase 2 Task 14) |
 | Which model family is called, how it is reached, and with which credential | `@orbit/model-provider` (Phase 2 Task 13, ADR-034) |
 
 `prepareExecution` in `@orbit/runtime` is the single validation gate the API and the browser-worker
@@ -351,9 +353,49 @@ a provider, and the boundary test that proves it now names the shared package to
 Gemini and Bedrock are structurally verified and **not** exercised against a real service — there
 are no Google or AWS credentials in this environment.
 
+**Sub-phase 2.14 is complete: a whole workflow is bound from one walkthrough.**
+
+A drafted workflow arrives with every step unbound, and the per-step flow (ADR-027) meant nine
+sittings for the seeded library workflow — open a browser, perform one action, save, re-aim. It can
+now be bound by **performing the task once**: `/v1/walkthrough-sessions` opens one browser, the
+person does the job, and `alignDemonstration` lines what they did up against the steps still
+waiting. Matching is on **kind and order only** — the first `fill` performed is the first unbound
+`fill` in the workflow — and the function is synchronous, so no model can be called from it.
+
+Static matching of drafted hints against the page was considered and does not work: **most of the
+elements a workflow acts on do not exist until you have interacted with the page**, so a scan of the
+start URL could bind one library step of nine and would have to guess the rest.
+
+**Nothing is applied.** A walkthrough writes *proposals*, reusing ADR-033's machinery rather than
+paralleling it: `binding_recovery_proposals` gained an `origin` column (`drift` | `demonstration`)
+and a nullable `proposed_for_binding_id`, and accepting still runs `create` → `submitForReview` →
+`approve` through `acceptRecoveryProposal`. **There is still exactly one function by which a binding
+is ever created.** Migration `0010_proposals_from_demonstration` alters two columns and touches no
+row.
+
+**Decisions are excluded deliberately and permanently**, and the UI says so before anyone starts:
+one walkthrough follows one path and a decision needs an element per branch (ADR-029). They keep the
+branch-by-branch flow, and the per-step flow is otherwise untouched — it is how a wrong proposal is
+corrected. The review screen shows every drafted step with what was proposed for it and, for the
+steps that got nothing, **why**; accepting is available individually and in bulk.
+
+The known sharp edge, recorded rather than left to be discovered: **a second walkthrough over a
+partly-bound branching workflow misaligns.** The walkthrough re-performs the bound prefix while
+alignment is offered only the unbound steps, so the library workflow's hold branch is offered the
+search box for its member-ID step. It is visibly wrong in review, which is what review is for, and
+`docs/demo/walkthrough-binding-demo.md` says to bind the second branch per step. A greedy alignment
+that is predictably wrong was preferred to an optimal one that is unpredictably right (**ADR-035**).
+
+`pnpm db:seed:library:unbound` seeds the branching workflow with no bindings, which is what the
+walkthrough demo needs; the ordinary `db:seed:library` still seeds it bound for the branching and
+drift demos.
+
+**Home now offers recording first and describing second.** Content unchanged, order swapped; nothing
+asserted their order before, so the e2e suite now pins it.
+
 ### Before starting Phase 2
 
-Read the Task 13 report's limitations section first, then Task 12's and Task 9's. The open items carried out of Phase 1 are:
+Read the Task 14 report's limitations section first, then Task 13's, Task 12's and Task 9's. The open items carried out of Phase 1 are:
 `NOT_FOUND` missing from the error taxonomy; no server-side duplicate-dispatch suppression; no
 recovery for runs orphaned by a killed API process; no retention or orphan reconciliation; and
 database-level enforcement of immutability and append-only still deferred (ADR-014).

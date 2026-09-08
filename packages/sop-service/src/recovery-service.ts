@@ -28,6 +28,12 @@ import { declaredNames } from './binding-service';
  *
  * Between the two there is no automation. Nothing polls for proposals, nothing
  * accepts one on a timer, and nothing re-runs the workflow when one appears.
+ *
+ * There are now two things that *write* a proposal — a run that met drift, and
+ * a walkthrough that lined one demonstration up against a drafted workflow
+ * (ADR-035) — and exactly one that accepts one, which is this file. That is the
+ * property worth keeping: a second writer is a second source of suggestions, a
+ * second accepter would be a second way a binding becomes live.
  */
 
 export type AcceptRecoveryProposalResult =
@@ -79,12 +85,19 @@ export async function acceptRecoveryProposal(input: {
     proposal.stepId,
   );
 
-  if (current === null || current.id !== proposal.proposedForBindingId) {
+  // One comparison, two meanings, and both are "the step's live binding is not
+  // what this proposal was written against". A drift proposal names the binding
+  // it replaces; a walkthrough proposal names none, because the step had none —
+  // so for it, "still none" is the condition, and a binding appearing in the
+  // meantime is exactly as much of a reason to refuse.
+  if ((current?.id ?? null) !== (proposal.proposedForBindingId ?? null)) {
     return {
       ok: false,
       reason: 'superseded',
       message:
-        'This step has been re-recorded since Orbit proposed a repair for it, so the proposal is about a mapping that is no longer live. Dismiss it and check the current binding.',
+        proposal.origin === 'demonstration'
+          ? 'This step has been bound since the walkthrough proposed a mapping for it, so accepting would replace work newer than the proposal. Dismiss it and check the current binding.'
+          : 'This step has been re-recorded since Orbit proposed a repair for it, so the proposal is about a mapping that is no longer live. Dismiss it and check the current binding.',
     };
   }
 
@@ -123,8 +136,12 @@ export async function acceptRecoveryProposal(input: {
       documentId: proposal.documentId,
       binding: proposal.proposedBinding,
       // Supersedes the drifted binding here, at accept time, and not one moment
-      // earlier. That is the difference between a proposal and a change.
-      parentBindingId: proposal.proposedForBindingId,
+      // earlier. That is the difference between a proposal and a change. A
+      // walkthrough proposal supersedes nothing, because the step it binds has
+      // never had a binding — the check above has just proved that is still so.
+      ...(proposal.proposedForBindingId === null
+        ? {}
+        : { parentBindingId: proposal.proposedForBindingId }),
     });
 
     // Through the lifecycle, never around it: the repository refuses
@@ -134,7 +151,9 @@ export async function acceptRecoveryProposal(input: {
     const approved = await transactional.executionBindings.approve(created.id, {
       reviewNote:
         input.reviewNote ??
-        `Accepted Orbit's recovery proposal ${proposal.id} for step "${proposal.stepId}".`,
+        (proposal.origin === 'demonstration'
+          ? `Accepted the mapping a walkthrough proposed (${proposal.id}) for step "${proposal.stepId}".`
+          : `Accepted Orbit's recovery proposal ${proposal.id} for step "${proposal.stepId}".`),
     });
 
     await transactional.bindingRecoveryProposals.accept(proposal.id, approved.id, {

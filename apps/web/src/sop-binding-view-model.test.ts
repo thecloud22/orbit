@@ -314,6 +314,7 @@ describe('recovery proposals in the binding panel', () => {
       proposalId: 'recprop_1',
       stepId: 'search_catalog',
       state: 'proposed',
+      origin: 'drift',
       replacesBindingId: 'execbind_1',
       observedInRunId: 'run_1',
       summary: 'The test id changed; the button did not.',

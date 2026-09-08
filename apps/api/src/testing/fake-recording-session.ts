@@ -101,9 +101,16 @@ export function navigation(url: string, order: number): SequenceEntry {
   return { ...entry, order };
 }
 
-/** A click or fill, as the recorder would derive it. */
+/**
+ * A click, fill or pick, as the recorder would derive it.
+ *
+ * `pick` is a person pointing at a value to be read rather than acting on it,
+ * which is how an `extract` step is demonstrated. It is the same shape as any
+ * other capture — only the mode the page was in differs — so it is the same
+ * helper.
+ */
 export function elementCapture(input: {
-  readonly type: 'click' | 'fill';
+  readonly type: 'click' | 'fill' | 'pick';
   readonly order: number;
   readonly testId: string;
   readonly name: string;
@@ -120,7 +127,7 @@ export function elementCapture(input: {
       { strategy: 'role_and_name', value: 'button', name: input.name },
     ],
     fingerprint: {
-      role: input.type === 'fill' ? 'textbox' : 'button',
+      role: input.type === 'fill' ? 'textbox' : input.type === 'pick' ? 'paragraph' : 'button',
       accessibleName: input.name,
       text: input.type === 'fill' ? '' : input.name,
       boundingBox: { x: 0, y: 0, width: 80, height: 32 },

@@ -18,6 +18,7 @@ import type {
   ModelUsageView,
   SopDraftView,
   SopReviewView,
+  WalkthroughSessionView,
 } from '@orbit/api/views';
 import type { ErrorDetail, OrbitError } from '@orbit/contracts';
 
@@ -343,6 +344,50 @@ export async function saveBinding(
 
 export async function cancelBindingSession(sessionId: string): Promise<void> {
   const response = await fetch(`/v1/binding-sessions/${sessionId}`, { method: 'DELETE' });
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+}
+
+/**
+ * Opens one browser for a whole workflow, to be performed once end to end.
+ *
+ * The counterpart to `startBindingSession`, and deliberately not a variant of
+ * it: this one names no step, because the point is that a person performs the
+ * task rather than nine separate demonstrations of its parts (ADR-035).
+ */
+export async function startWalkthrough(input: {
+  readonly documentId: string;
+  readonly startUrl: string;
+}): Promise<WalkthroughSessionView> {
+  return send('/v1/walkthrough-sessions', 'POST', input);
+}
+
+export async function getWalkthrough(sessionId: string): Promise<WalkthroughSessionView> {
+  return getJson<WalkthroughSessionView>(`/v1/walkthrough-sessions/${sessionId}`);
+}
+
+/** Switches between performing the task and pointing at a value to be read. */
+export async function setWalkthroughMode(
+  sessionId: string,
+  mode: 'action' | 'pick',
+): Promise<WalkthroughSessionView> {
+  return send(`/v1/walkthrough-sessions/${sessionId}/mode`, 'POST', { mode });
+}
+
+/**
+ * Ends the walkthrough: aligns it, writes the proposals, closes the browser.
+ *
+ * Writes no binding. What comes back is what a person then reviews, and
+ * accepting goes through the ordinary proposal route.
+ */
+export async function finishWalkthrough(sessionId: string): Promise<WalkthroughSessionView> {
+  return send(`/v1/walkthrough-sessions/${sessionId}/proposals`, 'POST', {});
+}
+
+export async function cancelWalkthrough(sessionId: string): Promise<void> {
+  const response = await fetch(`/v1/walkthrough-sessions/${sessionId}`, { method: 'DELETE' });
 
   if (!response.ok) {
     throw await toApiError(response);

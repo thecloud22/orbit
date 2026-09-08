@@ -36,6 +36,23 @@ describe('viewFromSearch', () => {
     });
   });
 
+  it('reattaches to an open walkthrough from the URL', () => {
+    // For the same reason a binding session is in the URL: a reload must find
+    // the browser Orbit opened rather than orphan the window.
+    expect(viewFromSearch('?documentId=sopdoc_123&walkthroughSessionId=walk_abc')).toEqual({
+      kind: 'review',
+      documentId: 'sopdoc_123',
+      walkthroughSessionId: 'walk_abc',
+    });
+  });
+
+  it('ignores an empty walkthrough session id rather than polling for nothing', () => {
+    expect(viewFromSearch('?documentId=sopdoc_123&walkthroughSessionId=')).toEqual({
+      kind: 'review',
+      documentId: 'sopdoc_123',
+    });
+  });
+
   it('ignores an empty document id rather than showing an empty review', () => {
     expect(viewFromSearch('?documentId=')).toEqual({ kind: 'home' });
   });
@@ -87,6 +104,8 @@ describe('searchForView', () => {
       { kind: 'run', runId: 'run_123' },
       { kind: 'documents' },
       { kind: 'review', documentId: 'sopdoc_123' },
+      { kind: 'review', documentId: 'sopdoc_123', bindingSessionId: 'bind_abc' },
+      { kind: 'review', documentId: 'sopdoc_123', walkthroughSessionId: 'walk_abc' },
       { kind: 'recording', sessionId: 'rec_abc' },
     ];
 

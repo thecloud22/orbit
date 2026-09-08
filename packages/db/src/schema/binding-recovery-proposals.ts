@@ -43,10 +43,42 @@ import { sopDocuments } from './sop-documents';
  * `createBinding` a person recording a step goes through, ending `approved` —
  * so there is exactly one way a binding is ever made, and recovery is not a
  * second one.
+ *
+ * Since ADR-035 this table holds a second kind of proposal, and the table name
+ * is now narrower than what it stores. A walkthrough — one browser, one pass
+ * through the whole task — produces a proposed binding per drafted step, and
+ * every property above is exactly what such a proposal needs: it supersedes
+ * nothing while it waits, only one may be open per step, and accepting it goes
+ * through the same lifecycle. `origin` says which produced it. A second table
+ * would have been a second copy of those rules, and a rename would have churned
+ * an audit table and every path that reads it to buy a better noun.
  */
 export const RECOVERY_PROPOSAL_STATES = ['proposed', 'accepted', 'dismissed'] as const;
 
 export type RecoveryProposalState = (typeof RECOVERY_PROPOSAL_STATES)[number];
+
+/**
+ * What produced the proposal, which is the only thing the two kinds differ on.
+ *
+ * `drift` is ADR-033's original: a run stopped because an approved locator no
+ * longer resolved, and the binding's own chain still found the element a person
+ * approved. It always replaces a live binding.
+ *
+ * `demonstration` is a walkthrough (ADR-035): somebody performed the whole task
+ * once and Orbit lined what they did up against the steps still waiting to be
+ * bound. It replaces nothing, because the step it is about has no binding yet —
+ * which is why `proposed_for_binding_id` is nullable and constrained per origin
+ * below.
+ *
+ * They share this table rather than getting one each because everything that
+ * makes a proposal a proposal is the same for both: it is a drafted binding
+ * attached to its document and its step, it supersedes nothing while it waits,
+ * exactly one may be open per step, and accepting it goes through the ordinary
+ * binding lifecycle. A second table would be a second set of those rules.
+ */
+export const RECOVERY_PROPOSAL_ORIGINS = ['drift', 'demonstration'] as const;
+
+export type RecoveryProposalOrigin = (typeof RECOVERY_PROPOSAL_ORIGINS)[number];
 
 export const bindingRecoveryProposals = pgTable(
   'binding_recovery_proposals',
@@ -63,10 +95,17 @@ export const bindingRecoveryProposals = pgTable(
      * Cascade: a proposal about a binding that no longer exists is about
      * nothing. It says what should replace *that* mapping, and cannot be
      * reinterpreted against a different one.
+     *
+     * Null for a `demonstration` proposal, which replaces nothing: the step it
+     * is about has never been bound, and inventing a binding for it to point at
+     * would be inventing the thing the proposal exists to produce. The check
+     * constraint below keeps a `drift` proposal from ever having a null here.
      */
-    proposedForBindingId: opaqueId<ExecutionBindingId>('proposed_for_binding_id')
-      .notNull()
-      .references(() => executionBindings.id, { onDelete: 'cascade' }),
+    proposedForBindingId: opaqueId<ExecutionBindingId>('proposed_for_binding_id').references(
+      () => executionBindings.id,
+      { onDelete: 'cascade' },
+    ),
+    origin: text('origin').$type<RecoveryProposalOrigin>().notNull().default('drift'),
     /**
      * The run that motivated it, and the version that run executed.
      *
@@ -134,6 +173,17 @@ export const bindingRecoveryProposals = pgTable(
     check(
       'binding_recovery_proposals_state_check',
       inValues(table.state, RECOVERY_PROPOSAL_STATES),
+    ),
+    check(
+      'binding_recovery_proposals_origin_check',
+      inValues(table.origin, RECOVERY_PROPOSAL_ORIGINS),
+    ),
+    // A drift proposal without the binding it replaces could not be accepted:
+    // the accept path refuses unless the step's live binding is still the one
+    // the proposal was written about, and there would be nothing to compare.
+    check(
+      'binding_recovery_proposals_origin_target_check',
+      sql`${table.origin} <> 'drift' OR ${table.proposedForBindingId} IS NOT NULL`,
     ),
     check('binding_recovery_proposals_binding_sha256_check', isSha256(table.proposedBindingSha256)),
     // A resolved proposal always records when it was resolved.

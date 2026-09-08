@@ -28,7 +28,18 @@ export type View =
    * is open for it, so a reload reattaches to that session rather than
    * orphaning the window it opened.
    */
-  | { readonly kind: 'review'; readonly documentId: string; readonly bindingSessionId?: string }
+  | {
+      readonly kind: 'review';
+      readonly documentId: string;
+      readonly bindingSessionId?: string;
+      /**
+       * The open walkthrough, for the same reason `bindingSessionId` is here: a
+       * reload must reattach to the browser Orbit opened rather than orphan it.
+       * The two never coexist — starting one closes the other's affordance —
+       * but they are separate parameters because they name separate sessions.
+       */
+      readonly walkthroughSessionId?: string;
+    }
   | { readonly kind: 'recording'; readonly sessionId: string };
 
 export const DOCUMENTS_VIEW = 'documents';
@@ -50,10 +61,16 @@ export function viewFromSearch(search: string): View {
   const documentId = params.get('documentId');
   if (documentId !== null && documentId !== '') {
     const bindingSessionId = params.get('bindingSessionId');
+    const walkthroughSessionId = params.get('walkthroughSessionId');
 
-    return bindingSessionId === null || bindingSessionId === ''
-      ? { kind: 'review', documentId }
-      : { kind: 'review', documentId, bindingSessionId };
+    return {
+      kind: 'review',
+      documentId,
+      ...(bindingSessionId === null || bindingSessionId === '' ? {} : { bindingSessionId }),
+      ...(walkthroughSessionId === null || walkthroughSessionId === ''
+        ? {}
+        : { walkthroughSessionId }),
+    };
   }
 
   const runId = params.get('runId');
@@ -101,12 +118,19 @@ export function searchForView(view: View): string {
       return `?runId=${encodeURIComponent(view.runId)}`;
     case 'documents':
       return `?view=${DOCUMENTS_VIEW}`;
-    case 'review':
-      return view.bindingSessionId === undefined
-        ? `?documentId=${encodeURIComponent(view.documentId)}`
-        : `?documentId=${encodeURIComponent(view.documentId)}&bindingSessionId=${encodeURIComponent(
-            view.bindingSessionId,
-          )}`;
+    case 'review': {
+      const parts = [`documentId=${encodeURIComponent(view.documentId)}`];
+
+      if (view.bindingSessionId !== undefined) {
+        parts.push(`bindingSessionId=${encodeURIComponent(view.bindingSessionId)}`);
+      }
+
+      if (view.walkthroughSessionId !== undefined) {
+        parts.push(`walkthroughSessionId=${encodeURIComponent(view.walkthroughSessionId)}`);
+      }
+
+      return `?${parts.join('&')}`;
+    }
     case 'recording':
       return `?recordingSessionId=${encodeURIComponent(view.sessionId)}`;
   }

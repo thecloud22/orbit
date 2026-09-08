@@ -300,6 +300,18 @@ export function App() {
                   : { kind: 'review', documentId: view.documentId, bindingSessionId: sessionId },
               );
             }}
+            walkthroughSessionId={view.walkthroughSessionId ?? null}
+            onWalkthroughSessionChange={(sessionId) => {
+              navigate(
+                sessionId === null
+                  ? { kind: 'review', documentId: view.documentId }
+                  : {
+                      kind: 'review',
+                      documentId: view.documentId,
+                      walkthroughSessionId: sessionId,
+                    },
+              );
+            }}
             onOpenAgent={(agentVersionId) => {
               navigate({ kind: 'agents', agentVersionId });
             }}

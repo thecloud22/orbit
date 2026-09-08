@@ -1,0 +1,4 @@
+ALTER TABLE "binding_recovery_proposals" ALTER COLUMN "proposed_for_binding_id" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "binding_recovery_proposals" ADD COLUMN "origin" text DEFAULT 'drift' NOT NULL;--> statement-breakpoint
+ALTER TABLE "binding_recovery_proposals" ADD CONSTRAINT "binding_recovery_proposals_origin_check" CHECK ("binding_recovery_proposals"."origin" IN ('drift', 'demonstration'));--> statement-breakpoint
+ALTER TABLE "binding_recovery_proposals" ADD CONSTRAINT "binding_recovery_proposals_origin_target_check" CHECK ("binding_recovery_proposals"."origin" <> 'drift' OR "binding_recovery_proposals"."proposed_for_binding_id" IS NOT NULL);

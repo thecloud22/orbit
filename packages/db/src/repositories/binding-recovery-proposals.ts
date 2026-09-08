@@ -13,7 +13,11 @@ import { sha256Of } from '../checksum';
 import type { Executor } from '../client';
 import { InvalidRunTransitionError, OrbitDatabaseError, RecordNotFoundError } from '../errors';
 import { toBindingRecoveryProposalRecord, type BindingRecoveryProposalRecord } from '../mappers';
-import { bindingRecoveryProposals, type RecoveryProposalState } from '../schema';
+import {
+  bindingRecoveryProposals,
+  type RecoveryProposalOrigin,
+  type RecoveryProposalState,
+} from '../schema';
 
 /** An invalid proposed binding never becomes a stored proposal. */
 export class RecoveryProposalValidationError extends OrbitDatabaseError {}
@@ -24,7 +28,12 @@ export class RecoveryProposalAlreadyOpenError extends OrbitDatabaseError {}
 export interface CreateRecoveryProposalInput {
   readonly documentId: SopDocumentId;
   readonly stepId: string;
-  readonly proposedForBindingId: ExecutionBindingId;
+  /**
+   * The live binding this replaces. Required for a `drift` proposal and absent
+   * for a `demonstration` one, whose step has never been bound.
+   */
+  readonly proposedForBindingId?: ExecutionBindingId;
+  readonly origin?: RecoveryProposalOrigin;
   readonly observedInRunId?: RunId;
   readonly observedInAgentVersionId?: AgentVersionId;
   readonly proposedBinding: ExecutionBinding;
@@ -151,7 +160,8 @@ export function createBindingRecoveryProposalRepository(
           id: input.id ?? newBindingRecoveryProposalId(),
           documentId: input.documentId,
           stepId: input.stepId,
-          proposedForBindingId: input.proposedForBindingId,
+          proposedForBindingId: input.proposedForBindingId ?? null,
+          origin: input.origin ?? 'drift',
           observedInRunId: input.observedInRunId ?? null,
           observedInAgentVersionId: input.observedInAgentVersionId ?? null,
           state: 'proposed',

@@ -4,6 +4,9 @@ import {
   E2E_API_URL,
   E2E_BINDABLE_DOCUMENT_ID,
   E2E_BINDABLE_STEP_ID,
+  E2E_WALKTHROUGH_DECISION_STEP_ID,
+  E2E_WALKTHROUGH_DOCUMENT_ID,
+  E2E_WALKTHROUGH_STEP_ID,
   E2E_BOUND_DOCUMENT_ID,
   E2E_BOUND_STEP_ID,
   E2E_WATCHTOWER_URL,
@@ -894,9 +897,126 @@ describe('Watchtower end to end', () => {
   });
 
   /**
+   * Binding a whole workflow from one walkthrough (ADR-035).
+   *
+   * The path this feature exists for, end to end: a drafted workflow with nine
+   * unbound steps, one browser, one pass, and a review screen. The browser is
+   * the one thing substituted, exactly as it is for recording and for a binding
+   * session — the alignment, the proposals, the accept path and the approved
+   * bindings the review page reads back are all real.
+   *
+   * The workflow branches on purpose. What this asserts is as much about the
+   * steps that got *nothing* as about the ones that got a proposal.
+   */
+  describe('binding a whole workflow from one walkthrough', () => {
+    it('proposes what was demonstrated, explains the rest, and accepts in bulk', async () => {
+      const page = await open();
+      await page.goto(`${E2E_WATCHTOWER_URL}/?documentId=${E2E_WALKTHROUGH_DOCUMENT_ID}`, {
+        waitUntil: 'load',
+      });
+
+      await expect
+        .poll(() => page.getByTestId('walkthrough-offer').count(), { timeout: 30_000 })
+        .toBe(1);
+
+      // The exclusion is stated before anyone starts, not discovered afterwards.
+      expect((await page.getByTestId('walkthrough-offer-decisions').textContent()) ?? '').toContain(
+        'cannot be bound from a walkthrough',
+      );
+
+      const status = page.getByTestId(`sop-binding-status-${E2E_WALKTHROUGH_STEP_ID}`);
+      expect((await status.textContent()) ?? '').toBe('Not recorded');
+
+      await page.getByTestId('walkthrough-start').click();
+
+      // The open walkthrough is in the URL, so a reload reattaches to the
+      // browser rather than orphaning the window it opened.
+      await expect
+        .poll(() => page.url().includes('walkthroughSessionId=walk_'), { timeout: 20_000 })
+        .toBe(true);
+
+      // The captures arrive by polling, as they would while somebody worked.
+      await expect
+        .poll(() => page.getByTestId('walkthrough-capture').count(), { timeout: 20_000 })
+        .toBeGreaterThan(0);
+
+      await page.getByTestId('walkthrough-finish').click();
+
+      await expect
+        .poll(() => page.getByTestId('walkthrough-step').count(), { timeout: 20_000 })
+        .toBe(9);
+
+      // The step that was demonstrated carries what was demonstrated for it,
+      // named as an element rather than as a selector.
+      await expect
+        .poll(
+          async () =>
+            (await page
+              .getByTestId(`walkthrough-status-${E2E_WALKTHROUGH_STEP_ID}`)
+              .textContent()) ?? '',
+          { timeout: 20_000 },
+        )
+        .toBe('Proposed');
+
+      // The decision got nothing, and says why where a person will read it.
+      const decision = page.getByTestId(`walkthrough-status-${E2E_WALKTHROUGH_DECISION_STEP_ID}`);
+      expect((await decision.textContent()) ?? '').toBe('Nothing proposed');
+      expect((await page.getByTestId('walkthrough-decision-notice').textContent()) ?? '').toContain(
+        'one path',
+      );
+
+      // A step the walkthrough could not account for offers the per-step flow,
+      // which is unchanged and is where a wrong or missing mapping is fixed.
+      expect(
+        await page.getByTestId(`walkthrough-bind-${E2E_WALKTHROUGH_DECISION_STEP_ID}`).count(),
+      ).toBe(1);
+
+      // Nothing is live yet: the review page's own status still says so.
+      expect((await status.textContent()) ?? '').toBe('Not recorded');
+
+      await page.getByTestId('walkthrough-accept-all').click();
+
+      // Accepting goes through the ordinary binding lifecycle, so the binding
+      // panel — which reads the document, not the walkthrough — now says
+      // approved.
+      await expect
+        .poll(async () => (await status.textContent()) ?? '', { timeout: 20_000 })
+        .toBe('Approved');
+
+      await page.getByTestId('walkthrough-done').click();
+
+      await expect
+        .poll(() => page.getByTestId('walkthrough-panel').count(), { timeout: 20_000 })
+        .toBe(0);
+      expect(page.url()).not.toContain('walkthroughSessionId=');
+
+      await page.close();
+    });
+  });
+
+  /**
    * Navigation, which Watchtower had none of: every view already had a URL and
    * nothing linked them, so a workflow was unreachable unless you knew its id.
    */
+  describe('the two ways in, on Home', () => {
+    it('offers recording first and describing second', async () => {
+      const page = await open();
+
+      await expect.poll(() => page.getByTestId('home-page').count(), { timeout: 20_000 }).toBe(1);
+
+      // Named peers, so the order is the only thing being asserted — and it is
+      // asserted because nothing else pins it, and a reordering that happened by
+      // accident would look exactly like this one.
+      const order = await page
+        .locator('[data-testid="record-own-card"], [data-testid="guided-path-card"]')
+        .evaluateAll((cards) => cards.map((card) => card.getAttribute('data-testid')));
+
+      expect(order).toEqual(['record-own-card', 'guided-path-card']);
+
+      await page.close();
+    });
+  });
+
   describe('navigating Watchtower', () => {
     it('shows the nav on every view and marks where you are', async () => {
       const page = await open();

@@ -10,7 +10,7 @@ import {
   stepChecksum,
 } from '@orbit/db';
 import { EXECUTION_BINDING_SCHEMA_VERSION, type SelectorChain } from '@orbit/execution-mapping';
-import { escalationReviewGraph } from '@orbit/sop-graph/testing';
+import { borrowOrHoldGraph, escalationReviewGraph } from '@orbit/sop-graph/testing';
 import { loadTestEnv, resolveTestDatabaseUrl, truncateOrbitTables } from '@orbit/db/testing';
 import {
   brokenExtractLocatorAgentIr,
@@ -26,6 +26,7 @@ import {
   E2E_BINDABLE_DOCUMENT_ID,
   E2E_BOUND_DOCUMENT_ID,
   E2E_BOUND_STEP_ID,
+  E2E_WALKTHROUGH_DOCUMENT_ID,
   E2E_WATCHTOWER_URL,
   E2E_WEB_PORT,
 } from './stack-ports';
@@ -69,6 +70,7 @@ export default async function setup(): Promise<() => Promise<void>> {
 
     await seedBoundDocument(repositories);
     await seedBindableDocument(repositories);
+    await seedWalkthroughDocument(repositories);
   } finally {
     await handle.close();
   }
@@ -250,6 +252,31 @@ async function seedBindableDocument(
   await repositories.sopGraphRevisions.create({
     documentId: document.id,
     graph: escalationReviewGraph(),
+    provenance: { kind: 'generated', model: 'fake', provider: 'fake', promptVersion: 'e2e' },
+  });
+}
+
+/**
+ * A branching workflow with no bindings, for the walkthrough test (ADR-035).
+ *
+ * Branching on purpose. A linear workflow would let one walkthrough account for
+ * every step and would prove nothing about the case that actually matters:
+ * a single pass follows one path, so the other branch's steps must come back
+ * with *nothing proposed and a reason*, and the decision must be refused
+ * outright.
+ */
+async function seedWalkthroughDocument(
+  repositories: ReturnType<typeof createRepositories>,
+): Promise<void> {
+  const document = await repositories.sopDocuments.create({
+    id: E2E_WALKTHROUGH_DOCUMENT_ID as never,
+    title: 'Borrow or hold, drafted and unbound',
+    sourceText: 'Search the catalog by ISBN. Borrow if available, otherwise place a hold.',
+  });
+
+  await repositories.sopGraphRevisions.create({
+    documentId: document.id,
+    graph: borrowOrHoldGraph(),
     provenance: { kind: 'generated', model: 'fake', provider: 'fake', promptVersion: 'e2e' },
   });
 }

@@ -82,6 +82,14 @@ step. The panel walks the branches one at a time — "Branch 1 of 2: the title i
 borrow" — and each capture is held until every branch has one. Only then is a single binding written.
 Abandoning a half-demonstrated decision leaves nothing behind.
 
+### Bind the whole thing in one walkthrough instead
+
+Binding this workflow step by step means nine sittings. It can also be bound by performing the task
+once: `pnpm db:seed:library:unbound` seeds the same workflow with no bindings, and the review page
+then offers **Bind every step in one walkthrough** (**ADR-035**). One pass down the borrow path
+proposes five of the nine and explains the other four — including this decision, which a walkthrough
+can never bind, because one pass follows one path. See `docs/demo/walkthrough-binding-demo.md`.
+
 ### Draft it with AI instead
 
 The fixture above is hand-written, which is the right way to *prove* branching but not how a person

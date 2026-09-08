@@ -9,13 +9,19 @@ import { parseExecutionBinding, type ExecutionBinding } from '@orbit/execution-m
 
 import { sha256Of } from '../checksum';
 import { DatabaseIntegrityError } from '../errors';
-import type { BindingRecoveryProposalRow, RecoveryProposalState } from '../schema';
+import type {
+  BindingRecoveryProposalRow,
+  RecoveryProposalOrigin,
+  RecoveryProposalState,
+} from '../schema';
 
 export interface BindingRecoveryProposalRecord {
   readonly id: BindingRecoveryProposalId;
   readonly documentId: SopDocumentId;
   readonly stepId: string;
-  readonly proposedForBindingId: ExecutionBindingId;
+  /** Null for a proposal produced by a walkthrough, which replaces nothing. */
+  readonly proposedForBindingId: ExecutionBindingId | null;
+  readonly origin: RecoveryProposalOrigin;
   readonly observedInRunId: RunId | null;
   readonly observedInAgentVersionId: AgentVersionId | null;
   readonly state: RecoveryProposalState;
@@ -63,6 +69,7 @@ export function toBindingRecoveryProposalRecord(
     documentId: row.documentId,
     stepId: row.stepId,
     proposedForBindingId: row.proposedForBindingId,
+    origin: row.origin,
     observedInRunId: row.observedInRunId,
     observedInAgentVersionId: row.observedInAgentVersionId,
     state: row.state,

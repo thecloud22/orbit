@@ -17,6 +17,7 @@ import {
   createPlaywrightRecordingSessionFactory,
   createRecordingSessionRegistry,
 } from './recording/session-registry';
+import { createWalkthroughSessionRegistry } from './recording/walkthrough-session-registry';
 import type { FastifyInstance } from 'fastify';
 
 import type { ApiContext } from './context';
@@ -96,6 +97,15 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
     factory: browserSessionFactory,
   });
 
+  // The third registry on the same factory, closed on the same path. Separate
+  // from the other two because a walkthrough ends by proposing and closing,
+  // where a recording ends by creating a document and a binding sitting never
+  // ends at all (ADR-035).
+  const walkthroughSessions = createWalkthroughSessionRegistry({
+    database: handle.db,
+    factory: browserSessionFactory,
+  });
+
   const app = buildServer({
     context: {
       repositories: createRepositories(handle.db),
@@ -114,6 +124,7 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
       recoveryProposals: createRecoveryProposalService({ database: handle.db }),
       recordingSessions,
       bindingSessions,
+      walkthroughSessions,
       modelBudgets: options.modelBudgets ?? {},
       dispatcher: createInProcessRunDispatcher({
         database: handle.db,
@@ -146,6 +157,7 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
       // it; a stranded Chromium outlives the API otherwise.
       await recordingSessions.closeAll();
       await bindingSessions.closeAll();
+      await walkthroughSessions.closeAll();
       await handle.close();
     },
   };

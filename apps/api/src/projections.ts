@@ -30,6 +30,7 @@ import {
 import type { ArtifactLink, ArtifactMetadata, EventEnvelope } from '@orbit/contracts';
 
 import type { BindingSessionState } from './recording/binding-session-registry';
+import type { WalkthroughSessionState } from './recording/walkthrough-session-registry';
 import {
   artifactUrl,
   redactPayload,
@@ -56,6 +57,7 @@ import {
   type ModelUsageTotalsView,
   type ModelUsageView,
   type RecoveryProposalView,
+  type WalkthroughSessionView,
 } from './views';
 
 /**
@@ -480,7 +482,8 @@ export function toRecoveryProposalView(input: {
   readonly id: string;
   readonly stepId: string;
   readonly state: string;
-  readonly proposedForBindingId: string;
+  readonly proposedForBindingId: string | null;
+  readonly origin: string;
   readonly observedInRunId: string | null;
   readonly proposedBinding: ExecutionBinding;
   readonly diagnosis: Record<string, unknown>;
@@ -504,6 +507,7 @@ export function toRecoveryProposalView(input: {
     proposalId: input.id,
     stepId: input.stepId,
     state: input.state,
+    origin: input.origin,
     replacesBindingId: input.proposedForBindingId,
     observedInRunId: input.observedInRunId,
     summary: typeof diagnosis['summary'] === 'string' ? diagnosis['summary'] : '',
@@ -582,6 +586,50 @@ export function toBindingSessionView(state: BindingSessionState): BindingSession
       sensitive: capture.sensitive,
     })),
     failures: state.failures.map((failure) => ({ reason: failure.reason, url: failure.url })),
+  };
+}
+
+/**
+ * One walkthrough session, as Watchtower reads it (ADR-035).
+ *
+ * A straight rename with no judgement in it, like every projection here. The
+ * decisions — which step got which capture, and why one got nothing — were all
+ * taken before this, in a pure function that cannot reach a browser.
+ */
+export function toWalkthroughSessionView(state: WalkthroughSessionState): WalkthroughSessionView {
+  return {
+    sessionId: state.sessionId,
+    documentId: state.documentId,
+    startUrl: state.startUrl,
+    currentUrl: state.currentUrl,
+    startedAt: state.startedAt,
+    mode: state.mode,
+    browserOpen: state.browserOpen,
+    awaitingBinding: state.awaitingBinding,
+    captures: state.captures.map((capture) => ({
+      order: capture.order,
+      kind: capture.kind,
+      description: capture.description,
+      sensitive: capture.sensitive,
+    })),
+    failures: state.failures.map((failure) => ({ reason: failure.reason, url: failure.url })),
+    outcome:
+      state.outcome === null
+        ? null
+        : {
+            steps: state.outcome.steps.map((step) => ({
+              stepId: step.stepId,
+              stepKind: step.stepKind,
+              summary: step.summary,
+              proposalId: step.proposalId,
+              state: step.state,
+              demonstrated: step.demonstrated,
+              refusal: step.refusal,
+              message: step.message,
+            })),
+            proposed: state.outcome.proposed,
+            unusedCaptures: state.outcome.unusedCaptures,
+          },
   };
 }
 

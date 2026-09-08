@@ -42,3 +42,20 @@ export const E2E_BINDABLE_DOCUMENT_ID = 'sopdoc_e2e_binding_session';
 
 /** The step the end-to-end test binds: a non-sensitive fill. */
 export const E2E_BINDABLE_STEP_ID = 'enter_request_number';
+
+/**
+ * A drafted, unbound document the walkthrough test performs in one sitting.
+ *
+ * Its own document again, and for the same reason: accepting proposals for a
+ * whole workflow would bind steps the per-step binding test expects to find
+ * unbound. It uses the branching library workflow because that is the case the
+ * walkthrough has to be honest about — one pass cannot demonstrate both
+ * branches, and the review screen has to say so (ADR-035).
+ */
+export const E2E_WALKTHROUGH_DOCUMENT_ID = 'sopdoc_e2e_walkthrough';
+
+/** The step the walkthrough is expected to match first: the catalog search box. */
+export const E2E_WALKTHROUGH_STEP_ID = 'enter_isbn';
+
+/** The decision it must refuse, because one walkthrough follows one path. */
+export const E2E_WALKTHROUGH_DECISION_STEP_ID = 'check_availability';

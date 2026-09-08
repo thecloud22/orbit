@@ -16,6 +16,7 @@ import {
   publishRecording,
   reorderSopStep,
   startBindingSession,
+  startWalkthrough,
   targetBindingStep,
 } from './api-client';
 import { BindingSessionPanel } from './BindingSessionPanel';
@@ -27,6 +28,12 @@ import {
 import { isFullyBoundForPublish } from './sop-binding-view-model';
 import { describePublishRecordingFailure, type CompileFailure } from './publication-view-model';
 import { SopBindingPanel } from './SopBindingPanel';
+import { WalkthroughPanel } from './WalkthroughPanel';
+import {
+  DECISION_NOTICE,
+  describeWalkthroughFailure,
+  WALKTHROUGH_LEAD,
+} from './walkthrough-view-model';
 import { SopPublishPanel } from './SopPublishPanel';
 import { SopStepEditor } from './SopStepEditor';
 import { SopStepInserter } from './SopStepInserter';
@@ -45,6 +52,9 @@ export interface SopReviewPageProps {
   /** The open binding session, from the URL, so a reload reattaches to it. */
   readonly bindingSessionId: string | null;
   readonly onBindingSessionChange: (sessionId: string | null) => void;
+  /** The open walkthrough, from the URL, for the same reason (ADR-035). */
+  readonly walkthroughSessionId: string | null;
+  readonly onWalkthroughSessionChange: (sessionId: string | null) => void;
 }
 
 /**
@@ -60,6 +70,8 @@ export function SopReviewPage({
   onOpenAgent,
   bindingSessionId,
   onBindingSessionChange,
+  walkthroughSessionId,
+  onWalkthroughSessionChange,
 }: SopReviewPageProps) {
   const [review, setReview] = useState<SopReviewView | null>(null);
   const [bindings, setBindings] = useState<SopBindingsView | null>(null);
@@ -78,6 +90,7 @@ export function SopReviewPage({
   const [isStartingBinding, setIsStartingBinding] = useState(false);
   const [bindingFailure, setBindingFailure] = useState<BindingFailure | null>(null);
   const [startUrl, setStartUrl] = useState<string | null>(null);
+  const [isStartingWalkthrough, setIsStartingWalkthrough] = useState(false);
 
   const load = useCallback(async () => {
     // Loaded alongside the review, and deliberately not fatal: binding
@@ -188,6 +201,52 @@ export function SopReviewPage({
       );
     } finally {
       setIsStartingBinding(false);
+    }
+  }
+
+  /**
+   * Opens one browser for the whole workflow (ADR-035).
+   *
+   * Deliberately a sibling of `bindStep` rather than a mode of it: this one
+   * names no step, because what is being demonstrated is the task. It produces
+   * proposals a person reviews, and `bindStep` stays exactly as it was — the
+   * faster route is additional, and it replaces nothing.
+   */
+  async function startWholeWorkflow() {
+    setIsStartingWalkthrough(true);
+    setBindingFailure(null);
+
+    try {
+      const session = await startWalkthrough({ documentId, startUrl: startUrl ?? '' });
+      onWalkthroughSessionChange(session.sessionId);
+    } catch (caught) {
+      const error =
+        caught instanceof ApiRequestError
+          ? caught
+          : new ApiRequestError({ status: 0, message: 'The API could not be reached.' });
+      const described = describeWalkthroughFailure(error);
+
+      // Reported through the same notice the per-step flow uses, so a person
+      // sees one place where "the browser could not be opened" is said.
+      setBindingFailure({
+        kind:
+          described.kind === 'gone'
+            ? 'gone'
+            : described.kind === 'conflict'
+              ? 'in_use'
+              : described.kind === 'refused'
+                ? 'refused'
+                : 'request_failed',
+        title: described.title,
+        message: described.message,
+        // No browser was ever opened, so there is nothing still standing to go
+        // back to. Saying otherwise would tell somebody to look for a window
+        // that does not exist.
+        sessionSurvived: false,
+        issues: [],
+      });
+    } finally {
+      setIsStartingWalkthrough(false);
     }
   }
 
@@ -398,6 +457,30 @@ export function SopReviewPage({
         publishFailure={publishRecordingFailure}
       />
 
+      {walkthroughSessionId === null ? (
+        <StartWalkthrough
+          disabled={busy || bindingSessionId !== null}
+          isStarting={isStartingWalkthrough}
+          onStart={() => void startWholeWorkflow()}
+        />
+      ) : (
+        <WalkthroughPanel
+          documentId={documentId}
+          onBindStep={(stepId) => {
+            // Straight to the flow that already existed, unchanged: a wrong
+            // proposal is fixed by demonstrating that one step.
+            onWalkthroughSessionChange(null);
+            void bindStep(stepId);
+          }}
+          onChanged={() => void load()}
+          onClosed={() => {
+            onWalkthroughSessionChange(null);
+            void load();
+          }}
+          sessionId={walkthroughSessionId}
+        />
+      )}
+
       <SopBindingPanel
         bindings={bindings}
         isStarting={isStartingBinding}
@@ -521,6 +604,47 @@ export function SopReviewPage({
           </ul>
         </section>
       )}
+    </section>
+  );
+}
+
+/**
+ * The offer to bind everything at once (ADR-035).
+ *
+ * Sits above the per-step panel rather than inside it, because it is about the
+ * workflow rather than about any one step — and because the per-step flow below
+ * it is unchanged and must not read as having been replaced.
+ */
+function StartWalkthrough({
+  onStart,
+  isStarting,
+  disabled,
+}: {
+  readonly onStart: () => void;
+  readonly isStarting: boolean;
+  readonly disabled: boolean;
+}) {
+  return (
+    <section
+      className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-5 shadow-sm"
+      data-testid="walkthrough-offer"
+    >
+      <h3 className="text-sm font-semibold text-slate-900">Bind every step in one walkthrough</h3>
+      <p className="mt-1 text-sm text-slate-700">{WALKTHROUGH_LEAD}</p>
+
+      <button
+        className="mt-3 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:bg-slate-300"
+        data-testid="walkthrough-start"
+        disabled={disabled || isStarting}
+        onClick={onStart}
+        type="button"
+      >
+        {isStarting ? 'Opening a browser…' : 'Start a walkthrough'}
+      </button>
+
+      <p className="mt-2 text-xs text-slate-500" data-testid="walkthrough-offer-decisions">
+        {DECISION_NOTICE}
+      </p>
     </section>
   );
 }

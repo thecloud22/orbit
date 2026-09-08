@@ -528,6 +528,63 @@ export interface SavedBindingView {
   readonly session: BindingSessionView;
 }
 
+/**
+ * One walkthrough session: the browser somebody is performing the task in, and
+ * afterwards what Orbit made of it (ADR-035).
+ *
+ * `outcome` is null until the walkthrough has been turned into proposals, which
+ * is the moment the browser closes. Everything before that is live.
+ */
+export interface WalkthroughSessionView {
+  readonly sessionId: string;
+  readonly documentId: string;
+  readonly startUrl: string;
+  readonly currentUrl: string;
+  readonly startedAt: string;
+  /** `action` — perform the task; `pick` — point at a value to be read. */
+  readonly mode: string;
+  readonly browserOpen: boolean;
+  /** Steps that were waiting for a binding when the walkthrough began. */
+  readonly awaitingBinding: number;
+  readonly captures: readonly WalkthroughCaptureView[];
+  readonly failures: readonly BindingCaptureFailureView[];
+  readonly outcome: WalkthroughOutcomeView | null;
+}
+
+export interface WalkthroughCaptureView {
+  readonly order: number;
+  readonly kind: string;
+  readonly description: string;
+  readonly sensitive: boolean;
+}
+
+export interface WalkthroughOutcomeView {
+  /** Every step that was offered, in the workflow's own order. */
+  readonly steps: readonly WalkthroughStepView[];
+  readonly proposed: number;
+  /** Interactions the walkthrough contained that no step claimed. */
+  readonly unusedCaptures: number;
+}
+
+/**
+ * One drafted step and what the walkthrough had to say about it.
+ *
+ * A step with no proposal carries `refusal` and `message` instead, because
+ * *why nothing was proposed* is the half of this result a person has to act on.
+ */
+export interface WalkthroughStepView {
+  readonly stepId: string;
+  readonly stepKind: string;
+  readonly summary: string;
+  readonly proposalId: string | null;
+  /** `proposed`, `accepted`, `dismissed`, or `gone`. Null when nothing was proposed. */
+  readonly state: string | null;
+  /** The element, as a sentence. Never what was typed into it. */
+  readonly demonstrated: string | null;
+  readonly refusal: string | null;
+  readonly message: string | null;
+}
+
 /** Tokens and estimated cost over some set of model calls. */
 export interface ModelUsageTotalsView {
   readonly calls: number;
@@ -582,8 +639,14 @@ export interface RecoveryProposalView {
   readonly proposalId: string;
   readonly stepId: string;
   readonly state: string;
-  /** The binding this would replace. Unchanged while the proposal waits. */
-  readonly replacesBindingId: string;
+  /** What produced it: `drift` or `demonstration`. */
+  readonly origin: string;
+  /**
+   * The binding this would replace. Unchanged while the proposal waits.
+   *
+   * Null for a proposal from a walkthrough, whose step has never been bound.
+   */
+  readonly replacesBindingId: string | null;
   readonly observedInRunId: string | null;
   readonly summary: string;
   readonly confidence: string;

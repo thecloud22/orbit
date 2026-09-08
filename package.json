@@ -26,6 +26,7 @@
     "db:generate": "pnpm --filter @orbit/db generate",
     "db:seed": "pnpm --filter @orbit/db seed",
     "db:seed:library": "pnpm --filter @orbit/api seed:library",
+    "db:seed:library:unbound": "pnpm --filter @orbit/api seed:library -- --unbound",
     "agent:run": "pnpm --filter @orbit/browser-worker agent:run",
     "record:binding": "pnpm --filter @orbit/recorder record",
     "record:workflow": "pnpm --filter @orbit/recorder record-workflow",

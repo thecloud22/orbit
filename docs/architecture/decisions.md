@@ -1551,3 +1551,84 @@ This is what makes the deployment story work without a code change: a laptop run
 | Move `DecisionJudge` or a client into `@orbit/runtime` while consolidating | ADR-008 and ADR-032 deny the runtime that capability, and the boundary test that proves it now names the shared package too |
 | Trust Gemini's schema to enforce the judge's index range | Its structured-output schema subset does not carry every keyword. The runtime's own re-validation is the guarantee, and it always was |
 | Add Gemini defaults without rate-table rows | Every Gemini call would silently cost the conservative fallback rate, and the spend readout would be wrong in the safe-looking direction |
+
+## ADR-035: Bind a whole workflow from one walkthrough, by proposing an alignment nobody has to trust
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+ADR-027 gave a drafted workflow a way out of the compiler's `missing_binding` refusal: a binding session, started from Watchtower, that opens a headed browser aimed at one step. It works, and it is the wrong shape for the job it is most often asked to do.
+
+The seeded library workflow has **nine** steps the compiler requires a binding for. Binding it means: open a browser, perform one action, save, re-aim at the next step, perform one action, save — nine times, each time re-establishing the page state the previous step left behind. This was hit in real use, and it is the main reason the guided and AI-drafted paths feel worse than recording. Recording a workflow from scratch takes one sitting; binding an existing drafted one takes nine.
+
+The obvious alternative — match the drafted step's `targetHint` and `fieldHint` against the elements on the page — does not work, and the reason is worth stating because it is not obvious until you try it. **Most of the elements a workflow acts on do not exist until you have interacted with the page.** The library workflow's Borrow button is not on the catalog page; it appears after a search returns an available title. The confirmation text does not exist until the loan is placed. A static scan of the start URL can see the search box and nothing else, so it could bind one step out of nine and would have to guess at the rest — and a guess about which element to click is precisely the judgement ADR-018 and ADR-033 exist to withhold.
+
+The information needed to bind those elements only exists while somebody is performing the task. So the task is what Orbit should watch.
+
+### Decision
+
+**Perform the whole task once; Orbit works out which captured interaction belongs to which drafted step.**
+
+**The alignment is deliberately dull, and its dullness is the feature.** `alignDemonstration` in `@orbit/sop-recording` matches on **kind and order, and nothing else**: the first `fill` in the walkthrough is the first unbound `fill` in the workflow. Three properties are load-bearing.
+
+- **Deterministic, as a type rather than a promise.** The function is synchronous, so a network call cannot be hidden in it, and switching a model on would mean changing a signature a reviewer sees. This is verbatim the guarantee ADR-033 gives `diagnoseDrift`, for the same reason.
+- **Explainable.** Greedy, in order, first match wins. A person reviewing the result can check it by counting. A globally optimal alignment — a Levenshtein or Hungarian match over kinds — would match more steps in awkward cases, and nobody could predict what it would do, including the person who wrote it. When the output of a system is a set of claims a human must accept or reject one by one, being predictable beats being right slightly more often.
+- **Silent when unsure.** A step with no clean match gets nothing, and says why. A confidently wrong element is worse than a blank, because a blank is obviously unfinished and a wrong element looks finished.
+
+**Nothing is applied. A walkthrough writes proposals.** This is ADR-033's posture, taken for the same reason — the system has formed an opinion about Orbit's own definitions, and an opinion is not an approval — and it reuses ADR-033's machinery rather than paralleling it. `binding_recovery_proposals` gains an `origin` column (`drift` | `demonstration`) and a nullable `proposed_for_binding_id`; everything else about a proposal already fitted exactly. It is a drafted binding attached to its document and step, it supersedes nothing while it waits, exactly one may be open per step, and accepting it runs `create` → `submitForReview` → `approve` through `acceptRecoveryProposal`. **There is still exactly one function by which a binding is ever created, and this feature did not add a second.**
+
+The table's name is now narrower than what it holds, and that is a deliberate trade. Renaming it to `binding_proposals` would have meant a migration on an audit table plus a rename through the repository, the mappers, the contract id type, the service, the routes, the views and the Watchtower panel — a broad refactor to buy a better noun, against a `CLAUDE.md` rule that says not to. The schema file says plainly what the table now holds.
+
+**A walkthrough proposal replaces nothing, and the accept path was generalised rather than branched.** A drift proposal names the binding it replaces; a demonstration proposal names none, because its step has never been bound. Both are the same question — *is the step's live binding still what this proposal was written against?* — so `acceptRecoveryProposal` compares `current?.id ?? null` with `proposal.proposedForBindingId ?? null`. For a walkthrough proposal, a binding appearing in the meantime is exactly as much of a reason to refuse as a re-recording is for a drift one.
+
+**A decision is excluded, permanently, and said so on screen.** One walkthrough follows one path, so it cannot demonstrate both branches of a `decision`; a decision needs one element per branch or it compiles to an `expect_one_of` that cannot name a state the agent can reach (ADR-029). Decisions keep the branch-by-branch flow. This is stated in the panel before anyone starts and again beside the decision's own row, because a person who is not told reads a blank row as Orbit having failed rather than as Orbit declining.
+
+**A walkthrough is offered only the steps that have no binding**, in workflow order — which is what `alignDemonstration` documents its caller as doing. Re-proposing a mapping somebody has already demonstrated would ask them to review finished work.
+
+**One value never leaves the browser: what was typed.** A fill's `valueSource` comes from `defaultValueSourceFor(step)` — the step's own declared `${inputs.bookIsbn}` — never from the demonstration. So a proposal holds the element's role and accessible name and nothing else, and a password field's contents cannot reach a durable row even in principle. This is the same rule the capture list already followed, applied to a record that persists.
+
+**A third session registry, not a flag on an existing one.** What separates the three is what *finishing* means: a recording finishes by creating a document, a binding sitting never finishes (it saves a row and leaves the page where it is, because the next step starts there), and a walkthrough finishes by writing proposals and closing the browser, because the task is over and what remains is reading. One method meaning three things behind a discriminated input is the overload ADR-020 warned against. What the three actually share — ids, idle reaping, `closeAll`, and the hazard of a Chromium outliving the API — is `recording/session-store.ts`, already extracted.
+
+**The session outlives its browser.** After proposing, the window closes and the entry stays, holding the outcome, so the review screen survives a reload. This matters for one specific thing: the refusals. A proposal is a row and a refusal is the *absence* of one, so "nothing in the walkthrough matched this step" cannot be recovered from the database at all. Each proposal's `state` is re-read live on every poll, so a proposal accepted in another tab stops offering an accept button.
+
+**Reading a value is an explicit mode, not an inference.** A walkthrough runs in `action` mode because the person is doing the real task and the page must react as it would for them. An `extract` step is demonstrated by *pointing*, which must not fire the page's handlers, so the panel offers the switch and says which mode is active — rather than leaving somebody to wonder why their click did nothing.
+
+**The per-step flow is untouched.** Not deprecated, not a fallback: it is how a wrong proposal is corrected, how a decision is bound, and how anything the walkthrough could not account for gets done. Every refused row on the review screen carries a button straight into it.
+
+**Accepting in bulk is N calls, not a bulk endpoint.** Each acceptance is independently valid or refusable — a step somebody bound in another tab a moment ago must be refused while the rest still go through — and a server-side loop would have exactly those semantics with one more route to keep honest.
+
+### Consequences
+
+**A nine-step workflow is bound in one sitting instead of nine, for the path that was walked.** On the seeded library workflow, one borrow-path walkthrough proposes five of the nine and explains the other four: the decision, and the three steps of the hold branch nobody performed.
+
+**A branching workflow needs more than one walkthrough, and the second one is the sharp edge.** Walking the hold path afterwards aligns against a set narrowed to the still-unbound steps — which no longer includes the borrow-path prefix, while the walkthrough itself still *performs* that prefix. The ISBN field gets demonstrated again and the first unbound fill is now `enter_hold_member_id`, so it is offered the search box. **This is a wrong proposal, it is visible in review as "Filled 'Search the catalog'" against a member-ID step, and the review screen exists precisely for it.** Greedy alignment cannot understand branches; making it try would trade a predictable failure for an unpredictable one. The demo documentation says to bind the second branch step by step.
+
+**A walkthrough is worth doing on a workflow that is mostly unbound.** The narrowing that makes the first walkthrough clean is what makes a later one on a partly-bound workflow prone to the drift above. The panel says so.
+
+**Every acceptance is a real binding through the real lifecycle**, so a workflow bound this way publishes through exactly the gate ADR-027 built, with no new path and no exception.
+
+**One more browser-holding registry, and one more thing that must not outlive the API.** It is closed in `startApi`'s teardown beside the other two, and its idle reaping is the shared store's.
+
+**The proposal table now serves two producers and one consumer.** That is the property to preserve. A third producer would be fine; a second *accepter* would not.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Match drafted hints against elements on the start page | Most elements the workflow acts on do not exist until you have interacted with the page. It could bind one step of nine and would guess the rest |
+| Optimal (Levenshtein / Hungarian) alignment instead of greedy | Matches slightly more in awkward cases, and nobody can predict what it will do. For output a human must accept claim by claim, predictable beats occasionally-better |
+| Score each match with a confidence number | A float computed from "the kinds matched and the order held" is false precision, and somebody will tune a threshold against it. ADR-033's reasoning, unchanged |
+| Ask a model which capture is which step | The deterministic version already handles the common case, and a model here turns a wrong guess into a proposal a busy person accepts. The seam is a signature change, in the open |
+| Write the bindings directly and let a person undo them | Nine unreviewed mappings, live, from an alignment that can be wrong. The undo would be the review, after the risk |
+| Write proposals as `draft` execution bindings | Exactly ADR-033's rejected alternative: `listCurrent` would return them and block publishing a document with nothing wrong with it |
+| A second proposals table for demonstrations | Two copies of "supersedes nothing, one open per step, accepted through the lifecycle" — the rules that make a proposal safe |
+| Rename the table to `binding_proposals` | A migration on an audit table plus a rename through eight layers, to buy a noun. The schema comment states what it holds |
+| Fold walkthroughs into the binding-session registry | Three different meanings of "finish" behind one method with a discriminated input — the overload ADR-020 named |
+| Offer every bindable step, not just the unbound ones | Contradicts `alignDemonstration`'s stated contract, and misaligns the ordinary case (a walkthrough of a workflow bound from step 4 onwards) to protect an unusual one |
+| Infer pick mode from what somebody clicked | A click that reads a value and a click that presses a button are the same event. Guessing wrong fires the page's handlers, which is not undoable |
+| Let a walkthrough bind a decision from the path it took | A decision bound for one branch compiles to an `expect_one_of` that cannot name the state the agent reaches down the other (ADR-029) |
+| Keep the walkthrough session id out of the URL | A reload would orphan a real Chromium, which is the hazard `bindingSessionId` is in the URL to avoid |
+| A bulk accept endpoint | Each acceptance is independently refusable; a server loop has the same semantics with one more route to keep honest |
