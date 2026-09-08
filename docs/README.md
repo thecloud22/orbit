@@ -65,8 +65,7 @@ are the right place to look first.
 Nine of the 37 ADRs carry a qualifier — *Partially implemented*, or *amended /
 partly superseded by* a later one — and each says which part in a note under its
 status. Two describe capabilities that do not exist yet (ADR-010's S3 adapter,
-ADR-013's tier-gated policy engine) and are marked accordingly. ADR-037 is
-*Proposed*: it is the subject of an open review gate and nothing depends on it.
+ADR-013's tier-gated policy engine) and are marked accordingly.
 
 ## Contracts
 

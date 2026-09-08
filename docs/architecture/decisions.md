@@ -27,10 +27,8 @@ record of why Orbit is shaped as it is.
 | **Deprecated** | In force but being retired |
 | **Proposed** | Not decided. Nothing depends on it |
 
-No ADR is currently **Superseded** or **Deprecated**. Every accepted decision
-here still holds in its core; nine carry a qualifier. ADR-037 is **Proposed** —
-it is the subject of an open review gate (sub-phase 3.1) and nothing depends on
-it yet.
+No ADR is currently **Superseded**, **Deprecated** or **Proposed** outright.
+Every decision here still holds in its core; nine carry a qualifier.
 
 **Nothing in this file is speculative except where a status says so.** Two
 decisions describe capabilities that do not exist yet — ADR-010's S3 adapter and
@@ -78,7 +76,7 @@ real Gemini or Bedrock service.
 | [ADR-034](#adr-034-one-selection-layer-for-every-model-call-with-family-and-invocation-as-separate-axes) | One selection layer for every model call, with family and invocation as separate axes | Accepted — not exercised against a real Gemini or Bedrock service |
 | [ADR-035](#adr-035-bind-a-whole-workflow-from-one-walkthrough-by-proposing-an-alignment-nobody-has-to-trust) | Bind a whole workflow from one walkthrough, by proposing an alignment nobody has to trust | Accepted |
 | [ADR-036](#adr-036-revising-a-published-workflow-forks-a-new-draft-and-binding-stays-available-without-it) | Revising a published workflow forks a new draft, and binding stays available without it | Accepted |
-| [ADR-037](#adr-037-give-every-execution-surface-its-own-permission-section-addressing-vocabulary-and-evidence-set) | Give every execution surface its own permission section, addressing vocabulary, and evidence set | Proposed |
+| [ADR-037](#adr-037-give-every-execution-surface-its-own-permission-section-addressing-vocabulary-and-evidence-set) | Give every execution surface its own permission section, addressing vocabulary, and evidence set | Accepted |
 
 ---
 
@@ -1795,15 +1793,15 @@ Reopening was the obvious alternative and it is wrong on the merits. An approved
 
 ## ADR-037: Give every execution surface its own permission section, addressing vocabulary, and evidence set
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Phase:** 3
 
-> Not decided and nothing depends on it. This record exists to be reviewed
-> *before* sub-phase 3.1 writes the contract it describes, because the shape it
-> proposes lands inside immutable published Agent Versions and ADR-005 and
-> ADR-014 forbid migrating those afterwards. Move to **Accepted** when 3.1 lands,
-> or rewrite it.
+> Recorded as *Proposed* and reviewed before sub-phase 3.1 wrote the contract it
+> describes, because the shape lands inside immutable published Agent Versions
+> and ADR-005 and ADR-014 forbid migrating those afterwards. Accepted at that
+> gate; 3.1 implements the permission half. The addressing vocabularies and
+> evidence sets arrive with the surfaces that bring them.
 
 ### Context
 

@@ -507,8 +507,9 @@ Behaviour is unchanged for every agent that exists: the three runtime call sites
 `docs/contracts/agent-ir.md` also gained the `model.decide` section it had been missing since
 sub-phase 2.9.
 
-**ADR-037 remains _Proposed_ on purpose.** Flipping it to _Accepted_ is the gate action. Sub-phase
-3.2, the multi-surface runtime seam, is blocked until then.
+**Gate B passed; ADR-037 is _Accepted_.** The approved shape is: optional per-surface permission
+sections, a `{ surface, action }` step mapping, absent means denied, and `Locator` is not widened.
+Sub-phase 3.2, the multi-surface runtime seam, is next.
 
 **ADR-037 is *Proposed*, not accepted** — the only ADR in that state. It describes the per-surface
 permission section, addressing vocabulary and evidence set that sub-phase 3.1 will freeze, and it is
