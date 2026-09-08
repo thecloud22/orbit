@@ -21,6 +21,7 @@ import {
   isHttpReady,
   startManagedProcess,
   waitForHttpReady,
+  withDeadline,
   type ManagedProcess,
 } from '@orbit/runtime/testing';
 import { fileURLToPath } from 'node:url';
@@ -54,6 +55,14 @@ const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 /** The step whose element the portal renames, and the binding that names it. */
 const DRIFTED_STEP = 'search_catalog';
 const RECORDED_TEST_ID = 'catalog-search-button';
+
+/**
+ * How long one run against the drifted page may take before the test says so.
+ *
+ * Comfortably above the ~15s a real run measures and well under the 180s
+ * `testTimeout` below, so a stuck run is reported as a stuck run.
+ */
+const RUN_DEADLINE_MS = 90_000;
 
 const AVAILABLE_ISBN = '978-0-13-235088-4';
 const MEMBER_ID = 'LIB-1001';
@@ -194,18 +203,27 @@ describe('recovering from a renamed test id on a real page', () => {
 
     const factory = createPlaywrightExecutorFactory({ headless: true });
 
-    const result = await executeAgentVersion({
-      agentVersionId: published.version.id,
-      agentIr: published.version.agentIr,
-      inputs: { bookIsbn: AVAILABLE_ISBN, memberId: MEMBER_ID },
-      trigger: TEST_TRIGGER,
-      store: createDatabaseRunStore({ database: getDatabase().db, storage }),
-      browser: { open: () => factory.open() },
-      bindings: bindings!,
-      recovery: createDriftRecoveryProposer({
-        store: createDatabaseRecoveryProposalStore({ database: getDatabase().db }),
+    // Bounded well under this file's 180s `testTimeout`. A run that blocks —
+    // in the browser, or on a query waiting for a lock — then fails saying so,
+    // instead of running out the whole file's clock and reporting a timeout
+    // that names nothing. The reset between tests is bounded the same way, in
+    // `truncateOrbitTables`.
+    const result = await withDeadline(
+      executeAgentVersion({
+        agentVersionId: published.version.id,
+        agentIr: published.version.agentIr,
+        inputs: { bookIsbn: AVAILABLE_ISBN, memberId: MEMBER_ID },
+        trigger: TEST_TRIGGER,
+        store: createDatabaseRunStore({ database: getDatabase().db, storage }),
+        browser: { open: () => factory.open() },
+        bindings: bindings!,
+        recovery: createDriftRecoveryProposer({
+          store: createDatabaseRecoveryProposalStore({ database: getDatabase().db }),
+        }),
       }),
-    });
+      RUN_DEADLINE_MS,
+      'the run against the drifted page',
+    );
 
     return {
       ...published,

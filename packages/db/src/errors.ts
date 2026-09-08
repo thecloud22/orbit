@@ -31,6 +31,7 @@ export class UnsafeDatabaseTargetError extends OrbitDatabaseError {}
 export class ImmutableAgentVersionError extends OrbitDatabaseError {}
 
 const PG_UNIQUE_VIOLATION = '23505';
+const PG_LOCK_NOT_AVAILABLE = '55P03';
 const PG_FOREIGN_KEY_VIOLATION = '23503';
 const PG_CHECK_VIOLATION = '23514';
 const PG_NOT_NULL_VIOLATION = '23502';
@@ -77,6 +78,17 @@ export function isCheckViolation(error: unknown): boolean {
 
 export function isNotNullViolation(error: unknown): boolean {
   return errorCode(error) === PG_NOT_NULL_VIOLATION;
+}
+
+/**
+ * A statement gave up waiting for a lock another session holds.
+ *
+ * Only raised where a `lock_timeout` is set, which today is the destructive
+ * test reset: without a bound, a `TRUNCATE` blocked behind a live connection
+ * waits forever, and the suite's own timeout cannot see that it is waiting.
+ */
+export function isLockNotAvailable(error: unknown): boolean {
+  return errorCode(error) === PG_LOCK_NOT_AVAILABLE;
 }
 
 /** The name of the constraint a database error violated, when the driver reports one. */

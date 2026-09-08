@@ -1038,13 +1038,14 @@ id belonging to a different family than the one selected.
 | `pnpm lint` | Correctness plus the architecture boundary rules | nothing |
 | `pnpm format:check` | Formatting | nothing |
 | `pnpm test` | Unit and contract behaviour | nothing but a checkout |
+| `pnpm test:fast` | `test` then `test:db` — everything that needs no browser | PostgreSQL |
 | `pnpm test:db` | Migrations, repositories, ordering, artifact links, API over real persistence | PostgreSQL |
 | `pnpm test:runtime` | Agent IR executed by real Chromium against the demo portal | + Chromium |
 | `pnpm test:e2e:watchtower` | The whole stack: browser → Watchtower → API → runtime → portal | + the stack |
 | `pnpm test:e2e` | The demo portal's own behaviour (Task 2) | + Chromium |
 | `pnpm test:e2e:library` | The library portal's own behaviour | + Chromium |
 | `pnpm smoke` | An *installation* can execute the seeded agent, not merely that it is set up | a migrated, seeded database + Chromium + the demo portal running |
-| `pnpm check:teardown` | No Orbit process or test port survived a run | nothing |
+| `pnpm check:teardown` | No leaked suite process, and the reserved test ports 3010/3102 are free | nothing |
 | `pnpm verify` | typecheck, lint, format:check, test, test:db | PostgreSQL |
 | **`pnpm verify:phase1`** | **`verify`, then test:runtime, test:e2e:watchtower, test:e2e, check:teardown — the Phase 1 acceptance gate** | all of it |
 
@@ -1054,11 +1055,54 @@ running PostgreSQL server and truncates tables between tests;
 `vitest.runtime.config.ts` additionally needs an installed Chromium and the demo
 portal; and `vitest.e2e.config.ts` brings up the whole Watchtower stack.
 
-`pnpm test:runtime` and `pnpm test:e2e:watchtower` are **separate projects on
-purpose**: the end-to-end stack runs a long-lived API against `orbit_test`, and
-the Task 6 runtime tests truncate that database between their own tests. Sharing
-one project would pull the seeded Agent Version out from under a live server. Run
-them as separate commands, not concurrently.
+### Which suite to run, and what it costs
+
+Three tiers, with measured timings on a developer machine. Reach for the
+cheapest one that can answer the question you have:
+
+| Tier | Command | Time | Tests | When |
+|---|---|---|---|---|
+| 1 — iteration | `pnpm test` | ~8s | 1408 | Every change. Needs nothing but a checkout. |
+| 2 — browserless | `pnpm test:fast` | ~40s | 1739 | Before a commit. Adds real persistence; still no browser. |
+| 3 — full | `pnpm test:runtime`, then `pnpm test:e2e:watchtower` | ~105s + ~40s | 36 + 45 | Before a push, and in `verify:phase1`. Real Chromium and the whole stack. |
+
+Tier 3 is where the time goes, so it is deliberately not part of `pnpm verify`.
+
+### One heavy suite at a time
+
+`pnpm test:db`, `pnpm test:runtime` and `pnpm test:e2e:watchtower` all point at
+`orbit_test`, and two of them truncate it between tests. The end-to-end stack
+additionally runs a long-lived API against that database, so a suite truncating
+it mid-run pulls the seeded Agent Version out from under a live server.
+
+Running two of them at once does **not** fail loudly. It deletes rows out from
+under the other suite and surfaces as ordinary-looking assertion failures — 16
+of 43 end-to-end failures in one observed session, none of them a real defect.
+
+That is why the rule is now enforced rather than documented: each of the three
+claims an exclusive lock at startup, and a second one is refused in about a
+second with a message naming the suite that holds it, its pid and how long it
+has been running. A lock whose holder is no longer alive (a suite stopped with
+Ctrl-C) is reclaimed automatically. `pnpm test` shares nothing with them and is
+never blocked. See `packages/runtime/src/testing/suite-lock.ts`.
+
+### Keep the whole failure
+
+`pnpm test:runtime` and `pnpm test:e2e:watchtower` write a full machine-readable
+report to `logs/` (gitignored) on every run, so the detail of a failure survives
+whatever the terminal did with it:
+
+```bash
+node -e "for (const s of require('./logs/test-runtime.json').testResults)
+  for (const t of s.assertionResults)
+    if (t.status === 'failed') console.log(t.fullName, '\n', t.failureMessages.join('\n'))"
+```
+
+When running a long suite in the background, redirect the whole thing to a file
+— `pnpm test:runtime > /tmp/runtime.log 2>&1` — and read the file. Piping
+through `tail -N` as the *only* capture discards exactly the lines that say
+which tests failed and why, and the only way to get them back is to run the
+suite again.
 
 Each suite starts the servers it needs when nothing is listening and reuses what
 is already running, stopping only what it started — and teardown waits until the
@@ -1068,8 +1112,17 @@ uses its own ports — API `3102`, Watchtower `3010` — so it never collides wi
 never at `data/artifacts`.
 
 `pnpm verify` stops at `test:db` so it stays runnable without a browser.
-`pnpm verify:phase1` is the full gate and ends with `pnpm check:teardown`, which
-fails if any Orbit service process or test port survived the run.
+`pnpm verify:phase1` is the full gate and ends with `pnpm check:teardown`.
+
+`pnpm check:teardown` fails on a leak, and is deliberately narrow about what
+counts as one. Ports **3010** and **3102** are reserved for the end-to-end stack
+and bound by no app in this repository, so an occupant there is a leaked test
+run and fails the check by name. The development ports (3000, 3001, 3002, 3020)
+are reported and never failed on: they belong to your own `pnpm dev`, which the
+suites deliberately *adopt* rather than replace — reusing an already-running
+demo portal is why `pnpm test:runtime` takes ~105s instead of starting a second
+one. A process the suites started (`pnpm --filter @orbit/<app> …`) or a
+Playwright browser still running does fail the check; a dev server does not.
 
 Neither `pnpm smoke` nor `pnpm test:e2e:library` is part of `verify:phase1`; run
 them separately. Smoke asks a different question than the suites do — whether

@@ -11,12 +11,25 @@ import { defineConfig } from 'vitest/config';
  *
  * `fileParallelism` is disabled for the same reason as the database project:
  * these files share one database and truncate between tests.
+ *
+ * The suite lock is the first global setup, ahead of anything that starts a
+ * server or touches a table, so a collision with another suite costs nothing.
+ * See `packages/runtime/src/testing/suite-lock.ts`.
  */
 export default defineConfig({
   test: {
     environment: 'node',
     include: ['{apps,packages}/*/src/**/*.runtime.test.ts'],
-    globalSetup: ['packages/runtime/src/testing/browser-global-setup.ts'],
+    globalSetup: [
+      'packages/runtime/src/testing/suite-lock-global-setup.ts',
+      'packages/runtime/src/testing/browser-global-setup.ts',
+    ],
+    reporters: [
+      'default',
+      // A failure is never only in a scrollback buffer that a `tail` can
+      // truncate away. See README > Validation commands.
+      ['json', { outputFile: 'logs/test-runtime.json' }],
+    ],
     fileParallelism: false,
     passWithNoTests: false,
     testTimeout: 120_000,

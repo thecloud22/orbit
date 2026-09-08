@@ -1,6 +1,5 @@
-import { createDatabase, createRepositories, type OrbitDatabase } from '@orbit/db';
-import { loadTestEnv, resolveTestDatabaseUrl, truncateOrbitTables } from '@orbit/db/testing';
-import { databaseNameFromUrl } from '@orbit/db';
+import { createRepositories } from '@orbit/db';
+import { createTestDatabase, loadTestEnv, type OrbitTestDatabase } from '@orbit/db/testing';
 import {
   openRecordingSession,
   type RecordingSession,
@@ -19,14 +18,28 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
  */
 const DEMO_PORTAL_URL = 'http://localhost:3001/requests';
 
-let database: { readonly db: OrbitDatabase; close(): Promise<void> } | undefined;
+let database: OrbitTestDatabase | undefined;
 let session: RecordingSession | undefined;
 
+/**
+ * Reset once for the file, deliberately not between tests.
+ *
+ * Every other runtime test file resets per test through `useTestDatabase()`,
+ * and should. These two do not, because they are one ordered narrative: the
+ * second asserts that the document the first recorded shows up in the ordinary
+ * documents list. Truncating between them would delete the thing under test,
+ * and recording a second real browser session to recreate it would double the
+ * slowest part of the file for no extra claim.
+ *
+ * The isolation that matters here is therefore from *other files*, which the
+ * reset below provides — `fileParallelism` is off, so nothing runs beside it —
+ * and the connection comes from `createTestDatabase()` so it carries the same
+ * guards and the same statement ceiling as every other test connection.
+ */
 beforeAll(async () => {
   loadTestEnv();
-  const url = resolveTestDatabaseUrl();
-  const handle = createDatabase({ url, maxConnections: 2 });
-  await truncateOrbitTables(handle.db, databaseNameFromUrl(url));
+  const handle = await createTestDatabase();
+  await handle.truncate();
   database = handle;
 }, 60_000);
 

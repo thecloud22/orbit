@@ -25,6 +25,9 @@ test-results/
 # Logs
 *.log
 pnpm-debug.log*
+# Full suite output, written by the heavy Vitest projects so a failure is never
+# only in a scrollback buffer. See README > Validation commands.
+/logs/
 
 # OS
 .DS_Store

@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 
 import { createDatabase, type Executor, type OrbitDatabaseHandle } from '../client';
 import { databaseNameFromUrl, requireDatabaseUrl } from '../config';
-import { UnsafeDatabaseTargetError } from '../errors';
+import { isLockNotAvailable, OrbitDatabaseError, UnsafeDatabaseTargetError } from '../errors';
 import { runMigrations } from '../migrate';
 import { ORBIT_TABLE_NAMES } from '../schema';
 
@@ -20,6 +20,33 @@ import { ORBIT_TABLE_NAMES } from '../schema';
  */
 
 const TEST_DATABASE_SUFFIX = '_test';
+
+/**
+ * How long a reset waits for its exclusive lock before failing with a name.
+ *
+ * `TRUNCATE` needs ACCESS EXCLUSIVE on every table it names, and PostgreSQL
+ * waits for that lock indefinitely by default. A leftover connection still
+ * holding row locks — a run this process dispatched and did not wait for, an
+ * API left over from another suite — therefore does not make the reset *fail*;
+ * it makes it *block*, invisibly, until the test file's own timeout expires
+ * with a message about the test rather than about the lock. Ten seconds is far
+ * longer than an uncontended reset needs (~46ms measured) and far shorter than
+ * any suite timeout. Overridable per call, which only the test that proves this
+ * behaviour uses, so proving it costs a fraction of a second rather than ten.
+ */
+export const TRUNCATE_LOCK_TIMEOUT_MS = 10_000;
+
+/**
+ * A ceiling on every other statement a test issues.
+ *
+ * Same failure to avoid, one level out: any query can wait on a lock forever,
+ * and a test blocked in the driver is a test whose own timeout reports the
+ * wrong thing. Generous enough that no legitimate test statement approaches it.
+ */
+const TEST_STATEMENT_TIMEOUT_MS = 30_000;
+
+/** A destructive reset could not get its lock, because something else holds it. */
+export class TestDatabaseBlockedError extends OrbitDatabaseError {}
 
 export function loadTestEnv(): void {
   const envPath = fileURLToPath(new URL('../../../../.env', import.meta.url));
@@ -109,12 +136,105 @@ export interface OrbitTestDatabase extends OrbitDatabaseHandle {
 export async function truncateOrbitTables(
   executor: Executor,
   expectedDatabaseName: string,
+  options: { readonly lockTimeoutMs?: number } = {},
 ): Promise<void> {
+  const lockTimeoutMs = options.lockTimeoutMs ?? TRUNCATE_LOCK_TIMEOUT_MS;
+
   await assertTestDatabase(executor, expectedDatabaseName);
 
   // Safe to inline: ORBIT_TABLE_NAMES is a compile-time constant, never input.
   const tableList = ORBIT_TABLE_NAMES.map((name) => `"${name}"`).join(', ');
-  await executor.execute(sql.raw(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`));
+
+  try {
+    // In a transaction because `SET LOCAL` is the only form that is guaranteed
+    // to apply to the statement that follows it: the pool hands out whichever
+    // connection is free, so a session-level `SET` may land on a connection
+    // that never runs the truncate.
+    await executor.transaction(async (tx) => {
+      await tx.execute(sql.raw(`SET LOCAL lock_timeout = ${lockTimeoutMs}`));
+      await tx.execute(sql.raw(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`));
+    });
+  } catch (error) {
+    if (!isLockNotAvailable(error)) {
+      throw error;
+    }
+
+    throw new TestDatabaseBlockedError(
+      await blockedResetMessage(executor, expectedDatabaseName, lockTimeoutMs),
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * Explains a blocked reset by naming the other connections, not by guessing.
+ *
+ * The point is to answer the only question worth asking at that moment — what
+ * else is attached to this database — with enough to act on: a pid to look up
+ * with `ps`, and how long it has been sitting there. Deliberately *not* the
+ * `query` column: a statement's text carries row data, and this message goes
+ * straight to test output.
+ */
+async function blockedResetMessage(
+  executor: Executor,
+  databaseName: string,
+  lockTimeoutMs: number,
+): Promise<string> {
+  const lines = [
+    `Resetting "${databaseName}" gave up after ${lockTimeoutMs}ms waiting for its lock.`,
+    '',
+    'Something else is still attached to the test database and holding locks on',
+    'its tables. Usually that is a run dispatched by an earlier test that nothing',
+    'waited for, or a server left behind by another suite.',
+  ];
+
+  try {
+    const result = await executor.execute<{
+      pid: number;
+      application_name: string;
+      state: string | null;
+      seconds: number;
+    }>(sql`
+      select pid,
+             application_name,
+             state,
+             round(extract(epoch from (now() - coalesce(xact_start, state_change, backend_start))))::int as seconds
+        from pg_stat_activity
+       where datname = current_database()
+         and pid <> pg_backend_pid()
+       order by pid
+    `);
+
+    if (result.rows.length > 0) {
+      lines.push('', 'Other connections to this database:');
+
+      for (const row of result.rows) {
+        const name = row.application_name === '' ? '(unnamed)' : row.application_name;
+        lines.push(`  - pid ${row.pid}, ${name}, ${row.state ?? 'unknown'} for ${row.seconds}s`);
+      }
+    }
+  } catch {
+    lines.push('', '(Could not list the other connections; the database is not answering either.)');
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Adds the statement ceiling to a connection URL.
+ *
+ * Carried in the startup packet rather than issued as a `SET` on each new
+ * pooled connection. Both work, but the `SET` has to be queued behind the
+ * consumer's first query on that client, which `pg` now warns about and will
+ * refuse at 9.0 — and a deprecation warning per test file is noise in exactly
+ * the failure logs this task is trying to make readable. The server applying it
+ * at connection time also covers the first statement, which the queued form
+ * does not.
+ */
+function withStatementTimeout(url: string): string {
+  const parsed = new URL(url);
+  parsed.searchParams.set('options', `-c statement_timeout=${TEST_STATEMENT_TIMEOUT_MS}`);
+  return parsed.toString();
 }
 
 /** Connects to the guarded test database and applies migrations. */
@@ -126,7 +246,10 @@ export async function createTestDatabase(
 
   await runMigrations(url);
 
-  const handle = createDatabase({ url, maxConnections: 5 });
+  // Migrations connect on the plain URL: a schema change is legitimately the
+  // one slow statement here, and bounding it would be bounding the wrong thing.
+  const handle = createDatabase({ url: withStatementTimeout(url), maxConnections: 5 });
+
   await assertTestDatabase(handle.db, databaseName);
 
   return {

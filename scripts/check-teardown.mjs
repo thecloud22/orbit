@@ -4,37 +4,31 @@
  *
  * Orbit's browser suites start real servers and a real browser. A suite that
  * passes but leaks a process is not a suite that can be run twice, so this is
- * checked mechanically rather than by eye: every port those suites use must be
- * free, and no process matching the services they start may still be running.
+ * checked mechanically rather than by eye.
  *
- * Run it after the suites, never during one — it would legitimately find the
- * servers a suite is still using.
+ * What counts as "left behind" is narrower than "something is listening", and
+ * getting that wrong was a real cost: the check used to fail whenever a
+ * developer had `pnpm dev` up, which is the normal state of a working machine.
+ * The suites deliberately *adopt* a dev server rather than fight it — that
+ * adoption is why `pnpm test:runtime` finishes in ~100s reusing a portal
+ * instead of starting a second one — so a dev port being held is the system
+ * working, not a defect. Only ports 3010 and 3102, reserved for the end-to-end
+ * stack and bound by no app in this repository, can fail this check.
+ *
+ * The decisions live in `teardown-checks.mjs` and are unit-tested by
+ * `pnpm test`; this file only observes and prints.
+ *
+ * Run it after the suites, never during one.
  */
 import { execFileSync } from 'node:child_process';
 import { connect } from 'node:net';
 
-/** Ports the development stack and the test stacks bind. */
-const PORTS = [
-  { port: 3000, what: 'Watchtower (development)' },
-  { port: 3001, what: 'demo portal' },
-  { port: 3002, what: 'API (development)' },
-  { port: 3010, what: 'Watchtower (end-to-end)' },
-  { port: 3020, what: 'library portal' },
-  { port: 3102, what: 'API (end-to-end)' },
-];
-
-/**
- * Command-line fragments that identify a leaked Orbit service. Matched against
- * full command lines, so an unrelated editor or shell is not mistaken for one.
- */
-const PROCESS_PATTERNS = [
-  { pattern: 'apps/api/src/index.ts', what: 'API process' },
-  { pattern: 'src/cli/run-agent.ts', what: 'browser-worker CLI' },
-  { pattern: '@orbit/demo-portal', what: 'demo portal dev server' },
-  { pattern: '@orbit/library-portal', what: 'library portal dev server' },
-  { pattern: '@orbit/web', what: 'Watchtower dev server' },
-  { pattern: 'ms-playwright', what: 'Playwright browser' },
-];
+import {
+  DEVELOPER_PORTS,
+  evaluateTeardown,
+  parseProcessLine,
+  TEST_OWNED_PORTS,
+} from './teardown-checks.mjs';
 
 /**
  * Both loopback stacks are probed: Vite resolves `localhost` to `::1` first on
@@ -73,11 +67,12 @@ function runningProcesses() {
   }
 }
 
-const failures = [];
+const allPorts = [...TEST_OWNED_PORTS, ...DEVELOPER_PORTS];
+const openPorts = [];
 
-for (const { port, what } of PORTS) {
+for (const { port } of allPorts) {
   if (await isPortOpen(port)) {
-    failures.push(`port ${port} is still held (${what})`);
+    openPorts.push(port);
   }
 }
 
@@ -85,24 +80,17 @@ for (const { port, what } of PORTS) {
 // the patterns, so the check ignores its own process tree.
 const ownPids = new Set([process.pid, process.ppid]);
 
-for (const line of runningProcesses()) {
-  const match = /^\s*(\d+)\s+(.*)$/.exec(line);
-  if (match === null) {
-    continue;
-  }
+const commandLines = runningProcesses()
+  .map(parseProcessLine)
+  .filter(
+    (entry) =>
+      entry !== null && !ownPids.has(entry.pid) && !entry.command.includes('check-teardown'),
+  );
 
-  const pid = Number(match[1]);
-  const command = match[2];
+const { failures, notes } = evaluateTeardown({ openPorts, commandLines });
 
-  if (ownPids.has(pid) || command.includes('check-teardown')) {
-    continue;
-  }
-
-  for (const { pattern, what } of PROCESS_PATTERNS) {
-    if (command.includes(pattern)) {
-      failures.push(`${what} still running (pid ${pid}): ${command.slice(0, 120)}`);
-    }
-  }
+for (const note of notes) {
+  process.stdout.write(`Note: ${note}\n`);
 }
 
 if (failures.length > 0) {
@@ -117,5 +105,7 @@ if (failures.length > 0) {
 }
 
 process.stdout.write(
-  `Teardown check passed: ports ${PORTS.map((entry) => entry.port).join(', ')} are free and no Orbit service process survives.\n`,
+  `Teardown check passed: the reserved test ports ${TEST_OWNED_PORTS.map(
+    (entry) => entry.port,
+  ).join(', ')} are free and no Orbit service started by a suite survives.\n`,
 );

@@ -8,7 +8,13 @@ import { requireDatabaseUrl } from '../config';
 import { UnsafeDatabaseTargetError } from '../errors';
 import { seedFindServiceRequest } from '../seed';
 import { useTestDatabase } from './harness';
-import { assertTestDatabase, loadTestEnv, truncateOrbitTables } from './test-database';
+import {
+  assertTestDatabase,
+  loadTestEnv,
+  resolveTestDatabaseUrl,
+  TestDatabaseBlockedError,
+  truncateOrbitTables,
+} from './test-database';
 
 const testDatabase = useTestDatabase();
 
@@ -76,6 +82,70 @@ describe('destructive reset safety', () => {
 
     expect(developmentName.rows[0]?.current_database).toBe('orbit_dev');
     expect(testDatabase().databaseName).toBe('orbit_test');
+  });
+
+  /**
+   * The ceiling under every other statement a test issues.
+   *
+   * Asserted rather than assumed, because it is carried in the connection URL:
+   * a typo there would leave every test connection unbounded and nothing else
+   * would notice until the next twelve-minute hang.
+   */
+  it('gives every test connection a bounded statement timeout', async () => {
+    const shown = await testDatabase().db.execute<{ statement_timeout: string }>(
+      sql`show statement_timeout`,
+    );
+
+    expect(shown.rows[0]?.statement_timeout).toBe('30s');
+  });
+
+  /**
+   * The hang this reset used to cause, turned into a failure.
+   *
+   * `TRUNCATE` needs ACCESS EXCLUSIVE on every table it names and, by default,
+   * PostgreSQL waits for that lock forever. A connection left holding row locks
+   * — a dispatched run nothing waited for, a server another suite left behind —
+   * therefore did not make a suite fail; it made it *stop*, until the test
+   * file's own timeout expired with a message about the test rather than about
+   * the lock. That is the twelve-minute failure this task exists to remove.
+   *
+   * A real second connection holds a real lock here, because the claim is about
+   * PostgreSQL's behaviour and a stub could not make it.
+   */
+  it('fails fast, naming the other connections, when something holds the lock', async () => {
+    const blocker = createDatabase({ url: resolveTestDatabaseUrl(), maxConnections: 1 });
+    const client = await blocker.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      await client.query('LOCK TABLE agents IN ACCESS EXCLUSIVE MODE');
+
+      const startedAt = Date.now();
+
+      // A short bound so proving the behaviour costs a fraction of a second
+      // rather than the ten the real reset allows itself.
+      const thrown = await truncateOrbitTables(testDatabase().db, 'orbit_test', {
+        lockTimeoutMs: 250,
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+      expect(thrown).toBeInstanceOf(TestDatabaseBlockedError);
+      expect(Date.now() - startedAt).toBeLessThan(5_000);
+
+      const { message } = thrown as TestDatabaseBlockedError;
+
+      // It has to say what happened and point at the culprit; a bare
+      // "lock_not_available" would leave the same debugging session to run.
+      expect(message).toContain('gave up after 250ms');
+      expect(message).toContain('Other connections to this database');
+      expect(message).toContain('pid ');
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+      await blocker.close();
+    }
   });
 
   it('truncates only Orbit-owned tables, leaving the schema and migration history', async () => {

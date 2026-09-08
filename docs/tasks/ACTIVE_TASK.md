@@ -437,9 +437,35 @@ and a window a person cannot see is a window they cannot close.
 Known and deliberate: revising and immediately republishing an unchanged fork mints a version that
 behaves identically to the last one. Harmless, and not prevented.
 
+**Task 16 is complete: the test suites fail for real reasons.** Tooling only — no product
+behaviour changed, and the drift-recovery test's assertions are exactly as they were.
+
+Three false-failure classes are closed. **A blocked reset is now a failure, not a hang**: `TRUNCATE`
+needs ACCESS EXCLUSIVE on every table and PostgreSQL waits for that lock forever, so a leftover
+connection did not make a suite fail — it made it stop, until a `testTimeout` expired naming the
+test rather than the lock. The reset runs with a 10s `lock_timeout` and reports the other
+connections to the database by pid; every test connection also carries a 30s `statement_timeout`,
+carried in the startup packet rather than issued as a queued `SET`. **One heavy suite at a time is
+enforced, not just documented**: `test:db`, `test:runtime` and `test:e2e:watchtower` all mutate
+`orbit_test`, and each now claims an exclusive lock in global setup — a second is refused in about a
+second naming the holder, instead of deleting rows out from under it and surfacing as plausible
+assertion failures. A lock whose holder is dead is reclaimed. **`check:teardown` no longer fails on a
+developer's own `pnpm dev`**: only ports 3010/3102, reserved for the end-to-end stack, count as a
+leak; the development ports are reported and never failed on, because the suites deliberately adopt
+those servers rather than replace them.
+
+Also: `pnpm test:fast` (unit + db, browserless) is the documented middle tier; the heavy suites write
+a full report to `logs/` so a failure survives a truncated terminal capture; and one runtime file's
+run is bounded by `withDeadline` so a stuck browser says so instead of running out the file's clock.
+
+Note for anyone reading the Task 16 brief: its claim that `drift-recovery.runtime.test.ts` has no
+per-test truncation is **incorrect** — the file has called `useTestDatabase()` since it was written.
+The real cause of the observed hang was the unbounded lock wait, which is what was fixed. See the
+Task 16 report.
+
 ### Before starting Phase 2
 
-Read the Task 15 report's limitations section first, then Task 14's, Task 13's, Task 12's and Task 9's. The open items carried out of Phase 1 are:
+Read the Task 16 report's limitations section first, then Task 15's, Task 14's, Task 13's, Task 12's and Task 9's. The open items carried out of Phase 1 are:
 `NOT_FOUND` missing from the error taxonomy; no server-side duplicate-dispatch suppression; no
 recovery for runs orphaned by a killed API process; no retention or orphan reconciliation; and
 database-level enforcement of immutability and append-only still deferred (ADR-014).
