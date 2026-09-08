@@ -23,14 +23,16 @@ import { RunPage } from './RunPage';
 import { RunsPage } from './RunsPage';
 import { SopReviewPage } from './SopReviewPage';
 import { useRun } from './useRun';
+import { WikiPage } from './WikiPage';
 
 /**
  * Watchtower.
  *
- * Four places, not one: Home (what Orbit is, the two ways in, and what is going
- * on), Studio (everything drafted or recorded), Agents (what can be run), and
- * Runs (what has been). Everything rendered comes from the API's view of
- * durable server state.
+ * Five places, not one: Home (what Orbit is, the two ways in, and what is going
+ * on), Studio (everything drafted or recorded), Agents (what can be run), Runs
+ * (what has been), and Wiki (how any of it is done). Everything rendered in the
+ * first four comes from the API's view of durable server state; the Wiki is
+ * static content compiled into the bundle and reaches no endpoint.
  *
  * This component owns drafting and recording state rather than `HomePage`,
  * because both outlive the home view: a draft survives navigating away and back,
@@ -341,6 +343,8 @@ export function App() {
           onUndoArchive={(agentVersionId) => void undoArchive(agentVersionId)}
           startError={run.error}
         />
+      ) : view.kind === 'wiki' ? (
+        <WikiPage onNavigate={navigate} topic={view.topic} />
       ) : view.kind === 'runs' ? (
         <RunsPage onOpen={(runId) => navigate({ kind: 'run', runId })} />
       ) : view.kind === 'run' ? (

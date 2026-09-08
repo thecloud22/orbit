@@ -15,18 +15,36 @@ Natural-language SOP
 
 ## Current status
 
-Orbit is currently implementing **Phase 1: Deterministic Proof Loop**.
-
-The initial vertical slice is intentionally narrow:
+Phase 1 — the deterministic proof loop — is complete, and Phase 2 sub-phases
+2.1 through 2.14 have landed on top of it. The working loop today is:
 
 ```text
-Watchtower manual trigger
-  -> Service request number input
-  -> Immutable Agent Version
-  -> Deterministic Playwright execution
-  -> Screenshots, DOM snapshots, and trace
-  -> Watchtower evidence view
+free text, or a recorded demonstration
+  -> SOP Graph revision      (immutable, checksummed, non-executable)
+  -> Execution Bindings      (which element each step acts on)
+  -> candidate Agent IR      (compiled; refused when not fully understood)
+  -> published Agent Version (immutable)
+  -> a run in real Chromium
+  -> events, artifacts, evidence
+  -> Watchtower
 ```
+
+Phase 1's original slice — a manual trigger, one typed input, a version-pinned
+Agent Version, deterministic Playwright execution, and an evidence view — is
+still the core, and still runs exactly as it did. What Phase 2 added around it
+is four bounded capabilities, each with a stated limit:
+
+| Capability | Bound |
+|---|---|
+| Drafting an SOP from free text | The model's output is re-parsed through the ordinary graph validator before anything is stored |
+| A judged decision at run time | Returns an index into a closed list of branches the workflow already declares; five typed halt reasons (ADR-032) |
+| Authoring advice while recording | Suggestion only; a person demonstrates every step |
+| Recovery from UI drift | Deterministic, no model; writes a proposal a person must accept and publish (ADR-033) |
+
+**In-app help lives at Watchtower's `Wiki` tab** (`http://localhost:3000/?view=wiki`):
+task-oriented guidance on recording, binding, publishing, running, reading
+evidence and answering a recovery proposal. This README covers setup and the
+repository; the wiki covers using the product.
 
 ## Initial demo workflow
 
@@ -54,39 +72,50 @@ An unknown request such as `SR-9999` should complete with the valid business out
 ## Repository layout
 
 ```text
-apps/
-  web/                 # Orbit Watchtower React application
-  api/                 # Orbit Fastify API
+apps/                  # 6
+  web/                 # Orbit Watchtower: Home, Studio, Agents, Runs, Wiki
+  api/                 # Orbit Fastify API; also executes runs (ADR-011)
   browser-worker/      # Composition root; `pnpm agent:run` executes one run
-  recorder/            # Composition root; `pnpm record:binding` records one binding
-  demo-portal/         # Controlled target portal for Phase 1
+  recorder/            # Composition root; `pnpm record:binding`, `record:workflow`
+  demo-portal/         # Controlled service-request target portal
+  library-portal/      # Controlled branching-workflow target portal
 
-packages/
+packages/              # 19
   contracts/           # Shared Zod schemas, events, errors, IDs
   agent-ir/            # Typed executable workflow contract
+  agent-ir-compiler/   # SOP Graph -> candidate Agent IR; refuses what it cannot resolve
   runtime/             # Executor-neutral workflow runtime and its ports
   executor-playwright/ # Playwright action implementations (the only Playwright dependency)
   artifacts/           # Artifact storage interface and local filesystem adapter
   artifact-service/    # Composes artifact bytes with artifact metadata
   db/                  # Drizzle schema, migrations, repositories
   sop-graph/           # SOP Graph: non-executable business-process representation
-  sop-generation/      # Free-text -> proposed SOP Graph (the only LangChain dependency)
+  sop-generation/      # Free-text -> proposed SOP Graph
   sop-service/         # Composes SOP generation, review and recording with persistence
   sop-recording/       # Turns a recorded interaction into a SOP Graph + bindings
   execution-mapping/   # Execution Bindings: what a SOP step does on a real page
   execution-recorder/  # Capture engine: the only code Orbit injects into a page
   execution-assist/    # Advisory suggestions while mapping (two need no model)
-  policy/              # (not created yet) Domain/action allowlist checks
+  drift-recovery/      # Deterministic drift diagnosis and proposal (ADR-033)
+  decision-judge/      # A judged decision, bounded to an index (ADR-032)
+  model-provider/      # One selection layer: family and invocation (ADR-034)
+  model-budget/        # Token ceilings, checked before every call (ADR-029)
 
-docs/
+docs/                  # Start at docs/README.md
   product/             # Product requirements, roadmap, production vision
-  architecture/        # Architecture decisions and diagrams
+  architecture/        # Architecture decisions and system design
   contracts/           # Contract documentation
+  guides/              # Practical how-to documentation
   sop/                 # SOP fixtures and examples
+  demo/                # Scripted demo walkthroughs
   tasks/               # Approved task plans and delivery notes
 
 fixtures/              # Agent IR, input, and test fixtures
 ```
+
+There is no `packages/policy`. Domain containment is enforced by the semantic
+validator at publish and by the runtime before every navigation, from the
+`permissions.browser.allowedDomains` each Agent Version carries (ADR-022).
 
 ## Prerequisites
 
@@ -109,10 +138,16 @@ pnpm install
 cp .env.example .env
 pnpm db:migrate          # creates the Orbit schema in orbit_dev
 pnpm db:seed             # seeds Find Service Request 0.1.0 (idempotent)
-pnpm dev                 # starts Watchtower, the API, and the demo portal
+pnpm dev                 # starts five processes; see the table below
 ```
 
-Then open **Watchtower at http://localhost:3000**, enter `SR-1001`, and press **Start run**.
+Then open **Watchtower at http://localhost:3000**, go to **Agents**, enter
+`SR-1001`, and press **Start run**. The **Wiki** tab explains what to do next.
+
+`pnpm dev` is `pnpm -r --parallel dev` and starts five processes: the API, the
+browser worker, the demo portal, the library portal and Watchtower. The browser
+worker's `dev` process only logs its identity — there is no queue and no worker
+loop (ADR-011); the API executes runs, and one-off execution is `pnpm agent:run`.
 
 One-time, for the browser tests and the runtime:
 
@@ -131,10 +166,22 @@ Local services:
 
 | Service | Local address | Purpose |
 |---|---|---|
-| Watchtower web app | `http://localhost:3000` | Trigger and inspect runs |
-| API | `http://localhost:3002` | Agent/run/evidence API |
+| Watchtower web app | `http://localhost:3000` | Author, trigger and inspect; in-app Wiki |
 | Demo portal | `http://localhost:3001/requests` | Controlled service-request target |
+| API | `http://localhost:3002` | Agent/run/evidence API; `GET /health` |
+| Library portal | `http://localhost:3020` | Controlled branching-workflow target |
 | PostgreSQL | `localhost:5432` | Metadata, run state, events |
+
+Ports **3010** and **3102** are **reserved** for the end-to-end test stack and
+are refused to every application, so a test run never collides with `pnpm dev`.
+`WEB_PORT`, `DEMO_PORTAL_PORT`, `API_PORT` and `API_HOST` are configurable; the
+library portal's 3020 is not.
+
+A quick liveness check, once the API is up:
+
+```bash
+curl -s http://localhost:3002/health    # {"status":"ok"}
+```
 
 ## Local database
 
@@ -695,7 +742,7 @@ because a recording ends when the person stops, and every path must reach a
 terminal.
 
 The result is stored exactly like a free-text-generated document — same tables,
-same validation — so it appears in the Documents list and opens in the review
+same validation — so it appears in the Studio list and opens in the review
 page with nothing there knowing recording exists. Its provenance says
 `recorded`, distinctly from `authored` or `generated`.
 
@@ -819,17 +866,25 @@ pins the refusal rather than leaving it to prose. See **ADR-021**.
 
 ## Watchtower
 
-Watchtower has a persistent header with **Home** and **Documents**. Navigation is
-query parameters, not a router — a run is reopened with `?runId=`, a workflow
-with `?documentId=`, and the document list is `?view=documents`. The view is
-derived from the URL on every history event, so a link, a bookmark, a reload and
-the back button all agree, and every nav item is a real anchor that opens in a
-new tab like any other link.
+Watchtower has a persistent header with five tabs — **Home**, **Studio**,
+**Agents**, **Runs** and **Wiki**. Navigation is query parameters, not a router
+(ADR-031) — a run is reopened with `?runId=`, a workflow with `?documentId=`,
+Studio is `?view=documents`, and a wiki topic is `?view=wiki&topic=…`. The view
+is derived from the URL on every history event, so a link, a bookmark, a reload
+and the back button all agree, and every nav item is a real anchor that opens in
+a new tab like any other link.
 
-**Documents** lists every SOP Graph with its status, step count and revision
-count, each row opening its review page. That list is how a workflow is reached
-at all: before it existed the endpoint was serving documents nobody could
-navigate to.
+| Tab | What it holds |
+|---|---|
+| Home | What Orbit is, the two ways in, and current activity |
+| Studio | Every SOP document with its status, step count and revision count; each row opens its review page |
+| Agents | Published Agent Versions and their declared inputs |
+| Runs | Every run, newest first |
+| Wiki | In-app, task-oriented help; static content compiled into the bundle, reaching no endpoint |
+
+Studio's URL value stays `documents` (ADR-031): review links were shared before
+the navigation existed, and renaming a query parameter to agree with a label
+would break them and buy nothing.
 
 Watchtower is the Phase 1 trigger and evidence console: start the seeded agent,
 watch the run reach a terminal state, and open the evidence it recorded.
@@ -875,6 +930,13 @@ baked into the bundle. Set `ORBIT_API_URL` to point the proxy elsewhere.
 | `POST /v1/sop-revisions/:id/transitions` | Lifecycle action, legal set derived from the transition table |
 | `GET /v1/sop-documents/:documentId/bindings` | Execution Binding status per step; read-only |
 
+That table is the Phase 1 core, not the whole surface. The API currently serves
+**43 `/v1` routes plus `/health`** — candidates, publishing, recording, binding
+and walkthrough sessions, recovery proposals, and model usage are all served and
+not all listed above. `docs/contracts/api.md` documents the six Phase 1
+endpoints and has not yet caught up; treat the route files under
+`apps/api/src/routes/` as authoritative until it does.
+
 Every failure is the structured error envelope from `docs/contracts/api.md`.
 
 ### Evidence access
@@ -901,6 +963,49 @@ screenshots and offers HTML snapshots and traces as downloads.
 - **No cancellation.** A started run runs to completion.
 - **No authentication.** Every request is the fixed development actor, and any
   caller who can reach the API can read any run and its evidence.
+
+## Configuration
+
+**[`.env.example`](./.env.example) is the configuration reference.** Every
+variable Orbit reads is listed there with its default and the reasoning behind
+it; `cp .env.example .env` gives you a working local deployment with nothing
+uncommented. `.env` is gitignored and must never hold anything you would not
+paste into a ticket, apart from the one real credential noted below.
+
+What the sections cover:
+
+| Section | Variables |
+|---|---|
+| Process | `NODE_ENV`, `LOG_LEVEL` |
+| PostgreSQL | `DATABASE_URL`, `TEST_DATABASE_URL` |
+| Ports | `WEB_PORT`, `DEMO_PORTAL_PORT`, `API_PORT`, `API_HOST`, `ORBIT_API_URL` |
+| Artifacts | `ARTIFACT_STORAGE_DIR` |
+| Model provider | `LLM_PROVIDER`, `LLM_INVOCATION`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `GOOGLE_API_KEY`, `ORBIT_BEDROCK_REGION`, `AWS_REGION` |
+| Drafting budgets | `ORBIT_LLM_TOKEN_BUDGET_GLOBAL`, `..._PER_AGENT`, `..._PER_RUN`, `ORBIT_LLM_RATES_USD_PER_MTOK` |
+| Judged decisions | `ORBIT_LLM_DECISION_MODEL`, `ORBIT_LLM_DECISION_CONFIDENCE_MIN`, `ORBIT_LLM_TOKEN_BUDGET_PER_AGENT_RUNTIME`, `ORBIT_LLM_TOKEN_BUDGET_PER_RUN_EXECUTION` |
+| Browser windows | `ORBIT_BROWSER_HEADED`, `ORBIT_RECORDER_HEADLESS` |
+| Actor identity | `ORBIT_ACTOR_ID` |
+
+Three things worth knowing before you change anything:
+
+- **`ANTHROPIC_API_KEY` (or `GEMINI_API_KEY`) is a real credential.** It belongs
+  in `.env` and nowhere else — never in an SOP, an issue, a commit, a log line,
+  or an artifact.
+- **A model provider is entirely optional.** With none configured the API still
+  starts and every other route works: drafting reports that generation is
+  unavailable and names the missing variable, no judge is wired, and the
+  recorder offers no suggestions.
+- **Nothing here is editable from the UI**, deliberately. Provider selection and
+  every token ceiling are resolved once at process start. A ceiling a client
+  could raise for itself would not be a ceiling.
+
+`ORBIT_LLM_PROVIDER` and `ORBIT_LLM_MODEL` are the superseded names. They still
+work and mean what they always meant — `ORBIT_LLM_PROVIDER=bedrock` sets
+`LLM_PROVIDER=anthropic` with `LLM_INVOCATION=bedrock`, since the old variable
+held both axes at once — and `ORBIT_LLM_MODEL` sets the family's model variable.
+Both log a deprecation notice once at startup and lose to the new names when
+both are set. `ORBIT_LLM_MODEL` is ignored, with a notice, when it holds a model
+id belonging to a different family than the one selected.
 
 ## Validation commands
 
@@ -999,41 +1104,127 @@ docker context use desktop-linux  # if the active context is 'default'
 docker compose config             # validates the file with no daemon running
 ```
 
-## Phase 1 scope
+**A port is already in use** — `pnpm dev` binds 3000, 3001, 3002 and 3020 with
+`strictPort`, so it fails loudly rather than drifting to another port. Find what
+holds it:
 
-Included:
+```bash
+lsof -nP -iTCP:3000 -sTCP:LISTEN
+```
 
-- Watchtower manual trigger.
-- One agent: Find Service Request.
-- One typed dynamic input: `requestNumber`.
-- Deterministic Playwright browser actions.
-- PostgreSQL-backed Agent Versions, runs, steps, events, and artifact metadata.
-- Local artifact storage for screenshots, DOM snapshots, and traces.
-- Controlled business outcomes: `request_found`, `request_not_found`.
-- Read-only controlled demo portal.
+Ports 3010 and 3102 are reserved for the end-to-end stack and no application may
+bind them. `pnpm check:teardown` reports any Orbit process or test port that
+survived a run; note that it probes 3000, 3001, 3002, 3010 and 3102, and not
+3020.
 
-Not included:
+**`pnpm dev` starts five things and I expected three** — the API, the browser
+worker, the demo portal, the library portal and Watchtower. The browser worker
+only logs its identity; there is no queue and the API executes runs (ADR-011).
 
-- Document upload, OCR, PDF/DOCX parsing, screenshot extraction.
-- Runtime LLM decisions or recovery.
-- Studio authoring UI and workflow graph canvas.
-- External websites, real credentials, MFA, or CAPTCHA.
-- API/webhook/schedule triggers.
-- Redis/BullMQ/Temporal, cloud deployment, S3, Kubernetes, or microservices.
-- Multi-tenancy, SSO, full RBAC, policy UI, or approval workflow.
-- State-changing business actions.
+**No browser window opened when I started a recording** — it opens on the machine
+running the API, not the one running your browser. `ORBIT_RECORDER_HEADLESS=true`
+also suppresses it; it defaults to headed for exactly this reason.
+
+**A run stopped and the error mentions drift** — the element a step was bound to
+no longer matches the fingerprint a person approved. That is the check working,
+not a bug. See [`docs/guides/ui-drift-recovery.md`](./docs/guides/ui-drift-recovery.md).
+
+**Bound agents that used to pass now fail** — the drift check went live in
+sub-phase 2.12. A binding recorded against a page that has since changed now
+stops the run instead of acting on whatever it finds. Re-record the step, or
+grant the document recovery and answer the proposal.
+
+**Compiling a candidate is refused** — the compiler refuses everything it cannot
+fully resolve rather than guessing. The refusal names the cause: commonly an
+unbound step, a binding whose step was edited after it was recorded, or a path
+that reaches no outcome.
+
+**Generating a draft is refused** — either no model provider is configured (the
+response names the missing variable) or a token ceiling was reached. Both are
+deployment configuration; see [Configuration](#configuration).
+
+**`DECISION_JUDGE_UNAVAILABLE`** — the agent contains a judged decision but no
+model provider is configured, so no judge was wired. It halts with that reason
+rather than running the decision unjudged.
+
+**An agent refuses to navigate somewhere** — each Agent Version declares the
+domains it may open, and the runtime re-checks before every navigation
+(ADR-022). A host that was not in the recording is not in the list. Publish a
+new version from a recording that visits it.
+
+## Scope
+
+### Implemented
+
+- Watchtower: Home, Studio, Agents, Runs and an in-app Wiki.
+- Two ways to author a workflow: recording a demonstration, or drafting from
+  free text and correcting the result.
+- Immutable, checksummed SOP Graph revisions; review, edit, insert, reorder,
+  answer clarifications, approve.
+- Execution Bindings per step, demonstrated by a person, with a fingerprint the
+  runtime checks before every action.
+- Compile to a candidate Agent IR that refuses everything not fully understood;
+  approve; publish an immutable Agent Version.
+- Deterministic Playwright browser actions, and a run in real Chromium.
+- Business outcomes a workflow declares for itself (**ADR-030**) — see below.
+- Judged decisions at run time, bounded to an index into a closed branch list
+  (**ADR-032**).
+- Deterministic recovery from UI drift, by proposal only (**ADR-033**).
+- Per-agent domain containment, checked at publish and before every navigation
+  (**ADR-022**).
+- Token ceilings in three scopes, checked before every model call (**ADR-029**),
+  and one selection layer across model families and invocation paths
+  (**ADR-034**).
+- PostgreSQL-backed Agent Versions, runs, steps, events and artifact metadata;
+  local filesystem artifact bytes behind a storage interface.
+- Two controlled demo portals: service requests, and a branching library
+  workflow.
+
+Three things this section previously listed as *not included* have in fact
+shipped, and the correction matters because each one changes what Orbit may do:
+
+| Previously listed as excluded | Actual state |
+|---|---|
+| Runtime LLM decisions or recovery | Both exist and are bounded. A judged decision returns an index into a closed list (**ADR-032**); drift recovery is deterministic, consults no model, and only ever writes a proposal (**ADR-033**). |
+| External websites | The blanket `localhost` allowlist was lifted in sub-phase 2.5 (**ADR-022**). Containment is now per agent, from the domains its Agent Version declares. |
+| The fixed outcome pair `request_found` / `request_not_found` | A workflow declares its own outcome names, matching `^[a-z][a-z0-9_]{0,63}$`, with `none` reserved for a run that reached no business conclusion (**ADR-030**). The Phase 1 pair are ordinary names under that rule, not a closed vocabulary. |
+
+### Still not included
+
+- Document upload, OCR, PDF/DOCX parsing, screenshot extraction, video ingestion.
+- A workflow graph canvas, or natural-language edits to a published workflow.
+- Real credentials, authentication workflows, MFA, CAPTCHA. Nothing behind a
+  login is reachable, because Orbit cannot supply a secret.
+- State-changing business actions: refunds, payments, messages, account updates,
+  deletions, permissions changes.
+- API/webhook/schedule/email/file/event-bus triggers.
+- Redis, BullMQ, Temporal, S3, MinIO, cloud deployment, Terraform, Kubernetes,
+  microservices.
+- Authentication, RBAC, multi-tenancy, a policy UI, or an approvals workflow.
+- Generic custom code steps, arbitrary JavaScript expressions, `eval`,
+  `Function`, or arbitrary shell commands.
+
+**External sites are real systems.** Do not record or automate a workflow that
+performs a state-changing action on one, and do not automate a site whose terms
+forbid it.
 
 ## Documentation
 
-Read these files in order:
+**[`docs/README.md`](./docs/README.md) is the documentation home.** It indexes
+everything under `docs/`, says what each document is for, and marks which ones
+have fallen behind the code — start there rather than browsing the tree.
 
-1. [`CLAUDE.md`](./CLAUDE.md) — active engineering rules and Phase 1 constraints.
-2. `docs/product/orbit-product-vision-and-requirements.md` — active requirements and acceptance criteria.
-3. `docs/product/orbit-end-to-end-delivery-phases.md` — product phases and phase gates.
-4. `docs/product/orbit-end-to-end-production-vision.md` — long-term product and production architecture.
-5. `docs/architecture/decisions.md` — active architecture decisions.
-6. `docs/sop/find-service-request.md` — initial natural-language SOP.
-7. `fixtures/find-service-request.agent.yaml` — initial Agent IR fixture.
+The short version:
+
+| If you want to | Read |
+|---|---|
+| Use the product | Watchtower's **Wiki** tab, or [`docs/guides/`](./docs/guides/) |
+| Install it | [Local setup](#local-setup) above, then [`docs/guides/installation.md`](./docs/guides/installation.md) |
+| Configure it | [`.env.example`](./.env.example), then [`docs/guides/configuration.md`](./docs/guides/configuration.md) |
+| Understand a drifted run | [`docs/guides/ui-drift-recovery.md`](./docs/guides/ui-drift-recovery.md) |
+| Fix something | [Troubleshooting](#troubleshooting) below, then [`docs/guides/troubleshooting.md`](./docs/guides/troubleshooting.md) |
+| Change the code | [`CLAUDE.md`](./CLAUDE.md), then [`docs/architecture/decisions.md`](./docs/architecture/decisions.md) |
+| Know why something is the way it is | [`docs/architecture/decisions.md`](./docs/architecture/decisions.md) — 35 ADRs |
 
 ## Contribution workflow
 

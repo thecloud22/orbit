@@ -20,6 +20,20 @@ describe('viewFromSearch', () => {
     expect(viewFromSearch('?view=runs')).toEqual({ kind: 'runs' });
   });
 
+  it('reads the wiki view, with and without a topic', () => {
+    expect(viewFromSearch('?view=wiki')).toEqual({ kind: 'wiki' });
+    expect(viewFromSearch('?view=wiki&topic=drift-recovery')).toEqual({
+      kind: 'wiki',
+      topic: 'drift-recovery',
+    });
+  });
+
+  it('treats an empty topic as no topic rather than as a missing one', () => {
+    // `?topic=` is what a stripped link looks like. It should land on the
+    // index, not on a topic named the empty string.
+    expect(viewFromSearch('?view=wiki&topic=')).toEqual({ kind: 'wiki' });
+  });
+
   it('reads a review view from its document id', () => {
     expect(viewFromSearch('?documentId=sopdoc_123')).toEqual({
       kind: 'review',
@@ -107,6 +121,8 @@ describe('searchForView', () => {
       { kind: 'review', documentId: 'sopdoc_123', bindingSessionId: 'bind_abc' },
       { kind: 'review', documentId: 'sopdoc_123', walkthroughSessionId: 'walk_abc' },
       { kind: 'recording', sessionId: 'rec_abc' },
+      { kind: 'wiki' },
+      { kind: 'wiki', topic: 'drift-recovery' },
     ];
 
     for (const view of views) {
@@ -120,14 +136,16 @@ describe('searchForView', () => {
 });
 
 describe('navLinks', () => {
-  it('offers Home, Studio, Agents and Runs, in that order', () => {
+  it('offers Home, Studio, Agents, Runs and Wiki, in that order', () => {
     // Authoring sits between arriving and running, because that is the order
-    // the work actually moves through them.
+    // the work actually moves through them. The Wiki is last because it is not
+    // a step in the work; it explains the other four.
     expect(navLinks({ kind: 'home' }).map((link) => link.label)).toEqual([
       'Home',
       'Studio',
       'Agents',
       'Runs',
+      'Wiki',
     ]);
   });
 
@@ -137,6 +155,7 @@ describe('navLinks', () => {
       { kind: 'agents' },
       { kind: 'runs' },
       { kind: 'documents' },
+      { kind: 'wiki' },
     ] as const) {
       expect(navLinks(view).filter((link) => link.current)).toHaveLength(1);
     }
@@ -171,6 +190,20 @@ describe('navLinks', () => {
       expect(link.href).not.toBe('');
     }
     expect(navLinks({ kind: 'home' })[0]?.href).toBe('/');
+  });
+
+  it('sends the Wiki tab to the index, never to a topic', () => {
+    // The tab is the way in. A topic is something a link or the index chooses.
+    expect(navLinks({ kind: 'home' }).find((link) => link.label === 'Wiki')?.href).toBe(
+      '?view=wiki',
+    );
+  });
+
+  it('keeps the Wiki tab current while reading one topic', () => {
+    const links = navLinks({ kind: 'wiki', topic: 'bindings' });
+
+    expect(links.find((link) => link.label === 'Wiki')?.current).toBe(true);
+    expect(links.filter((link) => link.current)).toHaveLength(1);
   });
 
   it('keeps Studio at the URL its shared links already use', () => {

@@ -1052,6 +1052,35 @@ describe('Watchtower end to end', () => {
       await page.close();
     });
 
+    it('opens the Wiki from the nav and deep-links into one topic', async () => {
+      const page = await open();
+
+      await page.getByTestId('nav-wiki').click();
+      await expect.poll(() => page.getByTestId('wiki-page').count(), { timeout: 20_000 }).toBe(1);
+      expect(await page.getByTestId('nav-wiki').getAttribute('aria-current')).toBe('page');
+      await expect.poll(() => page.getByTestId('wiki-index').count(), { timeout: 20_000 }).toBe(1);
+
+      // A topic is a URL of its own, so it can be sent to somebody mid-task.
+      await page.getByTestId('wiki-topic-link-drift-recovery').click();
+      await expect
+        .poll(() => page.getByTestId('wiki-topic-drift-recovery').count(), { timeout: 20_000 })
+        .toBe(1);
+      expect(page.url()).toContain('view=wiki&topic=drift-recovery');
+      expect(await page.getByTestId('nav-wiki').getAttribute('aria-current')).toBe('page');
+
+      await page.close();
+    });
+
+    it('serves a wiki topic straight from its URL', async () => {
+      const page = await open('/?view=wiki&topic=bindings');
+
+      await expect
+        .poll(() => page.getByTestId('wiki-topic-bindings').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      await page.close();
+    });
+
     it('opens a run from the Runs list on its own page', async () => {
       const { runId } = await succeededRun();
 
@@ -1073,6 +1102,7 @@ describe('Watchtower end to end', () => {
       // working, which a button silently breaks.
       expect(await page.getByTestId('nav-studio').getAttribute('href')).toBe('?view=documents');
       expect(await page.getByTestId('nav-home').getAttribute('href')).toBe('/');
+      expect(await page.getByTestId('nav-wiki').getAttribute('href')).toBe('?view=wiki');
 
       await page.close();
     });
