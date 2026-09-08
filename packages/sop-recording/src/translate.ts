@@ -4,6 +4,7 @@ import {
   type ElementFingerprint,
   type SelectorChain,
 } from '@orbit/execution-mapping';
+import { withoutFocusClicks } from './normalize';
 import {
   SOP_GRAPH_SCHEMA_VERSION,
   parseSopGraphDocument,
@@ -130,10 +131,17 @@ function purposeFor(entry: RecordedEntry): string {
 }
 
 export function translateRecording(input: TranslateInput): TranslateResult {
+  // Clicking into a box before typing in it is one action to the person and two
+  // to the page. Filtered here rather than tolerated, and filtered by the same
+  // function the demonstration aligner uses, so a recorded workflow and an
+  // auto-bound one cannot disagree about how many steps one demonstration
+  // contains.
+  const sequence = withoutFocusClicks(input.sequence);
+
   // Checked before anything is appended: the outcome step below would otherwise
   // make an empty recording look like a one-step workflow, which is valid and
   // meaningless.
-  if (input.sequence.length === 0) {
+  if (sequence.length === 0) {
     return {
       ok: false,
       issues: [
@@ -150,7 +158,7 @@ export function translateRecording(input: TranslateInput): TranslateResult {
   const translated: TranslatedStep[] = [];
   const secretInputs = new Map<string, string>();
 
-  for (const entry of input.sequence) {
+  for (const entry of sequence) {
     const purpose = purposeFor(entry);
 
     if (entry.kind === 'navigate') {

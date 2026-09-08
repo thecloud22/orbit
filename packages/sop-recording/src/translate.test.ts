@@ -133,6 +133,28 @@ describe('translating a recording', () => {
     expect(parseSopGraphDocument(result.graph).ok).toBe(true);
   });
 
+  it('does not turn clicking into a box before typing into a step of its own', () => {
+    // The page reports two interactions for what the person experienced as one.
+    // Filtered by the same function the demonstration aligner uses, so the two
+    // paths cannot disagree about how many steps a demonstration contains.
+    const result = translate([
+      SEQUENCE[0]!,
+      { kind: 'click', selectors: FIELD, fingerprint: fieldFingerprint() },
+      SEQUENCE[1]!,
+      SEQUENCE[2]!,
+    ]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.graph.steps.map((step) => step.kind)).toEqual([
+      'navigate',
+      'fill',
+      'click',
+      'outcome',
+    ]);
+  });
+
   it('refuses a recording with nothing in it', () => {
     const result = translateRecording({ title: 'Nothing happened', sequence: [] });
 

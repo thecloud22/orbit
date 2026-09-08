@@ -11,4 +11,6 @@
  */
 export const PACKAGE_NAME = '@orbit/sop-recording' as const;
 
+export * from './align';
+export * from './normalize';
 export * from './translate';
