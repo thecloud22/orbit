@@ -1,7 +1,7 @@
 import { SOP_GRAPH_SCHEMA_VERSION } from '@orbit/sop-graph';
 import { describe, expect, it } from 'vitest';
 
-import { ASSUMED_TOKENS_PER_CALL } from './budget';
+import { ASSUMED_TOKENS_PER_CALL } from '@orbit/model-budget';
 import { generateSopGraph } from './generate';
 import { SOP_GENERATION_PROMPT_VERSION } from './prompt';
 import { SopProviderError, type LLMProvider } from './provider';

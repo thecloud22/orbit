@@ -16,6 +16,27 @@ export const errorCodeSchema = z.enum([
   'ASSERTION_FAILED',
   'NAVIGATION_FAILED',
   'UNEXPECTED_UI_STATE',
+
+  /**
+   * Judged-decision failures (ADR-032).
+   *
+   * Five codes rather than one, because they are five different things to be
+   * told. Someone reading a halted run has to be able to tell "the model was
+   * not sure" from "the model could not answer" from "we ran out of budget" —
+   * they lead to different fixes, and collapsing them into one code would make
+   * the evidence trail agree with itself while telling nobody anything.
+   */
+  /** No judge is wired into this runtime, so a judged step cannot run at all. */
+  'DECISION_JUDGE_UNAVAILABLE',
+  /** The provider errored or timed out. The model could not answer. */
+  'DECISION_JUDGE_FAILED',
+  /** An answer that is not one of the step's own declared alternatives. */
+  'DECISION_OUT_OF_SET',
+  /** An answer below the threshold in force. The model was not sure enough. */
+  'DECISION_LOW_CONFIDENCE',
+  /** A spend cap was reached, so no call was made. */
+  'DECISION_BUDGET_EXHAUSTED',
+
   'WORKER_FAILURE',
   'ARTIFACT_STORAGE_ERROR',
   'INTERNAL_ERROR',

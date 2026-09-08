@@ -1,6 +1,6 @@
 import type { SopGraphIssue } from '@orbit/sop-graph';
 
-import type { ModelCallUsage } from './budget';
+import type { ModelCallUsage } from '@orbit/model-budget';
 
 /**
  * The model boundary.

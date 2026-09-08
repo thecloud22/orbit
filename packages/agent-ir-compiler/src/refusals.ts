@@ -17,6 +17,18 @@ export const COMPILE_REFUSAL_CODES = [
   'missing_branch_binding',
   /** A branch that names a step this workflow does not contain. */
   'unresolved_branch_target',
+  /**
+   * A judged decision with nowhere to go when the evidence does not settle it.
+   *
+   * A refusal rather than a warning, deliberately (ADR-032). A judged step whose
+   * branches are all confident answers forces one for a record carrying no
+   * evidence either way, and that answer is indistinguishable in the run's
+   * evidence from a correct one. It is the shape that produces confident wrong
+   * answers at scale, so it must not compile.
+   */
+  'missing_insufficient_evidence_branch',
+  /** Two branches of a judged decision whose conditions collapse to one name. */
+  'ambiguous_branch_outcome',
   /** A `manual_review` step: routing to a human has no executable form. */
   'manual_review_unsupported',
   /** A step that needs an approved binding and has none. */

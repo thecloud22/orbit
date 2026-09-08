@@ -12,7 +12,7 @@ import {
   type ModelBudgets,
   type ModelCallUsage,
   type ModelSpend,
-} from './budget';
+} from '@orbit/model-budget';
 import { SOP_GENERATION_PROMPT_VERSION } from './prompt';
 import { isSopProviderError, type LLMProvider } from './provider';
 
@@ -148,10 +148,14 @@ export async function generateSopGraph(input: GenerateSopGraphInput): Promise<So
       0,
     );
 
+    // Spend is partial now that the scopes span drafting and execution, so a
+    // scope this pipeline does not measure stays absent rather than becoming a
+    // zero. `checkModelBudget` refuses a ceiling it cannot measure, which is
+    // the honest answer; inventing a zero here would be the dishonest one.
     return {
-      global: baseline.global + used,
-      document: baseline.document + used,
-      request: baseline.request + used,
+      global: (baseline.global ?? 0) + used,
+      document: (baseline.document ?? 0) + used,
+      request: (baseline.request ?? 0) + used,
     };
   }
 

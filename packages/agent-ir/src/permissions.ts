@@ -25,8 +25,35 @@ export const browserPermissionsSchema = z.strictObject({
 });
 export type BrowserPermissions = z.infer<typeof browserPermissionsSchema>;
 
+/**
+ * Whether this agent may call a model at run time, and how often.
+ *
+ * Its own section rather than a browser action, because a model call is a
+ * different capability from anything a browser does: it leaves the machine, it
+ * costs money, and it is the only place in an execution where the answer is not
+ * determined by the page. Smuggling it in under a browser grant would mean an
+ * agent granted `click` had quietly been granted judgement too.
+ *
+ * Absent means not permitted. An agent that contains a `model.decide` step and
+ * declares no `permissions.model` is refused by the validator, so the capability
+ * is opt-in per published version and visible in review.
+ */
+export const modelPermissionsSchema = z.strictObject({
+  allowed: z.boolean(),
+  /**
+   * A ceiling on judged decisions in one run, independent of the token budget.
+   *
+   * Two limits rather than one because they catch different faults: a token cap
+   * catches an expensive workflow, and this catches a workflow that calls a
+   * model far more often than its author believed it would.
+   */
+  maxCallsPerRun: z.number().int().positive(),
+});
+export type ModelPermissions = z.infer<typeof modelPermissionsSchema>;
+
 export const permissionsSchema = z.strictObject({
   browser: browserPermissionsSchema,
+  model: modelPermissionsSchema.optional(),
 });
 export type Permissions = z.infer<typeof permissionsSchema>;
 

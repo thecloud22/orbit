@@ -12,6 +12,7 @@ export const ARTIFACT_KINDS = [
   'browser_trace',
   'extracted_json',
   'error_context',
+  'decision_input',
 ] as const;
 
 /** Extension point for artifact authorization; Phase 1 demo data is all `internal`. */

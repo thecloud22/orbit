@@ -22,6 +22,7 @@
     "@langchain/anthropic": "^1.5.9",
     "@langchain/aws": "^1.4.5",
     "@langchain/core": "^1.2.9",
+    "@orbit/model-budget": "workspace:*",
     "@orbit/sop-graph": "workspace:*",
     "zod": "^4.5.4"
   },

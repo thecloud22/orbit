@@ -494,3 +494,60 @@ export function borrowOrHoldGraph(): SopGraph {
     risks: [],
   };
 }
+
+/**
+ * The same borrow-or-hold workflow, with its availability decision judged.
+ *
+ * The one difference that matters: the deterministic version branches on the
+ * *Borrow button* being visible, and this one reads the status text and asks a
+ * model what it means. The catalog renders "Available", "On loan" and "On hold"
+ * as words in one region, and a fourth wording tomorrow would break a bound
+ * button and not this — which is the entire case for a judged decision
+ * (ADR-032).
+ *
+ * It declares a third branch for the case the text does not settle, because a
+ * judged decision that cannot say "I could not tell" has to guess instead, and
+ * the compiler refuses one without it.
+ */
+export function judgedAvailabilityGraph(): SopGraph {
+  const graph = borrowOrHoldGraph();
+
+  return {
+    ...graph,
+    title: 'Borrow a library title, judging availability from the page',
+    steps: graph.steps
+      .map((step) =>
+        step.id === 'check_availability' && step.kind === 'decision'
+          ? {
+              ...step,
+              resolution: 'judged' as const,
+              judgement:
+                'Read the availability status shown for this title and decide whether a copy can be borrowed right now.',
+              branches: [
+                {
+                  when: 'a copy can be borrowed right now',
+                  nextStepId: 'enter_borrow_member_id',
+                },
+                {
+                  when: 'no copy can be borrowed right now',
+                  nextStepId: 'enter_hold_member_id',
+                },
+                {
+                  when: 'the page does not say whether a copy can be borrowed',
+                  nextStepId: 'availability_unclear',
+                  insufficientEvidence: true,
+                },
+              ],
+            }
+          : step,
+      )
+      .concat([
+        {
+          id: 'availability_unclear',
+          kind: 'outcome',
+          outcome: 'availability_unclear',
+          message: 'The catalog did not say clearly whether the title could be borrowed.',
+        },
+      ]),
+  };
+}

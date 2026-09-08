@@ -1,4 +1,10 @@
-import type { ModelRequestId, ModelUsageId, SopDocumentId } from '@orbit/contracts';
+import type {
+  AgentVersionId,
+  ModelRequestId,
+  ModelUsageId,
+  RunId,
+  SopDocumentId,
+} from '@orbit/contracts';
 
 import type { ModelUsageRow } from '../schema';
 
@@ -7,6 +13,9 @@ export interface ModelUsageRecord {
   readonly id: ModelUsageId;
   readonly requestId: ModelRequestId;
   readonly documentId: SopDocumentId | null;
+  /** Set for a judged decision made during a run; null for a drafting call. */
+  readonly runId: RunId | null;
+  readonly agentVersionId: AgentVersionId | null;
   readonly provider: string;
   readonly model: string;
   readonly inputTokens: number;
@@ -22,6 +31,8 @@ export function toModelUsageRecord(row: ModelUsageRow): ModelUsageRecord {
     id: row.id,
     requestId: row.requestId,
     documentId: row.documentId,
+    runId: row.runId,
+    agentVersionId: row.agentVersionId,
     provider: row.provider,
     model: row.model,
     inputTokens: row.inputTokens,

@@ -103,6 +103,111 @@ export const browserExtractStepSchema = z.strictObject({
   evidence: evidenceSchema.optional(),
 });
 
+/**
+ * One thing a judged decision is allowed to conclude.
+ *
+ * `outcome` is a classification label, not a terminal business outcome. It is
+ * deliberately *not* checked against the agent's `complete` steps: a branch
+ * leads to more work, and "available" or "delayed_at_carrier" are perfectly
+ * good things to conclude on the way to an outcome the workflow declares later.
+ * What it must be is a stable identifier, unique within its step, so the
+ * evidence trail names the same conclusion the same way every time.
+ *
+ * `description` is what the judge is actually shown for this alternative, so it
+ * carries the author's meaning rather than leaving the model to infer it from a
+ * snake_case name.
+ */
+export const modelDecideAlternativeSchema = z.strictObject({
+  outcome: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+  description: z.string().min(1),
+  next: stepIdSchema,
+  /**
+   * Marks the alternative meaning *the evidence does not settle this*.
+   *
+   * Exactly one is required, and that is a refusal rather than a warning
+   * (ADR-032). A judged step whose alternatives are `senior | professional |
+   * standard` forces a confident answer for a record carrying no evidence
+   * either way, and `standard` returned because nothing else fit is
+   * indistinguishable in the run's evidence from `standard` returned because it
+   * was right. Where this alternative leads is the author's business decision;
+   * nothing forces it to a human.
+   */
+  insufficientEvidence: z.boolean().optional(),
+});
+export type ModelDecideAlternative = z.infer<typeof modelDecideAlternativeSchema>;
+
+/**
+ * One region of the page a judged decision is allowed to read.
+ *
+ * The judge is shown declared regions rather than the whole page, and that is a
+ * security property as much as a cost one: page content becomes model input, so
+ * the smaller and more deliberate the input, the smaller the surface a hostile
+ * page has to talk to the judge through. It also means the executor needs no
+ * new capability — reading an element's text is something it already did — so
+ * @orbit/executor-playwright is untouched by judged decisions entirely.
+ *
+ * A region may name a container whose *contents* vary, which is the case this
+ * whole step type exists for: the surface changes, the locator does not.
+ */
+export const modelDecideSourceSchema = z.strictObject({
+  label: identifierSchema,
+  locator: locatorSchema,
+});
+export type ModelDecideSource = z.infer<typeof modelDecideSourceSchema>;
+
+/**
+ * A decision a model makes, bounded to a closed list the runtime already holds.
+ *
+ * The deterministic `browser.expect_one_of` resolves by the visibility of a
+ * demonstrated element, which is exactly right when a page states its condition
+ * the same way every time and useless the moment the same meaning arrives in
+ * different words. This step maps a messier page onto pre-declared alternatives
+ * — and that is its whole job. It does not decide what to do, find an element,
+ * or recover from a failure.
+ *
+ * The widest thing the model can do here is pick a number between 0 and n-1.
+ * `next` comes from this definition, never from the answer.
+ */
+export const modelDecideStepSchema = z
+  .strictObject({
+    ...stepBase,
+    type: z.literal('model.decide'),
+    question: z.string().min(1),
+    readFrom: z.array(modelDecideSourceSchema).min(1),
+    alternatives: z.array(modelDecideAlternativeSchema).min(2),
+    /**
+     * The minimum confidence this step accepts, 0 to 1.
+     *
+     * Per step, because a decision routing to a refund and one routing to a
+     * second lookup do not deserve the same bar. Absent means the deployment's
+     * conservative default applies, which the runtime owns rather than this
+     * contract: a threshold baked into a published Agent Version could never be
+     * raised across a fleet.
+     */
+    confidenceThreshold: z.number().min(0).max(1).optional(),
+    timeoutMs: timeoutMsSchema.optional(),
+    evidence: evidenceSchema.optional(),
+  })
+  .refine(
+    (step) =>
+      new Set(step.alternatives.map((one) => one.outcome)).size === step.alternatives.length,
+    { message: 'each alternative must declare a distinct outcome name', path: ['alternatives'] },
+  )
+  .refine((step) => new Set(step.readFrom.map((one) => one.label)).size === step.readFrom.length, {
+    message: 'each source region must have a distinct label',
+    path: ['readFrom'],
+  })
+  .refine(
+    (step) => step.alternatives.filter((one) => one.insufficientEvidence === true).length === 1,
+    {
+      message:
+        'exactly one alternative must be marked insufficientEvidence, so the judge has somewhere to go when the evidence does not settle the question',
+      path: ['alternatives'],
+    },
+  );
+
+export type ModelDecideStep = z.infer<typeof modelDecideStepSchema>;
+
 export const completeStepSchema = z.strictObject({
   ...stepBase,
   type: z.literal('complete'),
@@ -124,6 +229,7 @@ export const agentIrStepSchema = z.discriminatedUnion('type', [
   browserAssertStepSchema,
   browserExpectOneOfStepSchema,
   browserExtractStepSchema,
+  modelDecideStepSchema,
   completeStepSchema,
   failStepSchema,
 ]);

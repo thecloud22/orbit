@@ -21,6 +21,7 @@ export const ARTIFACT_LINK_ROLES = [
   'browser_trace',
   'error_context',
   'extracted_json',
+  'decision_input',
 ] as const;
 
 /**

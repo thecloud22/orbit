@@ -132,6 +132,12 @@ on each.
   Phase 1 demo, so this workflow records `borrowed` and `held` — its own words, and exactly what
   happened. There is no mapping left to get wrong. `docs/demo/branching-library-demo.md` previously
   described the mapping as a placeholder; it is gone.
+- **This decision breaks the moment the page changes its wording.** It resolves by watching for the
+  Borrow button, so a catalog that expressed the same meaning in different words would branch wrongly
+  or not at all. Sub-phase 2.9 added the alternative — a judged decision that reads the status *text*
+  — and `docs/demo/judged-decision-demo.md` runs the same workflow that way (**ADR-032**). Which kind
+  a decision uses is a review-time choice; deterministic stays the default, because it is exact and
+  free.
 - **The decision's fingerprints are not re-verified at run time.** The runtime's drift check runs
   before an action or a read; `browser.expect_one_of` resolves by visibility and does not call it. A
   branch locator that has drifted onto a different element would be selected rather than refused. The

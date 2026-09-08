@@ -14,6 +14,12 @@ import { createPlaywrightExecutorFactory } from '@orbit/executor-playwright';
 import { pino } from 'pino';
 
 import { loadRootEnv, resolveRepositoryArtifactRoot } from './env';
+import {
+  createJudge,
+  resolveDecisionSettings,
+  resolveGlobalBudget,
+  resolveJudgeModelRates,
+} from './judge';
 
 /**
  * `pnpm agent:run -- --request-number SR-1001`
@@ -146,6 +152,15 @@ try {
 
   const storage = await createLocalFilesystemArtifactStorage({ root: artifactRoot });
 
+  // Wired here and nowhere else. A deployment with no key configured gets no
+  // judge, every 0.1 agent runs exactly as before, and an agent that needs
+  // judgement halts saying so rather than failing obscurely three steps in.
+  const judge = createJudge({
+    repositories: createRepositories(handle.db),
+    rates: resolveJudgeModelRates(),
+    globalBudget: resolveGlobalBudget(),
+  });
+
   const result = await executeAgentVersion({
     agentVersionId: prepared.agentVersionId,
     agentIr: prepared.agentIr,
@@ -156,6 +171,8 @@ try {
       headless: !(values.headed === true || process.env['ORBIT_BROWSER_HEADED'] === 'true'),
     }),
     logger,
+    ...(judge === undefined ? {} : { judge }),
+    decisions: resolveDecisionSettings(),
   });
 
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

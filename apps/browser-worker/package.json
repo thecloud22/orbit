@@ -15,12 +15,15 @@
     "@orbit/artifacts": "workspace:*",
     "@orbit/contracts": "workspace:*",
     "@orbit/db": "workspace:*",
+    "@orbit/decision-judge": "workspace:*",
     "@orbit/executor-playwright": "workspace:*",
+    "@orbit/model-budget": "workspace:*",
     "@orbit/runtime": "workspace:*",
     "pino": "^10.0.0"
   },
   "devDependencies": {
     "@orbit/agent-ir-compiler": "workspace:*",
+    "@orbit/sop-graph": "workspace:*",
     "@orbit/sop-service": "workspace:*",
     "@types/node": "^26.0.0",
     "tsx": "^4.0.0",

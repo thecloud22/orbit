@@ -22,8 +22,10 @@ export interface TimelineStep {
   readonly step: RunStepView;
   readonly events: readonly RunEventView[];
   readonly evidence: readonly EvidenceItem[];
-  /** Present only for a step that chose its own successor. */
+  /** Present only for a deterministic step that chose its own successor. */
   readonly branch: BranchChoice | null;
+  /** Present only for a judged decision (ADR-032). */
+  readonly judged: JudgedChoice | null;
   /** Wall-clock duration, when the step recorded both ends. */
   readonly durationLabel: string | null;
 }
@@ -98,6 +100,65 @@ export function describeBranch(step: RunStepView): BranchChoice | null {
   return { matched: humanizeLocator(matchedLocator), next, index };
 }
 
+/**
+ * How a judged decision resolved (ADR-032).
+ *
+ * A deterministic branch is described by the element that matched; a judged one
+ * has no matching element, so the facts that describe it are the conclusion it
+ * reached, how sure it was, and the bar it had to clear. Confidence is shown
+ * beside the threshold rather than alone: 0.86 means nothing on its own and
+ * everything next to the 0.8 it had to beat.
+ *
+ * The rationale is displayed as what it is — the model's own account, evidence
+ * for a reader — and it never determined anything. The chosen index did.
+ */
+export interface JudgedChoice {
+  readonly outcome: string;
+  readonly next: string;
+  readonly index: number;
+  readonly confidence: number;
+  readonly threshold: number;
+  readonly rationale: string | null;
+  readonly model: string | null;
+}
+
+function numberField(output: Record<string, unknown> | null, key: string): number | null {
+  const value = output?.[key];
+  return typeof value === 'number' ? value : null;
+}
+
+export function describeJudgedDecision(step: RunStepView): JudgedChoice | null {
+  if (step.stepType !== 'model.decide') {
+    return null;
+  }
+
+  const outcome = stringField(step.output, 'chosenOutcome');
+  const next = stringField(step.output, 'next');
+  const index = numberField(step.output, 'chosenIndex');
+  const confidence = numberField(step.output, 'confidence');
+  const threshold = numberField(step.output, 'confidenceThreshold');
+
+  if (
+    outcome === null ||
+    next === null ||
+    index === null ||
+    confidence === null ||
+    threshold === null
+  ) {
+    return null;
+  }
+
+  return {
+    outcome,
+    next,
+    index,
+    confidence,
+    threshold,
+    rationale: stringField(step.output, 'rationale'),
+    model: stringField(step.output, 'model'),
+  };
+}
+
 /** `1_512` ms as "1.5s"; anything under a second stays in milliseconds. */
 export function formatDuration(startedAt: string | null, finishedAt: string | null): string | null {
   if (startedAt === null || finishedAt === null) {
@@ -139,7 +200,18 @@ export function humanizeStepType(stepType: string): string {
  * — a branch choice is shown as a branch, not repeated as three raw fields
  * underneath it.
  */
-const BRANCH_OUTPUT_KEYS = ['selectedAlternativeIndex', 'matchedLocator', 'next'];
+const BRANCH_OUTPUT_KEYS = [
+  'selectedAlternativeIndex',
+  'matchedLocator',
+  'next',
+  // A judged decision's own keys, rendered as a decision rather than repeated
+  // as raw fields underneath it.
+  'chosenOutcome',
+  'chosenIndex',
+  'confidence',
+  'confidenceThreshold',
+  'rationale',
+];
 
 export interface StepDetailRow {
   readonly key: string;
@@ -244,6 +316,7 @@ export function buildRunTimeline(run: RunDetailView): RunTimeline {
       events: eventsByStep.get(step.id) ?? [],
       evidence: describeEvidence(artifactsByStep.get(step.id) ?? []),
       branch: describeBranch(step),
+      judged: describeJudgedDecision(step),
       durationLabel: formatDuration(step.startedAt, step.finishedAt),
     }));
 

@@ -25,6 +25,10 @@ export const EVENT_TYPES = [
   'assertion.passed',
   'assertion.failed',
 
+  'decision.requested',
+  'decision.resolved',
+  'decision.refused',
+
   'artifact.created',
 ] as const;
 

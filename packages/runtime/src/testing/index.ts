@@ -10,5 +10,6 @@
  * vitest.runtime.config.ts.
  */
 export * from './fakes';
+export * from './fake-judge';
 export * from './managed-process';
 export * from './fixture';

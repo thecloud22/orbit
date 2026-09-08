@@ -453,6 +453,47 @@ first-party rates — an approximation, since Bedrock is partner-operated and
 prices separately). Nothing fetches a price list, and every surface that
 shows the figure says it is approximate. See **ADR-029**.
 
+### Judged decisions (Phase 2.9)
+
+A `decision` step is resolved one of two ways, chosen per step at review time.
+**Deterministic** is the default and stays it: the branch is bound to an element
+a person demonstrated, and picking it costs nothing. **Judged** asks a model to
+classify what the page *says* into the branches the workflow already declares —
+for the case where the same meaning arrives in different words. See
+`docs/demo/judged-decision-demo.md` and **ADR-032**.
+
+**The widest thing a model does at run time is pick a number between 0 and n−1.**
+It returns an index into a closed list the runtime already holds; nothing it
+returns becomes a locator, URL, selector, expression or step id, and it is never
+shown where an alternative leads. Every failure halts the run with a reason you
+can act on: `DECISION_JUDGE_UNAVAILABLE`, `DECISION_JUDGE_FAILED`,
+`DECISION_OUT_OF_SET`, `DECISION_LOW_CONFIDENCE`, `DECISION_BUDGET_EXHAUSTED`.
+There is no default branch and no retry into a different answer.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | — | Without it **no judge is wired**. Every existing agent runs unchanged; one containing a judged decision halts with `DECISION_JUDGE_UNAVAILABLE`. |
+| `ORBIT_LLM_DECISION_MODEL` | `claude-haiku-4-5` | The model that judges. |
+| `ORBIT_LLM_DECISION_CONFIDENCE_MIN` | `0.8` | The bar an answer must clear when a step declares no `confidenceThreshold` of its own. A missing confidence **fails closed**. |
+| `ORBIT_LLM_TOKEN_BUDGET_PER_AGENT_RUNTIME` | 1,000,000 tokens | Judged-decision spend for one agent, summed across all its versions. |
+| `ORBIT_LLM_TOKEN_BUDGET_PER_RUN_EXECUTION` | 50,000 tokens | Judged-decision spend within one run. |
+
+`ORBIT_LLM_TOKEN_BUDGET_GLOBAL` is the same deployment-wide pot drafting spends
+from, and the ledger is the same `model_usage` table: `run` and `agent` are two
+more `SUM` scopes over the same append-only rows, not a second mechanism. A cap
+is checked **before** each call, and the per-agent scope joins through to the
+agent rather than the version, so republishing does not clear it.
+
+An Agent Version must also declare `permissions.model` — its own section, not a
+browser action, because a model call leaves the machine and costs money — with a
+`maxCallsPerRun` ceiling the compiler sets from the workflow's judged step count.
+
+**Two runs of the same agent against the same page can now differ.** That is the
+real cost, and it is why a judged decision is opt-in per step rather than a
+fallback the system reaches for. Page text sent to a model is redacted first, in
+the runtime, before it is sent *or* stored — a reduction rather than a
+guarantee, stated plainly in ADR-032.
+
 ### The deterministic fake provider
 
 Every automated test uses a scripted fake provider and makes no network call. The

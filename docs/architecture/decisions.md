@@ -1283,3 +1283,103 @@ A third, smaller instance of the same failure: the review page's binding panel w
 | Collapse each step by default, expanding failures | Puts evidence back behind a click for six steps out of seven to save scrolling on a page nobody arrives at casually |
 | Show `selectedAlternativeIndex` with a friendlier label | The number is not more truthful for being labelled; it is an array position a reader has no way to resolve |
 | Explain "binding" better in the panel body | Three attempts had already failed. The heading was doing the damage, and a longer body under a wrong heading is a longer wrong answer |
+
+---
+
+## ADR-032: Let a model decide a branch, bounded to an index into a closed list
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+ADR-029 gave Orbit deterministic branching: a `decision` step resolves by the visibility of an element a person demonstrated, and the run takes that branch. That is exactly right when a page states its condition the same way every time, and useless the moment the same meaning arrives in different words or a different layout.
+
+The three demonstration domains all fail the same way, and they fail on the *surface*, never on the declared outcomes:
+
+| Domain | Demonstrated | A later run actually shows | Declared outcomes |
+|---|---|---|---|
+| Retail order tracking | "Preparing for shipment" | "Out for delivery", "Delayed at carrier", "Return initiated" | `shipped` / `escalate` |
+| Helpdesk triage | one closed-ticket layout | "Pending customer response", "Reopened", escalation language nowhere near the bound status field | `resolved` / `needs_human` |
+| Municipal permits | one city's coloured badge | another city's paragraph; a third city's table row | `approved` / `follow_up` |
+
+The outcome set never changed in any of them. Only the words did.
+
+This is also the first time anything in an execution path is non-deterministic, in a product whose entire value proposition has been determinism. That is not a footnote, and the decision below is mostly about how far the non-determinism is allowed to reach.
+
+### Decision
+
+**A new step type, `model.decide`, whose only job is to map a messier page onto pre-declared alternatives.** Not "decide what to do". Not "find the element". Not "recover from a failure". It classifies, and the branch it takes comes from its own definition.
+
+**The widest thing a model can do at run time is pick a number between 0 and n−1.** `JudgeResult` carries `alternativeIndex`, an index into a list the runtime already holds. Nothing the judge returns becomes a locator, a URL, a selector, an expression, or a step id — there is no spelling of an integer that becomes one. `next` comes from the step definition. The judge is not even *shown* where an alternative leads, so it cannot be steered by consequence and has no vocabulary for naming a destination.
+
+**The runtime gets a port, never a provider.** `packages/runtime` gains a one-method `DecisionJudge` interface and no dependency at all; `packages/decision-judge` holds the model client; `apps/browser-worker` wires them, exactly as it wires `@orbit/executor-playwright` behind `BrowserExecutor`. ADR-008 denies the runtime broad capability on purpose, and a model client there would mean the process that executes approved steps could call a model for any reason it liked, with free text in both directions. `packages/runtime/src/decision-judge-boundary.test.ts` proves the runtime reaches no provider transitively — through the whole workspace closure, not just its direct dependencies, because a provider added two packages away would otherwise arrive unannounced.
+
+**The runtime re-validates the answer independently.** The provider is called with a structured-output schema whose index field is bounded to the declared range, but a provider honouring a schema is a convenience, not a guarantee. `packages/decision-judge` deliberately passes an out-of-range index straight through: if it filtered, the runtime's own check would be untestable and would eventually be deleted as dead code — and that is precisely the check that must not be deleted.
+
+**Fail-closed, with five distinguishable reasons.** `DECISION_JUDGE_UNAVAILABLE`, `DECISION_JUDGE_FAILED`, `DECISION_OUT_OF_SET`, `DECISION_LOW_CONFIDENCE`, `DECISION_BUDGET_EXHAUSTED`. Five codes rather than one, because someone diagnosing a halted run has to tell "the model was not sure" from "the model could not answer" from "we ran out of budget" — three different fixes. There is no default branch, no retry into a different answer, and no falling back to the first alternative. A retry is a second chance at a *different* answer, which is the one thing a bounded decision must not have, so the provider is configured with no retries and the runtime's halt is the correct response to a failed call.
+
+**A confidence threshold per step, over a conservative deployment default.** A decision routing to a refund and one routing to a second lookup do not deserve the same bar, so the step may declare `confidenceThreshold`; when it does not, `ORBIT_LLM_DECISION_CONFIDENCE_MIN` applies, defaulting to `0.8`. **A missing confidence fails closed**: "the provider did not say" is not evidence that it was sure, and treating it as such would make the threshold optional in practice for any provider that stopped reporting one. The default is not baked into the published Agent Version on purpose — a threshold frozen at publish time could never be raised across a fleet.
+
+**A judged decision must declare an "insufficient evidence" alternative, and this is a refusal.** A judged step whose alternatives are `senior | professional | standard` forces a confident answer for a record carrying no evidence either way, and `standard` returned because nothing else fit is indistinguishable in the run's evidence from `standard` returned because it was right. That is the shape that produces confident wrong answers at scale, so it does not compile. Where the alternative leads is the author's business decision; nothing forces it to a human.
+
+**The judge reads declared page regions, not the page.** `readFrom` names the regions the Agent Version permits it to read, resolved by the executor's ordinary `readText`. Three consequences, all deliberate: `packages/executor-playwright` is untouched, so a judged decision needs no browser capability that did not already exist; the prompt is small and reviewed rather than whatever the page happens to contain; and the injection surface is a slice a person chose. Two branches demonstrated on the same region deduplicate to one region — which is what a person demonstrating a judged decision is actually doing, pointing at the one place the answer is written, once per case.
+
+**Its own permission section.** `permissions.model` is `{ allowed, maxCallsPerRun }`, separate from browser permissions, because a model call leaves the machine and costs money. Smuggling it in under a browser grant would mean an agent granted `click` had quietly been granted judgement. `maxCallsPerRun` is a second limit beside the token cap because they catch different faults: a token cap catches an expensive workflow, and a call ceiling catches one that calls a model far more often than its author believed.
+
+**One budget definition and one ledger.** `packages/model-budget` is extracted from `@orbit/sop-generation` with `run` and `agent` scopes added beside the existing three, and both callers use it — the same reason `stepChecksum` has one home. `model_usage` gains nullable `run_id` and `agent_version_id` (migration `0008_judged_decisions`), and every scope stays a `SUM` over the append-only rows, so no running total exists to drift. Checked **before** each call, proven by a test in which the model layer is never invoked. `ModelSpend` became partial, and a limit declared for a scope whose spend cannot be measured is **refused** rather than treated as zero: a ceiling nobody can measure is not a ceiling, and reporting it satisfied on the strength of having no idea is the failure this must not have.
+
+The `agent` scope sums across an agent's versions by joining through `agent_version_id`, not per version. A cap that reset on republish would be a cap anyone could clear by publishing.
+
+**Schema version `0.2`, and every `0.1` agent keeps running.** The compiler emits `0.2` only for a workflow that actually uses the widened contract, so republishing an unchanged document produces an unchanged document. `verify:phase1` is the check on that claim.
+
+**Full audit trail, and `decision.requested` is appended before the call.** The question, the alternatives offered, the page text the judge saw (as a `decision_input` artifact), the chosen outcome and index, the rationale, the model, the provider, the tokens, the cost, and the latency. The input artifact and the request event are written *before* the provider is called, so a call that never returns still leaves behind what it was asked and what it was shown — evidence that only exists on the happy path is not evidence.
+
+**The rationale is evidence and nothing else.** It is displayed to a person reading the run afterwards and is read by no code path. A test asserts this directly, with a rationale that names the other branch, its step id, and an instruction: the index decided, the prose did not.
+
+### Consequences
+
+**Two runs of the same agent against the same page can now differ.** This is the real cost and it is not mitigated away. What bounds it: the step is opt-in per workflow step, the answer is an index, every failure halts, everything is audited, and spend is capped. Temperature is 0 and there are no retries. But the property is real, and choosing a judged decision is a review-time decision a person makes — never a fallback the system reaches for on its own.
+
+**Latency and cost rise wherever a judged decision is used.** A judged step is a network round trip inside an execution that previously had none.
+
+**Prompt injection is a live surface, reduced rather than eliminated.** Page content becomes model input and a hostile page can try to talk to the judge. The prompt says the content is data and never instructions, and it is fenced — but the *structural* defence is the closed enum: the worst achievable outcome is the wrong declared branch, never an executed instruction. Worth saying plainly, because the mitigations are the weaker half of that sentence.
+
+**Secrets: redaction is a reduction, not a guarantee.** Page text is broader than an element. A password field's value is never read, but a page can render a token, a key, an account number or an email address in ordinary prose. `redactForModel` runs in the *runtime*, once, before the text is either sent or stored — putting it in the provider would have sent clean text to the model and written the raw text to the artifact store, which is the worse half of the problem. It matches shapes it knows: it will not recognise a secret that reads like prose, and it may redact a harmless string that looks like a key. Both are pinned as tests so the limitation is visible in the suite rather than only here. The containment that does the real work is that a judged decision reads only the regions its Agent Version declares.
+
+**A judged decision classifies into a partition, and the compiler cannot check that it is one.** A pick-one node returns exactly one alternative, so its alternatives must be mutually exclusive and jointly exhaustive over the cases the workflow will meet. A 70-year-old doctor is both "senior" and "professional"; asking a judge to break a tie the SOP never explained produces an answer that looks like an answer. Overlap is a fact about the author's business meanings, not about the graph — nothing distinguishes `senior | professional` from `available | on_loan` — so no schema check can catch it. The three ways out are all business decisions:
+
+| Way out | What it looks like | When it fits |
+|---|---|---|
+| Separate decisions per attribute | One judged step per axis: age band, then occupation | The attributes are genuinely independent and both matter |
+| Enumerated combinations | `senior_professional`, `senior_other`, … as distinct alternatives | Few attributes, and the combinations really do behave differently |
+| A policy ranking | One decision whose alternatives are ordered, with the SOP stating which wins | There is a real precedence rule the business already applies |
+
+Leaving overlapping categories on a pick-one node is the failure mode, because it produces a workflow that runs, never errors, and is quietly wrong on every overlapping case.
+
+**And a sibling of that problem, found while building the demo.** The library workflow's judged decision classifies into `can borrow` / `cannot borrow` / `unclear`, which is a correct partition of the *question*. It is a wrong partition of what the workflow can then *do*: the branch behind "cannot borrow" assumes a hold form, and the catalog renders one for a title on loan but not for one already on hold. The judgement is right and the workflow is wrong. `judged-availability.runtime.test.ts` pins that real behaviour rather than choosing an input that hides it. Nothing in the schema can detect this either, for the same reason: both facts live in the author's head.
+
+**Trust tier.** A judged decision is still read-only and still Tier 0 `observe` under ADR-013 — it reads a page and picks a declared branch, and it can take no action a deterministic workflow could not. But it is *judgement*, which the tiers did not previously have a place for. It sits at `observe` because authority is about what an agent may do, not about how it decided; the safeguard against a wrong decision is the closed branch set, not the tier.
+
+**A follow-up, explicitly not built here.** The drafting flow's clarification questions are the natural place to force the partition questions into the open for a plain-English SOP: where the evidence for this judgement comes from, what the unclear case should do, whether any two categories can be true at once, and any number the prose implies but never states ("recent", "large", "senior"). That is a change to draft generation rather than to the runtime.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Give the runtime a model client directly | The process that executes approved steps would gain an unbounded capability with free text in both directions. A port cannot be repurposed; a client can |
+| Have the judge return the outcome *name* | A string is a thing someone will eventually resolve against something. An index into a list the runtime already holds has no such affordance |
+| Let the judge see each alternative's `next` | It would let a model be steered by consequence, and gives it a vocabulary for naming a destination it currently lacks entirely |
+| Send the whole page to the judge | Larger prompt, larger bill, larger injection surface, and a decision nobody reviewed the inputs of. Declared regions are a slice a person chose |
+| Retry a failed or low-confidence call | A retry is a second chance at a *different* answer. That is the property a bounded decision exists to not have |
+| Treat a missing confidence as confident | Makes the threshold optional in practice for any provider that stops reporting one — a silent, deployment-wide lowering of the bar |
+| One `DECISION_FAILED` code | Four different fixes behind one code. The evidence would agree with itself and tell nobody anything |
+| A global confidence threshold only | A refund decision and a second-lookup decision do not deserve the same bar, and the author is who knows which is which |
+| A per-step threshold only, with no default | A step whose author did not think about confidence would have none, and the permissive default is the one that produces confident wrong branches |
+| Warn about a missing "insufficient evidence" alternative | A warning on the shape that produces confident wrong answers at scale is a warning nobody reads twice |
+| Detect overlapping categories in the compiler | Overlap is a fact about business meanings. Nothing in the graph distinguishes `senior \| professional` from `available \| on_loan` |
+| A second budget mechanism for run-time spend | Two definitions of a cap eventually disagree, and the one enforced would not be the one anyone was shown |
+| Default `ModelSpend` to zero for unmeasured scopes | Reports a budget satisfied on the strength of having no idea. Refusing is the honest answer |
+| Bump every agent to schema `0.2` | A widening that forces immutable published versions to be reissued is a break wearing a version number |
+| Redact inside the provider | Clean text to the model, raw text to the artifact store. The wrong half of the problem solved |

@@ -1,7 +1,13 @@
-import { newModelRequestId, newSopDocumentId, type SopDocumentId } from '@orbit/contracts';
+import {
+  newModelRequestId,
+  newSopDocumentId,
+  type AgentId,
+  type SopDocumentId,
+} from '@orbit/contracts';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createRepositories } from './index';
+import { seedFindServiceRequest } from '../seed';
 import { useTestDatabase } from '../testing/harness';
 
 /**
@@ -174,5 +180,137 @@ describe('model usage', () => {
 
     expect(listed.map((row) => row.attempt)).toEqual([1, 2]);
     expect(listed[0]?.model).toBe('fake-model');
+  });
+
+  /**
+   * The two scopes an execution can measure, added for judged decisions.
+   *
+   * The same ledger, the same rows, the same `SUM`. Two tables of spend would
+   * eventually disagree with each other, and the one a cap was enforced against
+   * would not be the one anybody was shown.
+   */
+  describe('the run and agent scopes', () => {
+    it('sums a run’s judged decisions, and no other run’s', async () => {
+      const seeded = await seedFindServiceRequest(getDatabase().db);
+      const run = await repositories().runs.create({
+        agentVersionId: seeded.agentVersion.id,
+        trigger: {
+          type: 'watchtower_manual',
+          actor: { type: 'development_user', id: 'dev' },
+          source: { application: 'test' },
+        },
+        inputs: { requestNumber: 'SR-1001' },
+      });
+
+      for (const tokens of [100, 250]) {
+        await repositories().modelUsage.record({
+          requestId: newModelRequestId(),
+          runId: run.id,
+          agentVersionId: seeded.agentVersion.id,
+          provider: 'fake',
+          model: 'fake-model',
+          inputTokens: tokens,
+          outputTokens: 0,
+          estimatedCostMicroUsd: tokens,
+          attempt: 1,
+        });
+      }
+
+      // A drafting call, attributed to no run at all.
+      await repositories().modelUsage.record({
+        requestId: newModelRequestId(),
+        documentId,
+        provider: 'fake',
+        model: 'fake-model',
+        inputTokens: 9_999,
+        outputTokens: 0,
+        estimatedCostMicroUsd: 1,
+        attempt: 1,
+      });
+
+      expect((await repositories().modelUsage.totalsForRun(run.id)).totalTokens).toBe(350);
+      expect((await repositories().modelUsage.totalsForRun(run.id)).calls).toBe(2);
+
+      // The global pot still sees every call, drafting included.
+      expect((await repositories().modelUsage.totals()).totalTokens).toBe(10_349);
+    });
+
+    it('sums an agent’s spend across its versions, so republishing does not clear the cap', async () => {
+      const seeded = await seedFindServiceRequest(getDatabase().db);
+
+      await repositories().modelUsage.record({
+        requestId: newModelRequestId(),
+        agentVersionId: seeded.agentVersion.id,
+        provider: 'fake',
+        model: 'fake-model',
+        inputTokens: 500,
+        outputTokens: 100,
+        estimatedCostMicroUsd: 10,
+        attempt: 1,
+      });
+
+      const second = await repositories().agentVersions.create({
+        agentIr: { ...seeded.agentVersion.agentIr, version: '0.2.0' },
+      });
+
+      await repositories().modelUsage.record({
+        requestId: newModelRequestId(),
+        agentVersionId: second.id,
+        provider: 'fake',
+        model: 'fake-model',
+        inputTokens: 400,
+        outputTokens: 0,
+        estimatedCostMicroUsd: 10,
+        attempt: 1,
+      });
+
+      // 600 from the first version plus 400 from the second. A per-version cap
+      // would have reported 400 here and reset every time somebody published.
+      const totals = await repositories().modelUsage.totalsForAgent(
+        seeded.agentVersion.agentIr.id as AgentId,
+      );
+
+      expect(totals.totalTokens).toBe(1_000);
+      expect(totals.calls).toBe(2);
+    });
+
+    it('reports zero for an agent that has never made a judged decision', async () => {
+      const seeded = await seedFindServiceRequest(getDatabase().db);
+
+      const totals = await repositories().modelUsage.totalsForAgent(
+        seeded.agentVersion.agentIr.id as AgentId,
+      );
+
+      expect(totals).toMatchObject({ calls: 0, totalTokens: 0 });
+    });
+
+    it('keeps the spend record when the run it belonged to is deleted', async () => {
+      const seeded = await seedFindServiceRequest(getDatabase().db);
+      const run = await repositories().runs.create({
+        agentVersionId: seeded.agentVersion.id,
+        trigger: {
+          type: 'watchtower_manual',
+          actor: { type: 'development_user', id: 'dev' },
+          source: { application: 'test' },
+        },
+        inputs: { requestNumber: 'SR-1001' },
+      });
+
+      await repositories().modelUsage.record({
+        requestId: newModelRequestId(),
+        runId: run.id,
+        agentVersionId: seeded.agentVersion.id,
+        provider: 'fake',
+        model: 'fake-model',
+        inputTokens: 100,
+        outputTokens: 0,
+        estimatedCostMicroUsd: 1,
+        attempt: 1,
+      });
+
+      // `set null` rather than `cascade`: deleting a run must not delete the
+      // record that money was spent.
+      expect((await repositories().modelUsage.totals()).calls).toBe(1);
+    });
   });
 });

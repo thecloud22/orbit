@@ -1,0 +1,28 @@
+{
+  "name": "@orbit/decision-judge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@langchain/anthropic": "^1.5.9",
+    "@langchain/core": "^1.2.9",
+    "@orbit/contracts": "workspace:*",
+    "@orbit/model-budget": "workspace:*",
+    "@orbit/runtime": "workspace:*",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}

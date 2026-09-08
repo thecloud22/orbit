@@ -19,6 +19,7 @@ import {
   type TerminalBusinessOutcome,
 } from '@orbit/contracts';
 
+import { resolveDecision, DEFAULT_DECISION_SETTINGS, type DecisionSettings } from './decision';
 import { RuntimeError, asRuntimeError, describeCause } from './errors';
 import { verifyBinding, type ExecutionBindingResolver } from './drift';
 import { captureEvidence, failureEvidence, successEvidence } from './evidence';
@@ -27,6 +28,7 @@ import { silentLogger, type RuntimeLogger } from './logger';
 import type {
   BrowserExecutor,
   BrowserExecutorFactory,
+  DecisionJudge,
   RecordedArtifact,
   RunRecorder,
   RunStore,
@@ -63,6 +65,16 @@ export interface ExecuteAgentVersionInput {
    * execution is byte-for-byte what it was before sub-phase 2.4.
    */
   readonly bindings?: ExecutionBindingResolver;
+  /**
+   * The judge, when this deployment has one wired.
+   *
+   * Absent is a legitimate configuration and the common one: every `0.1` agent
+   * runs without it. A workflow that contains a judged decision and finds no
+   * judge here halts with `DECISION_JUDGE_UNAVAILABLE` rather than skipping the
+   * decision it was built around.
+   */
+  readonly judge?: DecisionJudge;
+  readonly decisions?: DecisionSettings;
 }
 
 export interface ExecutedStepSummary {
@@ -96,7 +108,11 @@ type Outcome =
 interface StepResult {
   /** Safe step detail persisted on the run step. Never raw page content. */
   readonly output: Record<string, unknown>;
-  /** Set by `browser.expect_one_of`, which is the only step that chooses its successor. */
+  /**
+   * Set by the two steps that choose their own successor:
+   * `browser.expect_one_of` and `model.decide`. Both take the value from their
+   * own alternative list, never from anything a page or a model produced.
+   */
   readonly next?: string;
   readonly terminal?: Outcome;
 }
@@ -153,11 +169,14 @@ export async function executeAgentVersion(
 
       outcome = await interpretSteps({
         agentIr,
+        agentVersionId: input.agentVersionId,
         inputs: input.inputs,
         executor,
         recorder,
         logger,
         bindings: input.bindings,
+        judge: input.judge,
+        decisions: input.decisions ?? DEFAULT_DECISION_SETTINGS,
         artifacts,
         steps,
       });
@@ -211,6 +230,7 @@ export async function executeAgentVersion(
 
 interface InterpretInput {
   readonly agentIr: AgentIr;
+  readonly agentVersionId: AgentVersionId;
   readonly inputs: RunInputs;
   readonly executor: BrowserExecutor;
   readonly recorder: RunRecorder;
@@ -218,6 +238,8 @@ interface InterpretInput {
   readonly artifacts: RecordedArtifact[];
   readonly steps: ExecutedStepSummary[];
   readonly bindings: ExecutionBindingResolver | undefined;
+  readonly judge: DecisionJudge | undefined;
+  readonly decisions: DecisionSettings;
 }
 
 async function interpretSteps(context: InterpretInput): Promise<Outcome> {
@@ -225,6 +247,11 @@ async function interpretSteps(context: InterpretInput): Promise<Outcome> {
   const graph = buildStepGraph(agentIr);
   const variables: Record<string, string> = {};
   const indexById = new Map(agentIr.steps.map((step, index) => [step.id, index]));
+
+  // Counted here rather than inferred from the event log: the per-run call
+  // ceiling has to be checked *before* a call, and a count derived after the
+  // fact could only ever report an overspend that already happened.
+  const decisionCalls = { made: 0 };
 
   let currentId: string | undefined = graph.entryStepId;
 
@@ -250,7 +277,7 @@ async function interpretSteps(context: InterpretInput): Promise<Outcome> {
     let failure: RuntimeError | undefined;
 
     try {
-      result = await performStep({ step, runStepId, variables, ...context });
+      result = await performStep({ step, runStepId, variables, decisionCalls, ...context });
     } catch (error) {
       failure = asRuntimeError(error, { agentStepId: step.id });
     }
@@ -330,6 +357,7 @@ interface PerformStepInput extends InterpretInput {
   readonly step: AgentIrStep;
   readonly runStepId: RunStepId;
   readonly variables: Record<string, string>;
+  readonly decisionCalls: { made: number };
 }
 
 async function performStep(context: PerformStepInput): Promise<StepResult> {
@@ -438,6 +466,30 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
         },
         next: alternative.next,
       };
+    }
+
+    case 'model.decide': {
+      // The call is counted before it is attempted, so a refusal partway
+      // through still consumes the attempt it made.
+      const resolved = await resolveDecision({
+        step,
+        agentIr,
+        agentVersionId: context.agentVersionId,
+        judge: context.judge,
+        executor,
+        recorder,
+        runStepId: context.runStepId,
+        settings: context.decisions,
+        timeoutMs,
+        callsSoFar: context.decisionCalls.made,
+        artifacts: context.artifacts,
+      });
+
+      context.decisionCalls.made += 1;
+
+      // `next` comes from the step's own definition. The judge returned an
+      // index; it never named a destination and has no way to.
+      return { output: resolved.output, next: resolved.alternative.next };
     }
 
     case 'browser.assert': {

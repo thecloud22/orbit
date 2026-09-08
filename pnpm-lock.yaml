@@ -59,6 +59,9 @@ importers:
       '@orbit/executor-playwright':
         specifier: workspace:*
         version: link:../../packages/executor-playwright
+      '@orbit/model-budget':
+        specifier: workspace:*
+        version: link:../../packages/model-budget
       '@orbit/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -108,9 +111,15 @@ importers:
       '@orbit/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@orbit/decision-judge':
+        specifier: workspace:*
+        version: link:../../packages/decision-judge
       '@orbit/executor-playwright':
         specifier: workspace:*
         version: link:../../packages/executor-playwright
+      '@orbit/model-budget':
+        specifier: workspace:*
+        version: link:../../packages/model-budget
       '@orbit/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -121,6 +130,9 @@ importers:
       '@orbit/agent-ir-compiler':
         specifier: workspace:*
         version: link:../../packages/agent-ir-compiler
+      '@orbit/sop-graph':
+        specifier: workspace:*
+        version: link:../../packages/sop-graph
       '@orbit/sop-service':
         specifier: workspace:*
         version: link:../../packages/sop-service
@@ -420,6 +432,31 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
+  packages/decision-judge:
+    dependencies:
+      '@langchain/anthropic':
+        specifier: ^1.5.9
+        version: 1.5.9(@langchain/core@1.2.9)
+      '@langchain/core':
+        specifier: ^1.2.9
+        version: 1.2.9
+      '@orbit/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@orbit/model-budget':
+        specifier: workspace:*
+        version: link:../model-budget
+      '@orbit/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
   packages/execution-assist:
     dependencies:
       '@langchain/anthropic':
@@ -493,6 +530,12 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
+  packages/model-budget:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
   packages/runtime:
     dependencies:
       '@orbit/agent-ir':
@@ -529,6 +572,9 @@ importers:
       '@langchain/core':
         specifier: ^1.2.9
         version: 1.2.9
+      '@orbit/model-budget':
+        specifier: workspace:*
+        version: link:../model-budget
       '@orbit/sop-graph':
         specifier: workspace:*
         version: link:../sop-graph

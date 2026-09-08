@@ -6,6 +6,7 @@ import {
   assertExecutableProfile,
   assertNavigable,
   findUnsupportedConstructs,
+  SUPPORTED_STEP_TYPES,
   timeoutFor,
 } from './profile';
 import { loadFixtureAgentIr } from './testing/fixture';
@@ -62,7 +63,7 @@ describe('findUnsupportedConstructs — the seeded fixture', () => {
 describe('findUnsupportedConstructs — individual violations', () => {
   it('reports an unsupported schemaVersion with field "schemaVersion"', () => {
     const agentIr = cloneFixture();
-    agentIr.schemaVersion = '0.2';
+    agentIr.schemaVersion = '0.9';
 
     const violations = findUnsupportedConstructs(agentIr);
 
@@ -151,7 +152,7 @@ describe('findUnsupportedConstructs — individual violations', () => {
 
   it('returns every violation, not just the first', () => {
     const agentIr = cloneFixture();
-    agentIr.schemaVersion = '0.2';
+    agentIr.schemaVersion = '0.9';
     agentIr.lifecycle.status = 'draft';
 
     const violations = findUnsupportedConstructs(agentIr);
@@ -165,7 +166,7 @@ describe('findUnsupportedConstructs — individual violations', () => {
 describe('assertExecutableProfile', () => {
   it('throws a RuntimeError with code VALIDATION_ERROR whose details contain the violations', () => {
     const agentIr = cloneFixture();
-    agentIr.schemaVersion = '0.2';
+    agentIr.schemaVersion = '0.9';
 
     const error = captureRuntimeError(() => assertExecutableProfile(agentIr));
 
@@ -267,5 +268,31 @@ describe('timeoutFor', () => {
     delete step.timeoutMs;
 
     expect(timeoutFor(step)).toBe(15_000);
+  });
+});
+
+describe('the schema version widening of sub-phase 2.9', () => {
+  it('still executes a 0.1 agent unchanged', () => {
+    const agentIr = cloneFixture();
+    expect(agentIr.schemaVersion).toBe('0.1');
+    expect(findUnsupportedConstructs(agentIr)).toEqual([]);
+  });
+
+  it('executes a 0.2 agent too', () => {
+    const agentIr = cloneFixture();
+    agentIr.schemaVersion = '0.2';
+    expect(findUnsupportedConstructs(agentIr)).toEqual([]);
+  });
+
+  it('refuses a version this runtime has never heard of', () => {
+    const agentIr = cloneFixture();
+    agentIr.schemaVersion = '0.9';
+    expect(
+      findUnsupportedConstructs(agentIr).some((violation) => violation.field === 'schemaVersion'),
+    ).toBe(true);
+  });
+
+  it('lists model.decide as an executable step type', () => {
+    expect(SUPPORTED_STEP_TYPES).toContain('model.decide');
   });
 });

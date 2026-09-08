@@ -20,6 +20,7 @@
     "@orbit/execution-mapping": "workspace:*",
     "@orbit/execution-recorder": "workspace:*",
     "@orbit/executor-playwright": "workspace:*",
+    "@orbit/model-budget": "workspace:*",
     "@orbit/runtime": "workspace:*",
     "@orbit/sop-generation": "workspace:*",
     "@orbit/sop-graph": "workspace:*",

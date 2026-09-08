@@ -148,9 +148,14 @@ export function RunTimeline({ run }: RunTimelineProps) {
  * one line and by never loading a screenshot until it is asked for.
  */
 function StepEntry({ entry, isLast }: { readonly entry: TimelineStep; readonly isLast: boolean }) {
-  const { step, events, evidence, branch, durationLabel } = entry;
+  const { step, events, evidence, branch, judged, durationLabel } = entry;
   const details = stepDetails(step);
-  const hasBody = branch !== null || details.length > 0 || events.length > 0 || evidence.length > 0;
+  const hasBody =
+    branch !== null ||
+    judged !== null ||
+    details.length > 0 ||
+    events.length > 0 ||
+    evidence.length > 0;
 
   return (
     <li className="flex gap-3" data-testid="step-row">
@@ -190,6 +195,37 @@ function StepEntry({ entry, isLast }: { readonly entry: TimelineStep; readonly i
             Took the <strong>{branch.matched}</strong> branch, and continued at{' '}
             <span className="font-mono text-xs">{branch.next}</span>.
           </p>
+        )}
+
+        {/*
+          A judged decision reads differently from a deterministic one on
+          purpose. There is no element that matched, so what describes it is the
+          conclusion, how sure the model was, and the bar it had to clear —
+          confidence beside its threshold, because 0.86 means nothing alone and
+          everything next to the 0.8 it had to beat. The rationale is labelled
+          as the model's own account: it is evidence for the reader and it
+          decided nothing.
+        */}
+        {judged !== null && (
+          <div
+            className="mt-2 rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900"
+            data-testid="step-judged-decision"
+          >
+            <p>
+              A model judged this <strong>{judged.outcome}</strong>, and the run continued at{' '}
+              <span className="font-mono text-xs">{judged.next}</span>.
+            </p>
+            <p className="mt-1 text-xs text-violet-700">
+              Confidence {judged.confidence.toFixed(2)} against a threshold of{' '}
+              {judged.threshold.toFixed(2)}
+              {judged.model === null ? '' : ` · ${judged.model}`}
+            </p>
+            {judged.rationale !== null && (
+              <p className="mt-1 text-xs text-violet-700 italic">
+                The model’s own account: “{judged.rationale}”
+              </p>
+            )}
+          </div>
         )}
 
         {step.error !== null && (

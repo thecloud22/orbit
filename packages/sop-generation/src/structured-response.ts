@@ -1,4 +1,4 @@
-import type { ModelCallUsage } from './budget';
+import type { ModelCallUsage } from '@orbit/model-budget';
 
 /**
  * Reading a structured response, independently of who produced it.

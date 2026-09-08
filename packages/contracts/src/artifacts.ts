@@ -15,6 +15,8 @@ export const artifactKindSchema = z.enum([
   'browser_trace',
   'extracted_json',
   'error_context',
+  /** The exact text a judged decision was shown. Redacted before it is stored. */
+  'decision_input',
 ]);
 export type ArtifactKind = z.infer<typeof artifactKindSchema>;
 
@@ -45,6 +47,7 @@ export const artifactLinkRoleSchema = z.enum([
   'browser_trace',
   'error_context',
   'extracted_json',
+  'decision_input',
 ]);
 export type ArtifactLinkRole = z.infer<typeof artifactLinkRoleSchema>;
 

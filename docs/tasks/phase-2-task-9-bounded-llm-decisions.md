@@ -1,8 +1,15 @@
 # Phase 2 — Task 9: Bounded LLM decisions
 
-**Status:** Plan, awaiting go-ahead. No code written.
-**Stack state:** `master` at `0552e7a` (Task 8: branching, three-scope spend cap, library demo). Tree clean.
-**Proposed branch:** `phase-2-task-9-bounded-llm-decisions` off master.
+**Status:** **Built.** Implemented on branch `phase-2-task-9-bounded-llm-decisions`, branched from
+`master` at `c655ff1` — several commits past the `0552e7a` this plan recorded. See
+`docs/tasks/reports/TASK-P2-009-bounded-llm-decisions-report.md` for what was built, where the
+implementation deviated from this plan and why, and **ADR-032** for the decisions.
+**Stack state at planning time:** `master` at `0552e7a` (Task 8: branching, three-scope spend cap, library demo).
+**Branch:** `phase-2-task-9-bounded-llm-decisions` off master.
+
+> **§7's open question was settled before implementation:** the confidence threshold is **per step,
+> over a conservative deployment default** (`ORBIT_LLM_DECISION_CONFIDENCE_MIN`, `0.8`), and a
+> *missing* confidence fails closed. The contract was widened once, here, rather than later.
 
 ---
 

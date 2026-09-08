@@ -1,26 +1,38 @@
 /**
  * Model budgets, and what a call is estimated to cost.
  *
- * Three scopes, and they are checked *before* a call is made rather than after
- * it lands. A cap enforced afterwards is not a cap: the tokens are already
- * spent by the time it fires, and the only thing it can do is report them.
+ * Every scope is checked *before* a call is made rather than after it lands. A
+ * cap enforced afterwards is not a cap: the tokens are already spent by the
+ * time it fires, and the only thing it can do is report them.
  *
- * At drafting time neither an agent nor a run exists yet, so the three scopes
- * map onto what is real at that moment. This mapping is deliberate and is
- * stated here rather than left implicit (ADR-029):
+ * Orbit calls a model at two moments in a workflow's life, and they can measure
+ * different things, so the scopes are the union of what each can answer rather
+ * than one list that fits neither (ADR-029, ADR-032):
+ *
+ * **Drafting a SOP**, when neither an agent nor a run exists yet:
  *
  * - **global** — every call in the deployment. The overall pot.
- * - **per agent** — every call for one SOP *document*. A document is 1:1 with
- *   the agent it will become (`agentIdForDocument` derives that agent's id from
- *   the document id deterministically), so "per agent" before publication means
+ * - **document** — every call for one SOP document. A document is 1:1 with the
+ *   agent it will become (`agentIdForDocument` derives that agent's id from the
+ *   document id deterministically), so "per agent" before publication means
  *   "per document".
- * - **per run** — one Generate request: the initial call plus its one repair.
+ * - **request** — one Generate request: the initial call plus its one repair.
  *
- * Nothing here reads the environment, opens a connection, or calls a model. It
- * takes the numbers it is given and answers one question.
+ * **Executing an agent**, when a published agent and a run both exist:
+ *
+ * - **global** — the same deployment-wide pot, shared with drafting.
+ * - **agent** — every judged decision ever made by one agent, across all of its
+ *   versions. Deliberately per agent rather than per agent version: a cap that
+ *   reset on republish would be a cap anyone could clear by publishing.
+ * - **run** — every judged decision within a single run, which is what stops a
+ *   long or looping workflow spending without limit.
+ *
+ * A caller supplies budgets and spend for the scopes it is in a position to
+ * measure. Nothing here reads the environment, opens a connection, or calls a
+ * model: it takes the numbers it is given and answers one question.
  */
 
-export const MODEL_BUDGET_SCOPES = ['global', 'document', 'request'] as const;
+export const MODEL_BUDGET_SCOPES = ['global', 'document', 'request', 'agent', 'run'] as const;
 export type ModelBudgetScope = (typeof MODEL_BUDGET_SCOPES)[number];
 
 /** How a scope reads to someone who is not holding this file open. */
@@ -28,6 +40,8 @@ export const MODEL_BUDGET_SCOPE_LABELS: Readonly<Record<ModelBudgetScope, string
   global: 'the deployment-wide budget',
   document: 'this workflow’s budget',
   request: 'the budget for a single Generate',
+  agent: 'this agent’s budget',
+  run: 'the budget for a single run',
 };
 
 /**
@@ -37,18 +51,19 @@ export const MODEL_BUDGET_SCOPE_LABELS: Readonly<Record<ModelBudgetScope, string
  * person setting a ceiling actually has in mind, and splitting the two would
  * make the common case ("stop at a million") take two settings.
  */
-export interface ModelBudgets {
-  readonly global?: number;
-  readonly document?: number;
-  readonly request?: number;
-}
+export type ModelBudgets = Readonly<Partial<Record<ModelBudgetScope, number>>>;
 
-/** What has already been spent in each scope. */
-export interface ModelSpend {
-  readonly global: number;
-  readonly document: number;
-  readonly request: number;
-}
+/**
+ * What has already been spent, per scope.
+ *
+ * Partial, because the two callers measure different things: drafting can
+ * answer `global`, `document` and `request`, and a run can answer `global`,
+ * `agent` and `run`. Neither is in a position to answer the other’s scopes, and
+ * inventing a zero for a scope nobody measured is how a cap silently stops
+ * being one. A limit declared for a scope with no measured spend is therefore
+ * refused rather than waved through — see `checkModelBudget`.
+ */
+export type ModelSpend = Readonly<Partial<Record<ModelBudgetScope, number>>>;
 
 /**
  * What one more call is assumed to cost before it is made.
@@ -64,7 +79,8 @@ export const ASSUMED_TOKENS_PER_CALL = 8_000;
 export interface BudgetRefusal {
   readonly scope: ModelBudgetScope;
   readonly limit: number;
-  readonly spent: number;
+  /** Null when this scope’s spend could not be measured, which is itself a refusal. */
+  readonly spent: number | null;
   /** Plain language, addressed to whoever hit it. */
   readonly message: string;
 }
@@ -96,6 +112,24 @@ export function checkModelBudget(input: {
     }
 
     const spent = input.spend[scope];
+
+    // A ceiling nobody can measure is not a ceiling. Refusing is the only
+    // honest answer: treating the missing number as zero would report the
+    // budget as satisfied on the strength of having no idea.
+    if (spent === undefined) {
+      return {
+        allowed: false,
+        refusal: {
+          scope,
+          limit,
+          spent: null,
+          message:
+            `${MODEL_BUDGET_SCOPE_LABELS[scope]} is set to ${String(limit)} tokens, but how much ` +
+            'has already been spent against it could not be determined, so no call was made.',
+        },
+      };
+    }
+
     const headroom = limit - spent;
 
     if (headroom >= assumed) {

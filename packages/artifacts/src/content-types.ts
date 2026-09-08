@@ -13,6 +13,8 @@ export const ARTIFACT_KIND_CONTENT_TYPES = {
   browser_trace: 'application/zip',
   extracted_json: 'application/json',
   error_context: 'application/json',
+  /** The judge's input as JSON: the question, the alternatives, the page text. */
+  decision_input: 'application/json',
 } as const satisfies Record<ArtifactKind, string>;
 
 export const ARTIFACT_KIND_EXTENSIONS = {
@@ -21,6 +23,7 @@ export const ARTIFACT_KIND_EXTENSIONS = {
   browser_trace: 'zip',
   extracted_json: 'json',
   error_context: 'json',
+  decision_input: 'json',
 } as const satisfies Record<ArtifactKind, string>;
 
 export function defaultContentTypeForKind(kind: ArtifactKind): string {

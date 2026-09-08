@@ -12,7 +12,19 @@ import { RuntimeError, type ErrorDetail } from './errors';
  * never an accident.
  */
 
-export const SUPPORTED_SCHEMA_VERSIONS = ['0.1'] as const;
+/**
+ * Both versions, deliberately.
+ *
+ * `0.2` widened the executable contract with `model.decide` and
+ * `permissions.model`. Every `0.1` agent keeps running byte-for-byte unchanged
+ * — no republish, no migration of any published version — because a widening
+ * that forced existing immutable versions to be reissued would not be a
+ * widening, it would be a break wearing a version number.
+ */
+export const SUPPORTED_SCHEMA_VERSIONS = ['0.1', '0.2'] as const;
+
+/** The version a newly compiled Agent IR document declares. */
+export const CURRENT_SCHEMA_VERSION = '0.2';
 export const SUPPORTED_LIFECYCLE_STATUSES = ['published'] as const;
 export const SUPPORTED_TRIGGER_TYPES = ['watchtower_manual'] as const;
 
@@ -23,6 +35,7 @@ export const SUPPORTED_STEP_TYPES = [
   'browser.expect_one_of',
   'browser.assert',
   'browser.extract',
+  'model.decide',
   'complete',
   'fail',
 ] as const;
@@ -76,6 +89,13 @@ function locatorsOf(step: AgentIrStep): readonly (readonly [Locator, string])[] 
     case 'browser.extract':
       return Object.entries(step.fields).map(
         ([name, field]) => [field.locator, `fields.${name}.locator`] as const,
+      );
+    case 'model.decide':
+      // The regions the judge reads are ordinary locators resolved by the
+      // ordinary executor, so they are profiled exactly like any other. A
+      // judged decision needs no browser capability that did not already exist.
+      return step.readFrom.map(
+        (source, index) => [source.locator, `readFrom[${index}].locator`] as const,
       );
     case 'complete':
     case 'fail':

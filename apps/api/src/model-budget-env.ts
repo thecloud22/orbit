@@ -1,4 +1,11 @@
-import { FALLBACK_MODEL_RATE, type ModelBudgets, type ModelRates } from '@orbit/sop-generation';
+import {
+  DEFAULT_MODEL_RATES,
+  FALLBACK_MODEL_RATE,
+  parseModelRates,
+  parseTokenBudget,
+  type ModelBudgets,
+  type ModelRates,
+} from '@orbit/model-budget';
 
 /**
  * Model budgets and price estimates, read from the environment.
@@ -40,27 +47,7 @@ export function readTokenBudget(
   fallback: number,
   env: NodeJS.ProcessEnv = process.env,
 ): number | undefined {
-  const raw = env[name];
-
-  if (raw === undefined || raw.trim() === '') {
-    return fallback;
-  }
-
-  const value = raw.trim();
-
-  if (value.toLowerCase() === 'unlimited') {
-    return undefined;
-  }
-
-  const parsed = Number(value);
-
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    throw new Error(
-      `${name} must be a non-negative whole number of tokens, or "unlimited". Got "${value}".`,
-    );
-  }
-
-  return parsed;
+  return parseTokenBudget(env[name], fallback, name);
 }
 
 export function resolveModelBudgets(env: NodeJS.ProcessEnv = process.env): ModelBudgets {
@@ -83,32 +70,7 @@ export function resolveModelBudgets(env: NodeJS.ProcessEnv = process.env): Model
  * estimate into something that looks like a bill. Every surface that shows a
  * figure derived from these says it is approximate.
  */
-export const DEFAULT_MODEL_RATES: ModelRates = {
-  'claude-sonnet-5': { inputPerMillionUsd: 3, outputPerMillionUsd: 15 },
-  'claude-opus-5': { inputPerMillionUsd: 15, outputPerMillionUsd: 75 },
-  'claude-haiku-4-5': { inputPerMillionUsd: 1, outputPerMillionUsd: 5 },
-
-  /**
-   * The same models under their Bedrock ids.
-   *
-   * A rate table is keyed by `descriptor.model`, and Bedrock reports a
-   * different string for the same model — so without these rows every Bedrock
-   * call would silently fall to `FALLBACK_MODEL_RATE` and a deployment would
-   * read one estimate before switching provider and a different one after,
-   * having changed nothing about what it spends.
-   *
-   * The numbers are the first-party Anthropic rates, which is an approximation
-   * and is stated as one: Bedrock is partner-operated and prices separately.
-   * That makes these a better estimate than the fallback and a worse one than
-   * an invoice — which is what every surface showing them already says. A
-   * deployment that knows its real Bedrock rates should set
-   * ORBIT_LLM_RATES_USD_PER_MTOK, and a cross-region inference profile
-   * (`us.anthropic.…`) needs its own entry, because the id is the key.
-   */
-  'anthropic.claude-haiku-4-5': { inputPerMillionUsd: 1, outputPerMillionUsd: 5 },
-  'anthropic.claude-sonnet-5': { inputPerMillionUsd: 3, outputPerMillionUsd: 15 },
-  'anthropic.claude-opus-5': { inputPerMillionUsd: 15, outputPerMillionUsd: 75 },
-};
+export { DEFAULT_MODEL_RATES };
 
 export const MODEL_RATES_ENV_VAR = 'ORBIT_LLM_RATES_USD_PER_MTOK';
 
@@ -121,38 +83,7 @@ export const MODEL_RATES_ENV_VAR = 'ORBIT_LLM_RATES_USD_PER_MTOK';
  * nothing.
  */
 export function resolveModelRates(env: NodeJS.ProcessEnv = process.env): ModelRates {
-  const raw = env[MODEL_RATES_ENV_VAR];
-
-  if (raw === undefined || raw.trim() === '') {
-    return DEFAULT_MODEL_RATES;
-  }
-
-  const rates: Record<string, { inputPerMillionUsd: number; outputPerMillionUsd: number }> = {
-    ...DEFAULT_MODEL_RATES,
-  };
-
-  for (const entry of raw.split(',')) {
-    const trimmed = entry.trim();
-
-    if (trimmed === '') {
-      continue;
-    }
-
-    const match = /^([^=]+)=([0-9]*\.?[0-9]+):([0-9]*\.?[0-9]+)$/.exec(trimmed);
-
-    if (match === null) {
-      throw new Error(
-        `${MODEL_RATES_ENV_VAR} entries must read "model=input:output" in USD per million tokens. Got "${trimmed}".`,
-      );
-    }
-
-    rates[match[1]!.trim()] = {
-      inputPerMillionUsd: Number(match[2]),
-      outputPerMillionUsd: Number(match[3]),
-    };
-  }
-
-  return rates;
+  return parseModelRates(env[MODEL_RATES_ENV_VAR], MODEL_RATES_ENV_VAR);
 }
 
 export { FALLBACK_MODEL_RATE };

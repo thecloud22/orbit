@@ -212,3 +212,100 @@ export interface RecordedArtifact {
   readonly sizeBytes: number;
   readonly sha256: string;
 }
+
+/**
+ * The judgement seam.
+ *
+ * Exactly the shape `BrowserExecutor` has, and for exactly the same reason:
+ * @orbit/runtime declares the interface and never imports a model provider. The
+ * composition root (`apps/browser-worker`) injects an implementation, the way it
+ * injects @orbit/executor-playwright, and `decision-judge-boundary.test.ts`
+ * proves this package cannot reach one transitively.
+ *
+ * This matters beyond tidiness. ADR-008 denies the runtime broad capability on
+ * purpose. Handing it a model client would mean the process that executes
+ * approved steps could also call a model for any reason it liked. A one-method
+ * interface that returns *an index into a closed list* cannot be repurposed:
+ * there is no free-text channel out of it, no way to ask it for a URL, and no
+ * way to ask it a question the Agent IR did not declare.
+ */
+export interface DecisionJudge {
+  judge(request: JudgeRequest): Promise<JudgeResult>;
+}
+
+/** One alternative, as the judge is shown it. Never a locator or a step id. */
+export interface JudgeAlternative {
+  readonly outcome: string;
+  readonly description: string;
+  /** True for the alternative meaning "the evidence does not settle this". */
+  readonly insufficientEvidence: boolean;
+}
+
+/**
+ * Everything the judge is given, and nothing more.
+ *
+ * `next` targets, locators and step ids are deliberately absent: the judge
+ * never sees where an answer leads, so it cannot be steered by consequence, and
+ * it has no vocabulary for naming a destination even if it tried. `sources` is
+ * page text the runtime already read through the browser executor's ordinary
+ * `readText`, redacted by the implementation before it is sent or stored.
+ */
+export interface JudgeRequest {
+  readonly question: string;
+  readonly alternatives: readonly JudgeAlternative[];
+  readonly sources: readonly { readonly label: string; readonly text: string }[];
+  readonly timeoutMs: number;
+  /** Causal context for the spend ledger and the audit trail. */
+  readonly context: {
+    readonly runId: RunId;
+    readonly agentVersionId: AgentVersionId;
+    readonly agentId: string;
+    readonly agentStepId: string;
+  };
+}
+
+/**
+ * Why a judge produced no usable answer.
+ *
+ * Distinguishable on purpose. Someone diagnosing a halted run has to be able to
+ * tell "the model was not sure" from "the model could not answer" from "we ran
+ * out of budget", because those lead to three different fixes.
+ */
+export type JudgeRefusalReason =
+  'provider_failed' | 'timed_out' | 'out_of_set' | 'budget_exhausted';
+
+/**
+ * What a judge may return.
+ *
+ * `alternativeIndex` is an index into a list the runtime already holds. Nothing
+ * here becomes a locator, a URL, a selector, an expression or a step id — the
+ * step's `next` comes from the step definition. `rationale` is recorded as
+ * evidence for a person reading the run afterwards and is **never read by any
+ * code path**; a test asserts that directly.
+ */
+export type JudgeResult =
+  | {
+      readonly ok: true;
+      readonly alternativeIndex: number;
+      /** 0 to 1. Absent means the provider reported none, which fails closed. */
+      readonly confidence?: number;
+      readonly rationale?: string;
+      readonly usage?: JudgeUsage;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: JudgeRefusalReason;
+      /** Safe, Orbit-authored explanation. Never a raw provider message. */
+      readonly message: string;
+      readonly usage?: JudgeUsage;
+    };
+
+/** What the call cost and who made it, for the audit trail. */
+export interface JudgeUsage {
+  readonly provider: string;
+  readonly model: string;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly estimatedCostMicroUsd: number;
+  readonly latencyMs: number;
+}

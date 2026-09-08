@@ -48,6 +48,123 @@ export type CompileResult =
   | { readonly ok: true; readonly agentIr: AgentIr; readonly secretInputIds: readonly string[] }
   | { readonly ok: false; readonly refusals: readonly CompileRefusal[] };
 
+/**
+ * A branch condition as a stable outcome name.
+ *
+ * "Still on loan" becomes `still_on_loan`. The author's own words stay on the
+ * alternative as its description — which is what the judge is actually shown —
+ * so nothing is lost by giving the name a machine-safe form.
+ */
+function outcomeNameFor(when: string): string {
+  const slug = when
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, '_')
+    .replaceAll(/^_+|_+$/g, '')
+    .slice(0, 64);
+
+  return /^[a-z]/.test(slug) ? slug : `branch_${slug}`.slice(0, 64);
+}
+
+/** A locator value as a readFrom label: `catalog-result-status` → `catalogResultStatus`. */
+function sourceLabelFor(locator: Locator): string {
+  const parts = locator.value.split(/[^A-Za-z0-9]+/).filter((part) => part !== '');
+  const [first, ...rest] = parts;
+
+  const camel = `${(first ?? 'region').toLowerCase()}${rest
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join('')}`;
+
+  return /^[A-Za-z]/.test(camel) ? camel : `region${camel}`;
+}
+
+/** How many judged decisions the workflow contains, which is its call ceiling. */
+function countJudgedSteps(graph: SopGraph): number {
+  return graph.steps.filter((step) => step.kind === 'decision' && step.resolution === 'judged')
+    .length;
+}
+
+interface JudgedAlternativeSource {
+  readonly whenVisible: Locator;
+  readonly next: string;
+}
+
+/**
+ * Compiles a judged decision, or refuses it.
+ *
+ * Two refusals live here and nowhere else, because both are properties of the
+ * author's branch *meanings* rather than of the graph's shape: a decision with
+ * no "we could not tell" branch, and two branches whose conditions collapse to
+ * the same name.
+ */
+function compileJudgedDecision(
+  step: Extract<SopStep, { kind: 'decision' }>,
+  alternativeSources: readonly JudgedAlternativeSource[],
+): { readonly step: AgentIrStep } | { readonly refusals: readonly CompileRefusal[] } {
+  const refusals: CompileRefusal[] = [];
+
+  const escapeHatches = step.branches.filter((branch) => branch.insufficientEvidence === true);
+
+  if (escapeHatches.length !== 1) {
+    refusals.push(
+      refusal(
+        'missing_insufficient_evidence_branch',
+        escapeHatches.length === 0
+          ? `Step "${step.id}" asks a model to decide but declares no branch for "the evidence does not settle this". Without one it must return a confident answer for a case it cannot actually tell, and that answer is indistinguishable from a correct one.`
+          : `Step "${step.id}" marks ${String(escapeHatches.length)} branches as "the evidence does not settle this", and there can be only one.`,
+        step.id,
+      ),
+    );
+  }
+
+  const outcomes = step.branches.map((branch) => outcomeNameFor(branch.when));
+  const seen = new Set<string>();
+
+  for (const [index, outcome] of outcomes.entries()) {
+    if (seen.has(outcome)) {
+      refusals.push(
+        refusal(
+          'ambiguous_branch_outcome',
+          `Step "${step.id}" has two branches whose conditions both read as "${outcome}" ("${String(step.branches[index]?.when)}"). A judged decision returns exactly one branch, so its conditions must be distinguishable.`,
+          step.id,
+        ),
+      );
+    }
+    seen.add(outcome);
+  }
+
+  if (refusals.length > 0) {
+    return { refusals };
+  }
+
+  // Deduplicated: two branches demonstrated on the same region are one region
+  // for the judge to read, not the same text sent twice.
+  const readFrom: { label: string; locator: Locator }[] = [];
+  for (const source of alternativeSources) {
+    const label = sourceLabelFor(source.whenVisible);
+    if (!readFrom.some((existing) => existing.label === label)) {
+      readFrom.push({ label, locator: source.whenVisible });
+    }
+  }
+
+  return {
+    step: {
+      id: step.id,
+      sourceSopStepIds: [step.id],
+      type: 'model.decide',
+      question: step.judgement ?? step.question,
+      readFrom,
+      alternatives: step.branches.map((branch, index) => ({
+        outcome: outcomes[index]!,
+        // The author's own words, which is what the judge is actually shown.
+        description: branch.when,
+        next: branch.nextStepId,
+        ...(branch.insufficientEvidence === true ? { insufficientEvidence: true } : {}),
+      })),
+      evidence: { captureScreenshot: true, captureDomSnapshot: true },
+    } as AgentIrStep,
+  };
+}
+
 function unlocatable(stepId: string): CompileRefusal {
   return refusal(
     'missing_binding',
@@ -214,6 +331,10 @@ export function compileCandidate(input: CompileInput): CompileResult {
   const steps: AgentIrStep[] = [];
   const variables: Record<string, { type: 'string' }> = {};
   const actions = new Set<BrowserAction>();
+  // Whether this workflow needs the model capability at all. Declared only when
+  // a judged decision actually compiled, so an agent that never asks for
+  // judgement never carries the permission that allows it.
+  let usesModel = false;
   const domains = new Set<string>();
   const secretInputIds: string[] = [];
 
@@ -437,6 +558,23 @@ export function compileCandidate(input: CompileInput): CompileResult {
         continue;
       }
 
+      if (step.resolution === 'judged') {
+        // A judged decision reuses the very same demonstrated elements, read
+        // rather than watched for visibility: what a person pointed at when
+        // showing a branch is where that branch's evidence lives. So no new
+        // binding shape is needed, and the recorder is untouched.
+        const judged = compileJudgedDecision(step, alternatives);
+
+        if ('refusals' in judged) {
+          refusals.push(...judged.refusals);
+          continue;
+        }
+
+        usesModel = true;
+        steps.push(judged.step);
+        continue;
+      }
+
       actions.add('expect_one_of');
       steps.push({
         id: step.id,
@@ -593,7 +731,10 @@ export function compileCandidate(input: CompileInput): CompileResult {
   actions.add('dom_snapshot');
 
   const candidate = {
-    schemaVersion: '0.1',
+    // A workflow that uses nothing new still declares 0.1, so republishing an
+    // unchanged document produces an unchanged document. The version moves only
+    // where the widened contract is actually used.
+    schemaVersion: usesModel ? '0.2' : '0.1',
     id: input.agentId,
     version: input.version,
     name: graph.title,
@@ -613,6 +754,10 @@ export function compileCandidate(input: CompileInput): CompileResult {
         allowedDomains: [...domains].sort(),
         allowedActions: [...actions].sort(),
       },
+      // Its own section rather than a browser action: a model call leaves the
+      // machine and costs money, and smuggling it in under a browser grant
+      // would mean an agent granted `click` had quietly been granted judgement.
+      ...(usesModel ? { model: { allowed: true, maxCallsPerRun: countJudgedSteps(graph) } } : {}),
     },
     steps,
   };

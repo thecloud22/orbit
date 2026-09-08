@@ -1,8 +1,16 @@
-import type { ModelRequestId, ModelUsageId, SopDocumentId } from '@orbit/contracts';
+import type {
+  AgentVersionId,
+  ModelRequestId,
+  ModelUsageId,
+  RunId,
+  SopDocumentId,
+} from '@orbit/contracts';
 import { sql } from 'drizzle-orm';
 import { bigint, check, index, integer, pgTable, text } from 'drizzle-orm/pg-core';
 
+import { agentVersions } from './agent-versions';
 import { createdAt, opaqueId } from './columns';
+import { runs } from './runs';
 import { sopDocuments } from './sop-documents';
 
 /**
@@ -45,6 +53,29 @@ export const modelUsage = pgTable(
     documentId: opaqueId<SopDocumentId>('document_id').references(() => sopDocuments.id, {
       onDelete: 'set null',
     }),
+    /**
+     * The run this call belongs to, when one does. The per-run scope.
+     *
+     * Null for a drafting call, which happens long before any run exists. Two
+     * nullable columns rather than one polymorphic "scope id", because a query
+     * that has to know which kind of id it is holding before it can sum is a
+     * query that will eventually sum the wrong ones together.
+     *
+     * `set null` rather than `cascade`, exactly as `document_id` is: deleting a
+     * run must not delete the record that money was spent.
+     */
+    runId: opaqueId<RunId>('run_id').references(() => runs.id, { onDelete: 'set null' }),
+    /**
+     * The agent version that made the call, when one did.
+     *
+     * The per-agent scope sums across versions by joining through this to the
+     * agent, rather than capping each version separately: a cap that reset on
+     * republish would be a cap anyone could clear by publishing.
+     */
+    agentVersionId: opaqueId<AgentVersionId>('agent_version_id').references(
+      () => agentVersions.id,
+      { onDelete: 'set null' },
+    ),
     provider: text('provider').notNull(),
     model: text('model').notNull(),
     inputTokens: integer('input_tokens').notNull(),
@@ -58,13 +89,20 @@ export const modelUsage = pgTable(
      * list: nothing here is a bill, and every surface that shows it says so.
      */
     estimatedCostMicroUsd: bigint('estimated_cost_micro_usd', { mode: 'number' }).notNull(),
-    /** Which call of the request this was: 1 for the attempt, 2 for the repair. */
+    /**
+     * Which call of the request this was: 1 for the attempt, 2 for the repair.
+     *
+     * A judged decision has no repair — a second ask would be a second answer,
+     * which a bounded decision must not have — so every judging row is 1.
+     */
     attempt: integer('attempt').notNull(),
     createdAt: createdAt(),
   },
   (table) => [
     index('model_usage_request_id_idx').on(table.requestId),
     index('model_usage_document_id_idx').on(table.documentId),
+    index('model_usage_run_id_idx').on(table.runId),
+    index('model_usage_agent_version_id_idx').on(table.agentVersionId),
     index('model_usage_created_at_idx').on(table.createdAt),
     check('model_usage_input_tokens_check', sql`${table.inputTokens} >= 0`),
     check('model_usage_output_tokens_check', sql`${table.outputTokens} >= 0`),

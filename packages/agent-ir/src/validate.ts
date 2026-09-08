@@ -44,6 +44,7 @@ export const AGENT_IR_ISSUE_CODES = [
   'DOMAIN_NOT_PERMITTED',
   'ACTION_NOT_PERMITTED',
   'EVIDENCE_NOT_PERMITTED',
+  'MODEL_NOT_PERMITTED',
 ] as const;
 
 export type AgentIrIssueCode = (typeof AGENT_IR_ISSUE_CODES)[number];
@@ -202,7 +203,7 @@ function checkControlFlow(context: Context): void {
   const { agentIr, graph } = context;
 
   agentIr.steps.forEach((step, index) => {
-    if (step.type !== 'browser.expect_one_of') {
+    if (step.type !== 'browser.expect_one_of' && step.type !== 'model.decide') {
       return;
     }
 
@@ -282,6 +283,19 @@ function checkPermissions(context: Context): void {
         context,
         'ACTION_NOT_PERMITTED',
         `Step type "${step.type}" requires the browser action "${requiredAction}", which is not in permissions.browser.allowedActions.`,
+        ['steps', index, 'type'],
+        step.id,
+      );
+    }
+
+    // A judged decision is a capability the agent version must have declared,
+    // not something a browser grant implies. Checked here so a version that
+    // never asked for judgement cannot contain a step that exercises it.
+    if (step.type === 'model.decide' && context.agentIr.permissions.model?.allowed !== true) {
+      add(
+        context,
+        'MODEL_NOT_PERMITTED',
+        'This step asks a model to decide, which requires permissions.model.allowed to be true.',
         ['steps', index, 'type'],
         step.id,
       );

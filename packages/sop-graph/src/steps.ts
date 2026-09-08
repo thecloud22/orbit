@@ -37,6 +37,15 @@ export const branchSchema = z.strictObject({
   /** The condition in plain language, e.g. "more than one result". */
   when: z.string().min(1),
   nextStepId: stepIdSchema,
+  /**
+   * Marks the branch meaning *the evidence does not settle this*.
+   *
+   * Only meaningful on a judged decision, where exactly one is required
+   * (ADR-032). Still business intent rather than implementation: "we could not
+   * tell" is a real business case, and a workflow that has nowhere to put it
+   * has to invent a confident answer instead.
+   */
+  insufficientEvidence: z.boolean().optional(),
 });
 export type Branch = z.infer<typeof branchSchema>;
 
@@ -100,6 +109,24 @@ export const decisionStepSchema = z.strictObject({
   /** Values the decision itself derives, e.g. `isStaleEscalation`. */
   produces: z.array(producedValueSchema).optional(),
   branches: z.array(branchSchema).min(2),
+  /**
+   * How this decision is resolved at run time. Deterministic by default.
+   *
+   * `demonstrated` is Task 8's branch: each condition is bound to an element a
+   * person put on screen, and the run picks by what is visible. Free, exact,
+   * and useless the moment the same meaning arrives in different words.
+   *
+   * `judged` asks a model to classify page text into these same branches
+   * (ADR-032). It costs money, needs `permissions.model`, and is the only
+   * non-deterministic thing in an execution. So it is opt-in per step and never
+   * a fallback the system reaches for on its own: choosing it is a review-time
+   * decision a person makes, not a run-time one.
+   *
+   * `judgement` says what the model should weigh, in the author's own words.
+   * Required for a judged decision and meaningless otherwise.
+   */
+  resolution: z.enum(['demonstrated', 'judged']).optional(),
+  judgement: z.string().min(1).optional(),
 });
 
 export const outcomeStepSchema = z.strictObject({

@@ -35,8 +35,8 @@ silently.
 checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
-**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5, 2.6, 2.7, 2.8, 2.10 and
-2.11** are complete.
+**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10
+and 2.11** are complete.
 `@orbit/sop-graph` provides the non-executable graph contract and its validation;
 `@orbit/sop-generation` turns free text into a proposed graph; `@orbit/sop-service` persists drafts
 and drives review; `@orbit/execution-mapping` defines the Execution Binding and the runtime verifies
@@ -257,6 +257,45 @@ Known, and recorded rather than left to be discovered: a decision's fingerprints
 re-verified at run time, because `expect_one_of` resolves by visibility and does not call the drift
 check.
 
+**Sub-phase 2.9 is complete: a decision can be judged by a model, bounded to an index.**
+
+A `decision` step is now resolved one of two ways, chosen per step at review time. **Deterministic**
+stays the default — the branch is bound to a demonstrated element, and it costs nothing. **Judged**
+compiles to a new Agent IR step, `model.decide`, which asks a model to classify what the page *says*
+into the branches the workflow already declares. That is the case deterministic branching cannot
+reach: the same meaning arriving in different words, with the declared outcome set unchanged
+(**ADR-032**).
+
+**The bound is the whole design. The widest thing a model does at run time is pick a number between 0
+and n−1.** It returns an index into a closed list the runtime already holds; nothing it returns
+becomes a locator, URL, selector, expression or step id, and it is never shown where an alternative
+leads. `next` comes from the step definition. The rationale is recorded as evidence and read by no
+code path — asserted directly, with a rationale that names the other branch and its step id.
+
+**`packages/runtime` gained a port, not a provider.** It declares `DecisionJudge` and depends on
+nothing new; `@orbit/decision-judge` holds the model client; `apps/browser-worker` wires them, exactly
+as it wires `@orbit/executor-playwright` behind `BrowserExecutor`. A boundary test walks the whole
+workspace closure to prove the runtime reaches no provider transitively.
+
+**Every failure halts the run, with five distinguishable reasons**: `DECISION_JUDGE_UNAVAILABLE`,
+`DECISION_JUDGE_FAILED`, `DECISION_OUT_OF_SET`, `DECISION_LOW_CONFIDENCE`,
+`DECISION_BUDGET_EXHAUSTED`. No default branch, no retry into a different answer. A confidence
+threshold is per step over a conservative deployment default, and a *missing* confidence fails closed.
+
+**One budget definition and one ledger.** `@orbit/model-budget` was extracted from
+`@orbit/sop-generation` with `run` and `agent` scopes added; `model_usage` gained nullable `run_id`
+and `agent_version_id`; every scope is still a `SUM` over the same append-only rows, checked before
+each call. The per-agent scope joins through to the *agent*, so republishing does not clear a cap.
+
+**Schema version moved to `0.2`, and every `0.1` agent runs unchanged** — the compiler emits `0.2`
+only for a workflow that actually uses the widened contract, and `verify:phase1` is the check.
+
+Two limitations are recorded rather than papered over, both because the compiler *cannot* detect
+them: a judged decision's alternatives must partition the cases and nothing checks that they do, and
+they must also partition what each branch can then *do* — the demo gets the second wrong on purpose
+and its test says so. Redaction of page text before it reaches a model is a reduction, not a
+guarantee. See `docs/demo/judged-decision-demo.md`.
+
 ### Where the pieces live
 
 | Concern | Owner |
@@ -269,6 +308,9 @@ check.
 | Trigger and evidence console | `apps/web` (Tasks 7–8) |
 | SOP Graph contract, validation, reorder rules | `@orbit/sop-graph` (Phase 2 Task 1) |
 | SOP document, revision, and provenance persistence | `@orbit/db` (Phase 2 Task 1) |
+| Model spend caps, scopes and rate estimates | `@orbit/model-budget` (Phase 2 Task 9) |
+| Judged-decision provider, prompt and ledger write | `@orbit/decision-judge` (Phase 2 Task 9) |
+| Judged-decision interpretation and refusal | `@orbit/runtime` over the `DecisionJudge` port (Phase 2 Task 9) |
 
 `prepareExecution` in `@orbit/runtime` is the single validation gate the API and the browser-worker
 CLI both use.

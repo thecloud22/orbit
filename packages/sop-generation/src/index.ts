@@ -23,7 +23,7 @@ export const PACKAGE_NAME = '@orbit/sop-generation' as const;
 
 export * from './anthropic-provider';
 export * from './bedrock-provider';
-export * from './budget';
+export * from '@orbit/model-budget';
 export * from './generate';
 export * from './prompt';
 export * from './proposal';

@@ -1,7 +1,7 @@
 import { stepChecksum } from '@orbit/db/checksum';
 import type { ExecutionBinding } from '@orbit/execution-mapping';
 import { EXECUTION_BINDING_SCHEMA_VERSION } from '@orbit/execution-mapping';
-import { borrowOrHoldGraph } from '@orbit/sop-graph/testing';
+import { borrowOrHoldGraph, judgedAvailabilityGraph } from '@orbit/sop-graph/testing';
 import type { SopGraph } from '@orbit/sop-graph';
 
 /**
@@ -155,3 +155,37 @@ export const BORROW_OR_HOLD_OUTCOMES = ['borrowed', 'held'] as const;
 
 export { borrowOrHoldGraph };
 export type { SopGraph };
+
+/**
+ * Bindings for the judged variant.
+ *
+ * Every branch points at the *same* element — the status region — because that
+ * is where the evidence is. A person demonstrating a judged decision is not
+ * showing three different screens; they are pointing at the one place the
+ * answer is written, once per case. The compiler deduplicates them into a
+ * single `readFrom` region, which is what the judge is shown.
+ */
+export function judgedAvailabilityBindings(): readonly ExecutionBinding[] {
+  const graph = judgedAvailabilityGraph();
+  const decision = graph.steps.find((step) => step.id === 'check_availability');
+
+  if (decision?.kind !== 'decision') {
+    throw new Error('fixture changed: judgedAvailabilityGraph must contain a decision');
+  }
+
+  const status = target('catalog-result-status', 'status', 'Availability');
+
+  // Only the decision step differs between the two graphs, so every other
+  // binding's checksum still matches its step and is reused unchanged. The
+  // decision's own binding is rebuilt against the judged graph — a binding
+  // carrying the deterministic version's checksum would be refused as stale,
+  // which is exactly what that check is for.
+  return borrowOrHoldBindings()
+    .filter((binding) => binding.stepId !== 'check_availability')
+    .concat([
+      bindingFor(graph, 'check_availability', {
+        kind: 'decision',
+        branches: decision.branches.map((branch) => ({ when: branch.when, ...status })),
+      }),
+    ]);
+}

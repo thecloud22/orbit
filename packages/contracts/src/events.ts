@@ -33,6 +33,19 @@ export const eventTypeSchema = z.enum([
   'assertion.passed',
   'assertion.failed',
 
+  /**
+   * A judged decision, from the question asked to the branch taken (ADR-032).
+   *
+   * Three events rather than one, and `requested` is appended *before* the
+   * provider is called. A call that never returns still leaves a record that it
+   * was made, and the alternatives it was offered are on the request rather than
+   * on the answer, so what the model was allowed to say is evidence in its own
+   * right.
+   */
+  'decision.requested',
+  'decision.resolved',
+  'decision.refused',
+
   'artifact.created',
 ]);
 export type EventType = z.infer<typeof eventTypeSchema>;
