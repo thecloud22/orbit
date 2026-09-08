@@ -212,6 +212,32 @@ export function SopReviewPage({
    * proposals a person reviews, and `bindStep` stays exactly as it was — the
    * faster route is additional, and it replaces nothing.
    */
+  /**
+   * Saves the typed start URL into the workflow's own `navigate` step.
+   *
+   * Only reachable while the revision is still editable (ADR-017) — the
+   * button that calls this is withheld otherwise, but the check is repeated
+   * here so a stale click from before the revision closed cannot slip through.
+   */
+  function saveStartUrl() {
+    if (review === null || startUrl === null || !review.editable) {
+      return;
+    }
+
+    const navigateStep = review.steps.find((step) => step.kind === 'navigate');
+
+    if (navigateStep === undefined) {
+      return;
+    }
+
+    void act(() =>
+      editSopStep(review.revisionId, navigateStep.id, {
+        ...navigateStep.step,
+        urlHint: startUrl,
+      }),
+    );
+  }
+
   async function startWholeWorkflow() {
     setIsStartingWalkthrough(true);
     setBindingFailure(null);
@@ -458,11 +484,17 @@ export function SopReviewPage({
       />
 
       {walkthroughSessionId === null ? (
-        <StartWalkthrough
-          disabled={busy || bindingSessionId !== null}
-          isStarting={isStartingWalkthrough}
-          onStart={() => void startWholeWorkflow()}
-        />
+        // The server already refuses to open a browser with nothing to bind
+        // (`nothing_to_bind`) — a window somebody has to close for no reason.
+        // Offering the button anyway just meant clicking it to be told that,
+        // so the offer is withheld here on the same fact the server checks.
+        isFullyBoundForPublish(bindings) ? null : (
+          <StartWalkthrough
+            disabled={busy || bindingSessionId !== null}
+            isStarting={isStartingWalkthrough}
+            onStart={() => void startWholeWorkflow()}
+          />
+        )
       ) : (
         <WalkthroughPanel
           documentId={documentId}
@@ -481,16 +513,34 @@ export function SopReviewPage({
         />
       )}
 
+      {review.publication.agentVersionId !== null && (
+        // Binding after publish is not editing the live agent — publishing
+        // mints an immutable Agent Version (ADR-005/023), and this document is
+        // what it was compiled *from*, never the version itself. Bound or
+        // walked through again, this document just stages a new one; nothing
+        // here changes what version {review.publication.agentVersion} runs.
+        <p
+          className="rounded-lg border border-indigo-200 bg-indigo-50/60 px-4 py-3 text-xs text-indigo-900"
+          data-testid="sop-already-published-note"
+        >
+          Already published as version {review.publication.agentVersion}. Binding or walking through
+          steps here builds toward a <em>new</em> version — it does not change what is currently
+          running.
+        </p>
+      )}
+
       <SopBindingPanel
         bindings={bindings}
         isStarting={isStartingBinding}
         onBind={(stepId) => void bindStep(stepId)}
         onAcceptProposal={(proposalId) => void resolveProposal(proposalId, 'accept')}
         onDismissProposal={(proposalId) => void resolveProposal(proposalId, 'dismiss')}
+        onSaveStartUrl={saveStartUrl}
         onStartUrlChange={setStartUrl}
         proposals={proposals}
         resolvingProposalId={resolvingProposalId}
         startUrl={bindingSessionId === null ? (startUrl ?? '') : null}
+        startUrlEditable={review.editable}
         steps={review.steps}
       />
 

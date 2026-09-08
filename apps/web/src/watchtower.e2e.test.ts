@@ -621,6 +621,44 @@ describe('Watchtower end to end', () => {
       await page.close();
     });
 
+    it('saves the start URL into the workflow’s own first step', async () => {
+      // The field used to be a local-only override: typed into, never
+      // persisted, and gone on reload. Editable here (revision 1, draft), so
+      // this asserts the actual save path -- the read-only fallback for an
+      // already-approved revision is a separate case this test does not cover.
+      const page = await open();
+      await openReview(page);
+
+      const field = page.getByTestId('binding-start-url');
+      await expect.poll(() => field.count(), { timeout: 20_000 }).toBe(1);
+
+      const before = await field.inputValue();
+      expect(before).toContain('service-portal.example.com');
+
+      const corrected = 'https://service-portal.example.com/corrected-login';
+      await field.fill(corrected);
+
+      await page.getByTestId('binding-start-url-save').click();
+
+      await expect
+        .poll(async () => (await page.getByTestId('sop-review-state').textContent()) ?? '', {
+          timeout: 20_000,
+        })
+        .toContain('Revision 2');
+
+      // Read back from the server, not from the field: the field could show
+      // the right value for the wrong reason if the save silently no-op'd and
+      // local state simply never reverted.
+      const documentId = new URL(page.url()).searchParams.get('documentId');
+      const detail = (await (
+        await fetch(`${E2E_API_URL}/v1/sop-documents/${documentId}`)
+      ).json()) as { data: { steps: { step: Record<string, unknown> }[] } };
+      const navigateStep = detail.data.steps.find((entry) => entry.step['kind'] === 'navigate');
+      expect(navigateStep?.step['urlHint']).toBe(corrected);
+
+      await page.close();
+    });
+
     it('adds a step at a chosen position, as a new revision', async () => {
       const page = await open();
       await openReview(page);
@@ -1365,6 +1403,19 @@ describe('Watchtower end to end', () => {
 
       // The document's own claim about itself never moved, through any of this.
       expect(await page.getByTestId('sop-review-not-executable').count()).toBe(1);
+
+      // Publishing mints a version; it does not lock this document into a
+      // read-only state. Both are true of it now, and each has to say so
+      // rather than leave the other implied.
+      const publishedNote =
+        (await page.getByTestId('sop-already-published-note').textContent()) ?? '';
+      expect(publishedNote).toContain('Already published as version');
+      expect(publishedNote).toContain('does not change what is currently running');
+
+      // Recording auto-approves every binding, so nothing is left to
+      // demonstrate — the offer disappears rather than opening a browser that
+      // could only ever report back "nothing to bind".
+      expect(await page.getByTestId('walkthrough-offer').count()).toBe(0);
 
       const documentId = new URL(page.url()).searchParams.get('documentId');
       const detail = (await (

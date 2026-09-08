@@ -1,5 +1,6 @@
 import type { RecoveryProposalView, SopBindingsView, SopReviewStepView } from '@orbit/api/views';
 
+import { suggestedStartUrl } from './binding-session-view-model';
 import {
   bindActionLabel,
   bindingRows,
@@ -21,6 +22,17 @@ export interface SopBindingPanelProps {
   /** Where a new browser would open. Null while a session is already open. */
   readonly startUrl: string | null;
   readonly onStartUrlChange: (startUrl: string) => void;
+  /**
+   * Whether the workflow's own `navigate` step can still be changed.
+   *
+   * False once the revision is no longer editable (ADR-017) — approving a
+   * revision freezes its content, the same as every other field, and this one
+   * is not an exception. The field itself stays usable either way; only
+   * saving is gated, so a person can still aim a session at a different page
+   * without that being mistaken for editing the workflow.
+   */
+  readonly startUrlEditable: boolean;
+  readonly onSaveStartUrl: () => void;
   /**
    * Open recovery proposals for this document (ADR-033).
    *
@@ -64,6 +76,8 @@ export function SopBindingPanel({
   isStarting,
   startUrl,
   onStartUrlChange,
+  startUrlEditable,
+  onSaveStartUrl,
   proposals,
   onAcceptProposal,
   onDismissProposal,
@@ -112,19 +126,54 @@ export function SopBindingPanel({
         for real. Approving or turning down what someone else recorded is not done from here.
       </p>
 
-      {startUrl !== null && (
-        <label className="mt-3 flex flex-col gap-1 text-xs text-slate-700">
-          <span>Where the browser opens</span>
-          <input
-            className="w-full max-w-lg rounded-md border border-slate-300 px-2 py-1 text-sm"
-            data-testid="binding-start-url"
-            onChange={(event) => {
-              onStartUrlChange(event.target.value);
-            }}
-            value={startUrl}
-          />
-        </label>
-      )}
+      {startUrl !== null &&
+        (() => {
+          // Dirty against the graph's own urlHint, not against whatever the
+          // field happened to hold last render — the thing worth offering to
+          // save is a difference from what the workflow currently says.
+          const isDirty = startUrl !== suggestedStartUrl(steps);
+          const canSave = startUrlEditable && isDirty;
+
+          return (
+            <div className="mt-3 flex flex-col gap-1 text-xs text-slate-700">
+              <label className="flex flex-col gap-1" htmlFor="binding-start-url">
+                <span>Where the browser opens</span>
+                <div className="flex max-w-lg gap-2">
+                  <input
+                    className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm"
+                    data-testid="binding-start-url"
+                    id="binding-start-url"
+                    onChange={(event) => {
+                      onStartUrlChange(event.target.value);
+                    }}
+                    value={startUrl}
+                  />
+                  {canSave && (
+                    <button
+                      className="shrink-0 rounded-md border border-indigo-300 px-3 py-1 text-xs font-medium text-indigo-700 transition-colors hover:border-indigo-400 hover:bg-indigo-50"
+                      data-testid="binding-start-url-save"
+                      onClick={onSaveStartUrl}
+                      type="button"
+                    >
+                      Save
+                    </button>
+                  )}
+                </div>
+              </label>
+              {canSave && (
+                <p className="text-slate-500">
+                  Saves into the workflow&apos;s own first step, as a new revision.
+                </p>
+              )}
+              {!startUrlEditable && (
+                <p className="text-slate-500" data-testid="binding-start-url-locked-note">
+                  This only changes where the next browser session opens. The workflow itself can no
+                  longer be edited to match — it has already been approved.
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
       <ul className="mt-3 flex flex-col gap-2">
         {rows.map((row) => (
