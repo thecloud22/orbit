@@ -12,11 +12,13 @@
  * cannot reach this package transitively.
  *
  * It legitimately reaches the network, in one direction, from
- * `anthropic-model.ts` alone. It never touches a browser, a database, or the
+ * `decision-model.ts` alone — which builds its client through
+ * @orbit/model-provider, the one place that decides which model family a
+ * deployment uses and how it is reached (ADR-034). It never touches a browser, a database, or the
  * filesystem: the ledger is an interface the entry point satisfies.
  */
 export const PACKAGE_NAME = '@orbit/decision-judge' as const;
 
-export * from './anthropic-model';
+export * from './decision-model';
 export * from './judge';
 export * from './prompt';

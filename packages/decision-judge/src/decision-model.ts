@@ -1,4 +1,4 @@
-import { ChatAnthropic } from '@langchain/anthropic';
+import { createChatModel, usageOf, type ModelSelection } from '@orbit/model-provider';
 import type { JudgeRequest } from '@orbit/runtime';
 import { z } from 'zod';
 
@@ -6,27 +6,24 @@ import type { DecisionModel, DecisionModelAnswer } from './judge';
 import { buildDecisionMessage, DECISION_SYSTEM_PROMPT } from './prompt';
 
 /**
- * The Anthropic-backed model layer.
+ * The model layer, over whichever model the deployment selected.
  *
  * The only file in this package that reaches a network, and a boundary test
- * keeps it that way. LangChain is used exactly as @orbit/sop-generation uses
- * it: a chat model, a schema bound to it, one call. No agent, no chain, no
- * memory, no tools — a classification into a closed list needs none of that,
- * and every one of them would be a capability to take back later.
- */
-
-export const ANTHROPIC_JUDGE_PROVIDER_NAME = 'anthropic';
-
-/**
- * The cheapest current Claude model, by default.
+ * keeps it that way. Which family it reaches and how — Anthropic or Gemini,
+ * directly or through Bedrock — is not decided here: @orbit/model-provider
+ * resolves that once for the whole application, and `apps/browser-worker`
+ * hands the result in (ADR-034).
  *
- * This is a closed-set classification behind a strict schema, an independent
- * re-validation in the runtime, and a confidence floor that halts the run. What
- * makes the answer trustworthy is those three, not model size — and a judged
- * decision runs on every execution, so the default should be the one a
- * deployment can afford to run often. Overridable per deployment.
+ * **The bound on the answer is not the provider's to keep.** The schema below
+ * asks for an integer inside the range, LangChain refuses a reply that does not
+ * satisfy it, and @orbit/runtime re-validates the index a third time before it
+ * reaches control flow. That last check is the guarantee, and it is deliberately
+ * outside every provider — so switching family changes nothing about what an
+ * index is allowed to be. It matters more than it looks: Gemini's structured
+ * output is built on a schema subset that does not carry every JSON Schema
+ * keyword, so a numeric bound is a request there rather than an enforcement.
+ * Orbit does not rely on it being enforced by anyone but itself.
  */
-export const DEFAULT_DECISION_MODEL = 'claude-haiku-4-5';
 
 /**
  * The answer schema.
@@ -58,21 +55,16 @@ function answerSchema(alternativeCount: number) {
   });
 }
 
-export interface AnthropicDecisionModelOptions {
-  readonly apiKey: string;
-  readonly model?: string;
+export interface ChatDecisionModelOptions {
   readonly temperature?: number;
   readonly maxRetries?: number;
 }
 
-export function createAnthropicDecisionModel(
-  options: AnthropicDecisionModelOptions,
+export function createChatDecisionModel(
+  selection: ModelSelection,
+  options: ChatDecisionModelOptions = {},
 ): DecisionModel {
-  const model = options.model ?? DEFAULT_DECISION_MODEL;
-
-  const chat = new ChatAnthropic({
-    apiKey: options.apiKey,
-    model,
+  const chat = createChatModel(selection, {
     // Deterministic as far as a model gets. This is classification, not
     // composition, and two runs of the same agent against the same page
     // differing is the property this whole feature has to keep small.
@@ -84,21 +76,18 @@ export function createAnthropicDecisionModel(
   });
 
   return {
-    provider: ANTHROPIC_JUDGE_PROVIDER_NAME,
-    model,
+    provider: chat.descriptor.provider,
+    model: chat.descriptor.model,
 
     async decide(request: JudgeRequest): Promise<DecisionModelAnswer> {
-      const structured = chat.withStructuredOutput<z.infer<ReturnType<typeof answerSchema>>>(
-        answerSchema(request.alternatives.length),
-        { name: 'decision', includeRaw: true },
-      );
+      const call = chat.bindSchema(answerSchema(request.alternatives.length), 'decision');
 
-      const response = await structured.invoke(
+      const response = await call.invoke(
         [
           { role: 'system', content: DECISION_SYSTEM_PROMPT },
           { role: 'user', content: buildDecisionMessage(request) },
         ],
-        { timeout: request.timeoutMs },
+        { timeoutMs: request.timeoutMs },
       );
 
       const parsed = response.parsed;
@@ -118,26 +107,4 @@ export function createAnthropicDecisionModel(
       };
     },
   };
-}
-
-/** Token counts the provider reported, or null when it reported none. */
-function usageOf(raw: unknown): DecisionModelAnswer['usage'] {
-  if (typeof raw !== 'object' || raw === null || !('usage_metadata' in raw)) {
-    return null;
-  }
-
-  const metadata = (raw as { readonly usage_metadata?: unknown }).usage_metadata;
-
-  if (typeof metadata !== 'object' || metadata === null) {
-    return null;
-  }
-
-  const input = (metadata as { readonly input_tokens?: unknown }).input_tokens;
-  const output = (metadata as { readonly output_tokens?: unknown }).output_tokens;
-
-  if (typeof input !== 'number' || typeof output !== 'number') {
-    return null;
-  }
-
-  return { inputTokens: input, outputTokens: output };
 }

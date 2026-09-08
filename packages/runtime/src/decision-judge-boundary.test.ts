@@ -43,6 +43,16 @@ const FORBIDDEN = [
   '@orbit/decision-judge',
   '@orbit/sop-generation',
   /**
+   * The shared selection layer, on the list for the strongest reason of all.
+   *
+   * ADR-034 put every model client behind @orbit/model-provider. That makes it
+   * a single, convenient, entirely reasonable-looking import — which is exactly
+   * why the runtime must not be able to reach it. One line here would give the
+   * process that executes approved steps the ability to call any model for any
+   * reason, and no other test would notice.
+   */
+  '@orbit/model-provider',
+  /**
    * Recovery's implementation, on the list for exactly the same reason.
    *
    * ADR-033 gave the runtime a second reason to want capability it should not

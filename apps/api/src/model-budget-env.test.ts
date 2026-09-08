@@ -1,8 +1,5 @@
-import {
-  DEFAULT_BEDROCK_SOP_GENERATION_MODEL,
-  DEFAULT_SOP_GENERATION_MODEL,
-  FALLBACK_MODEL_RATE,
-} from '@orbit/sop-generation';
+import { DEFAULT_MODEL_IDS, DEFAULT_MODELS } from '@orbit/model-provider';
+import { FALLBACK_MODEL_RATE } from '@orbit/sop-generation';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -86,21 +83,27 @@ describe('resolveModelRates', () => {
    * that was three times too high rather than as anything that looked broken.
    * Changing a default now fails here until its rate is added.
    */
-  it('prices whatever the default model happens to be, on either provider', () => {
+  it('prices every default model, on every family and invocation', () => {
     const rates = resolveModelRates({});
 
-    for (const model of [DEFAULT_SOP_GENERATION_MODEL, DEFAULT_BEDROCK_SOP_GENERATION_MODEL]) {
+    // Iterated from the selection layer rather than listed here, so a new
+    // family or a new default cannot be added without a rate: the list this
+    // walks is the same one `resolveModelSelection` defaults from.
+    expect(DEFAULT_MODEL_IDS.length).toBeGreaterThan(2);
+
+    for (const model of DEFAULT_MODEL_IDS) {
       expect(rates[model], `no configured rate for the default model "${model}"`).toBeDefined();
       expect(rates[model]).not.toEqual(FALLBACK_MODEL_RATE);
     }
   });
 
-  it('prices the same model the same way whichever provider reports it', () => {
-    // Switching provider must not change what a draft appears to cost.
+  it('prices the same model the same way whichever way it is invoked', () => {
+    // Switching from a direct call to Bedrock must not change what a draft
+    // appears to cost. It is the same model either way; only the id differs.
     const rates = resolveModelRates({});
 
-    expect(rates[DEFAULT_BEDROCK_SOP_GENERATION_MODEL]).toEqual(
-      rates[DEFAULT_SOP_GENERATION_MODEL],
+    expect(rates[DEFAULT_MODELS['anthropic:bedrock']]).toEqual(
+      rates[DEFAULT_MODELS['anthropic:direct']],
     );
   });
 });

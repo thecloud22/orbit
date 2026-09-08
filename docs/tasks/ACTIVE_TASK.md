@@ -36,7 +36,7 @@ checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
 **Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10,
-2.11 and 2.12** are complete.
+2.11, 2.12 and 2.13** are complete.
 `@orbit/sop-graph` provides the non-executable graph contract and its validation;
 `@orbit/sop-generation` turns free text into a proposed graph; `@orbit/sop-service` persists drafts
 and drives review; `@orbit/execution-mapping` defines the Execution Binding and the runtime verifies
@@ -335,13 +335,25 @@ test.
 | Drift diagnosis and proposal writing | `@orbit/drift-recovery` (Phase 2 Task 12, ADR-033) |
 | Drift observation at the moment it happens | `@orbit/runtime` over the `RecoveryProposer` port (Phase 2 Task 12) |
 | Accepting or dismissing a proposal, and the per-document grant | `@orbit/sop-service` (Phase 2 Task 12) |
+| Which model family is called, how it is reached, and with which credential | `@orbit/model-provider` (Phase 2 Task 13, ADR-034) |
 
 `prepareExecution` in `@orbit/runtime` is the single validation gate the API and the browser-worker
 CLI both use.
 
+**Sub-phase 2.13 is complete.** Every model call in Orbit — drafting, judged decisions, and
+authoring advice — now resolves through one selection layer, `@orbit/model-provider`. Two
+independent axes: `LLM_PROVIDER` chooses the family (`anthropic` or `gemini`) and `LLM_INVOCATION`
+chooses how it is reached (`direct` or `bedrock`), so direct-on-a-laptop and through-Bedrock-in-
+production is a deployment setting rather than a code change. `gemini` + `bedrock` is refused at
+startup, because Bedrock does not serve Gemini. `ORBIT_LLM_PROVIDER` / `ORBIT_LLM_MODEL` are
+honoured as deprecated aliases that translate to the new axes. `@orbit/runtime` still cannot reach
+a provider, and the boundary test that proves it now names the shared package too (**ADR-034**).
+Gemini and Bedrock are structurally verified and **not** exercised against a real service — there
+are no Google or AWS credentials in this environment.
+
 ### Before starting Phase 2
 
-Read the Task 12 report's limitations section first, then Task 9's. The open items carried out of Phase 1 are:
+Read the Task 13 report's limitations section first, then Task 12's and Task 9's. The open items carried out of Phase 1 are:
 `NOT_FOUND` missing from the error taxonomy; no server-side duplicate-dispatch suppression; no
 recovery for runs orphaned by a killed API process; no retention or orphan reconciliation; and
 database-level enforcement of immutability and append-only still deferred (ADR-014).

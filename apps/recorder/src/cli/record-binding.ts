@@ -13,8 +13,7 @@ import {
   adviseOnCoverage,
   adviseOnSelectors,
   adviseOnSemanticMatch,
-  createAnthropicAssistProvider,
-  createUnconfiguredAssistProvider,
+  createAssistProvider,
   type Advice,
   type AssistProvider,
 } from '@orbit/execution-assist';
@@ -24,6 +23,7 @@ import {
   type CapturedAction,
   type RecordingSession,
 } from '@orbit/execution-recorder';
+import { noticeDeprecations, resolveModelSelection } from '@orbit/model-provider';
 import { describeStep, type SopGraph, type SopStep } from '@orbit/sop-graph';
 import {
   bindingBodyFor,
@@ -276,15 +276,23 @@ async function recordStep(
   }
 }
 
-/** A model is optional: without one there is no advice, and recording is unaffected. */
+/**
+ * A model is optional: without one there is no advice, and recording is unaffected.
+ *
+ * The selection comes from the same place the API's drafting and the worker's
+ * judge get theirs (ADR-034), which is what makes `LLM_PROVIDER` mean one thing
+ * across the application. This call site used to read `ANTHROPIC_API_KEY`
+ * directly and default to Sonnet, so it was the one that would have been left
+ * behind on Anthropic after a switch to Gemini.
+ */
 function assistProvider(): AssistProvider {
-  const apiKey = process.env['ANTHROPIC_API_KEY'];
+  const resolution = resolveModelSelection(process.env);
 
-  return apiKey === undefined || apiKey.trim() === ''
-    ? createUnconfiguredAssistProvider(
-        'ANTHROPIC_API_KEY is not set, so suggestions are unavailable.',
-      )
-    : createAnthropicAssistProvider({ apiKey });
+  noticeDeprecations(resolution.deprecations, (message) => {
+    process.stdout.write(`${message}\n`);
+  });
+
+  return createAssistProvider(resolution);
 }
 
 async function gatherAdvice(

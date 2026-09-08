@@ -36,15 +36,31 @@ describe('the execution assist boundary', () => {
   const files = sourceFiles(SOURCE_ROOT);
 
   it('reaches a model from exactly one file', () => {
+    // @orbit/model-provider counts as reaching a model: it is where the client
+    // is constructed now, so importing it is exactly as much "holding a model"
+    // as importing LangChain used to be.
     const importers = files.filter((file) =>
+      importsOf(readFileSync(file, 'utf8')).some(
+        (specifier) => specifier.startsWith('@langchain/') || specifier === '@orbit/model-provider',
+      ),
+    );
+
+    expect(importers.map((file) => file.replace(SOURCE_ROOT, ''))).toEqual([
+      'chat-assist-provider.ts',
+    ]);
+  });
+
+  it('constructs no model client of its own', () => {
+    // A client built here rather than through @orbit/model-provider would be a
+    // call site that `LLM_PROVIDER` does not move — the one failure the shared
+    // selection layer exists to prevent.
+    const offenders = files.filter((file) =>
       importsOf(readFileSync(file, 'utf8')).some((specifier) =>
         specifier.startsWith('@langchain/'),
       ),
     );
 
-    expect(importers.map((file) => file.replace(SOURCE_ROOT, ''))).toEqual([
-      'anthropic-assist-provider.ts',
-    ]);
+    expect(offenders.map((file) => file.replace(SOURCE_ROOT, ''))).toEqual([]);
   });
 
   it('cannot reach the runtime, the recorder, persistence, or a browser', () => {

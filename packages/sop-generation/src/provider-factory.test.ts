@@ -1,63 +1,58 @@
+import { resolveModelSelection } from '@orbit/model-provider';
 import { describe, expect, it } from 'vitest';
 
-import { ANTHROPIC_PROVIDER_NAME, DEFAULT_SOP_GENERATION_MODEL } from './anthropic-provider';
-import { BEDROCK_PROVIDER_NAME, DEFAULT_BEDROCK_SOP_GENERATION_MODEL } from './bedrock-provider';
 import { isSopProviderError } from './provider';
-import { createSopProvider, isModelProviderName, MODEL_PROVIDER_NAMES } from './provider-factory';
+import { createSopProvider } from './provider-factory';
 
 /**
  * What the factory promises.
  *
- * These construct a real client but never call one — building a `ChatAnthropic`
- * or a `ChatBedrockConverse` opens no connection, so the descriptor is
- * observable without a network, a key, or an AWS account. That is the whole
- * contract worth asserting here: which provider was built, under which model,
- * and that missing configuration produces a provider that fails on use rather
+ * These construct a real client but never call one — building a `ChatAnthropic`,
+ * a `ChatGoogleGenerativeAI` or a `ChatBedrockConverse` opens no connection — so
+ * the descriptor is observable without a network, a key, or a cloud account.
+ *
+ * The factory no longer decides *which* provider: that is one question for the
+ * whole application and @orbit/model-provider answers it (ADR-034). What is
+ * left, and what these assert, is that drafting follows whatever was selected
+ * and that missing configuration produces a provider which fails on use rather
  * than one that throws at construction.
  */
 
 describe('createSopProvider', () => {
-  it('defaults to Anthropic on the cheapest current Claude model', () => {
-    const provider = createSopProvider({ provider: 'anthropic', apiKey: 'sk-test' });
+  it('follows the selection to Anthropic, invoked directly', () => {
+    const provider = createSopProvider(resolveModelSelection({ ANTHROPIC_API_KEY: 'sk-test' }));
+
+    expect(provider.descriptor).toEqual({ provider: 'anthropic', model: 'claude-haiku-4-5' });
+  });
+
+  it('follows the same selection to Gemini, with no change here at all', () => {
+    // The point of the whole change: drafting has no provider-specific branch
+    // left, so a second family costs this file nothing.
+    const provider = createSopProvider(
+      resolveModelSelection({ LLM_PROVIDER: 'gemini', GEMINI_API_KEY: 'goog-test' }),
+    );
+
+    expect(provider.descriptor).toEqual({ provider: 'gemini', model: 'gemini-2.5-flash-lite' });
+  });
+
+  it('follows the same selection through Bedrock', () => {
+    const provider = createSopProvider(
+      resolveModelSelection({ LLM_INVOCATION: 'bedrock', AWS_REGION: 'us-east-1' }),
+    );
 
     expect(provider.descriptor).toEqual({
-      provider: ANTHROPIC_PROVIDER_NAME,
-      model: DEFAULT_SOP_GENERATION_MODEL,
-    });
-    expect(DEFAULT_SOP_GENERATION_MODEL).toBe('claude-haiku-4-5');
-  });
-
-  it('builds a Bedrock provider from a region alone, with no credentials of its own', () => {
-    // Credentials come from the AWS default provider chain. A region is the
-    // only thing Orbit must be told, because Bedrock is region-scoped.
-    const provider = createSopProvider({ provider: 'bedrock', region: 'us-east-1' });
-
-    expect(provider.descriptor).toEqual({
-      provider: BEDROCK_PROVIDER_NAME,
-      model: DEFAULT_BEDROCK_SOP_GENERATION_MODEL,
+      provider: 'bedrock',
+      model: 'anthropic.claude-haiku-4-5',
     });
   });
 
-  it('honours an explicit model on either provider', () => {
-    expect(
-      createSopProvider({ provider: 'anthropic', apiKey: 'sk-test', model: 'claude-sonnet-5' })
-        .descriptor.model,
-    ).toBe('claude-sonnet-5');
-
-    expect(
-      createSopProvider({
-        provider: 'bedrock',
-        region: 'eu-west-1',
-        model: 'eu.anthropic.claude-haiku-4-5',
-      }).descriptor.model,
-    ).toBe('eu.anthropic.claude-haiku-4-5');
-  });
-
-  it('reports the model it will actually use, so the ledger keys on the right name', () => {
+  it('reports the model the ledger must key on', () => {
     // Cost is estimated from `descriptor.model`. A Bedrock call recorded under
     // a first-party id would be costed against the wrong row.
     expect(
-      createSopProvider({ provider: 'bedrock', region: 'us-east-1' }).descriptor.model,
+      createSopProvider(
+        resolveModelSelection({ LLM_INVOCATION: 'bedrock', AWS_REGION: 'us-east-1' }),
+      ).descriptor.model,
     ).toMatch(/^anthropic\./);
   });
 
@@ -79,40 +74,28 @@ describe('createSopProvider', () => {
     }
 
     it('names the missing Anthropic key without failing to construct', async () => {
-      const provider = createSopProvider({ provider: 'anthropic' });
-
-      expect(provider.descriptor.provider).toBe('unconfigured');
-      expect(await failureFrom(provider)).toContain('ANTHROPIC_API_KEY');
-    });
-
-    it('treats a blank key as missing rather than passing it to the client', async () => {
-      const provider = createSopProvider({ provider: 'anthropic', apiKey: '   ' });
-
-      expect(provider.descriptor.provider).toBe('unconfigured');
-    });
-
-    it('names the missing Bedrock region, and the variable that supplies it', async () => {
-      const provider = createSopProvider({ provider: 'bedrock' });
+      const provider = createSopProvider(resolveModelSelection({}));
 
       expect(provider.descriptor.provider).toBe('unconfigured');
 
       const message = await failureFrom(provider);
-      expect(message).toContain('AWS_REGION');
-      expect(message).toContain('bedrock');
+      expect(message).toContain('ANTHROPIC_API_KEY');
+      // And says which feature is affected, because the person reading it is
+      // looking at a browser rather than at this file.
+      expect(message).toContain('SOP generation is unavailable');
     });
-  });
-});
 
-describe('isModelProviderName', () => {
-  it('accepts exactly the providers that exist', () => {
-    expect(MODEL_PROVIDER_NAMES).toEqual(['anthropic', 'bedrock']);
+    it('names the missing Gemini key when that is the family selected', async () => {
+      const provider = createSopProvider(resolveModelSelection({ LLM_PROVIDER: 'gemini' }));
 
-    for (const name of MODEL_PROVIDER_NAMES) {
-      expect(isModelProviderName(name)).toBe(true);
-    }
+      expect(await failureFrom(provider)).toContain('GEMINI_API_KEY');
+    });
 
-    expect(isModelProviderName('bedrok')).toBe(false);
-    expect(isModelProviderName('openai')).toBe(false);
-    expect(isModelProviderName('')).toBe(false);
+    it('names the missing Bedrock region, and the variable that supplies it', async () => {
+      const provider = createSopProvider(resolveModelSelection({ LLM_INVOCATION: 'bedrock' }));
+
+      expect(provider.descriptor.provider).toBe('unconfigured');
+      expect(await failureFrom(provider)).toContain('AWS_REGION');
+    });
   });
 });

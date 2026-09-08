@@ -10,12 +10,12 @@
  * save, and nothing touches the drift check's pass/fail logic — that is 4a's
  * runtime code, and this package cannot reach it. Two of the four assists are
  * plain functions with no model at all, because ranking three known strategies
- * and computing a set difference are exact questions; only `anthropic-assist-provider.ts`
- * imports a model client, and a test asserts it stays the only one.
+ * and computing a set difference are exact questions; only `chat-assist-provider.ts`
+ * reaches a model, through @orbit/model-provider (ADR-034), and a test asserts it stays the only one.
  */
 export const PACKAGE_NAME = '@orbit/execution-assist' as const;
 
 export * from './advice';
-export * from './anthropic-assist-provider';
+export * from './chat-assist-provider';
 export * from './assist';
 export * from './provider';

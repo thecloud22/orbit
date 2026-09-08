@@ -41,6 +41,23 @@ export const DEFAULT_MODEL_RATES: ModelRates = {
   'anthropic.claude-haiku-4-5': { inputPerMillionUsd: 1, outputPerMillionUsd: 5 },
   'anthropic.claude-sonnet-5': { inputPerMillionUsd: 3, outputPerMillionUsd: 15 },
   'anthropic.claude-opus-5': { inputPerMillionUsd: 15, outputPerMillionUsd: 75 },
+
+  /**
+   * Google's models, reached directly (ADR-034).
+   *
+   * There are no Bedrock rows for these and there never will be: Bedrock does
+   * not serve Gemini, and `resolveModelSelection` refuses that combination
+   * before anything gets far enough to need a rate.
+   *
+   * The figures are Google's published list prices for standard-context
+   * prompts. Like the Claude rows they are held rather than fetched, and like
+   * every figure derived from this table they are labelled an estimate
+   * everywhere they are shown — a long prompt on some tiers is priced
+   * differently, and this table does not model that.
+   */
+  'gemini-2.5-flash-lite': { inputPerMillionUsd: 0.1, outputPerMillionUsd: 0.4 },
+  'gemini-2.5-flash': { inputPerMillionUsd: 0.3, outputPerMillionUsd: 2.5 },
+  'gemini-2.5-pro': { inputPerMillionUsd: 1.25, outputPerMillionUsd: 10 },
 };
 
 /**

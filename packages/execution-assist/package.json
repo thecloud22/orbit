@@ -19,10 +19,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@langchain/anthropic": "^1.5.9",
-    "@langchain/core": "^1.2.9",
     "@orbit/agent-ir": "workspace:*",
     "@orbit/execution-mapping": "workspace:*",
+    "@orbit/model-provider": "workspace:*",
     "zod": "^4.5.4"
   },
   "devDependencies": {

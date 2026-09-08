@@ -1475,3 +1475,79 @@ This is the first Orbit feature whose subject is Orbit's own definitions. Everyt
 | Grant recovery under an existing browser permission | An agent granted `click` would have quietly been granted opinions about its own mapping |
 | Move recovery-enabled agents to Tier 5 `autonomous_recovery` | Tier 5 describes recovery that acts. This one proposes, which is Tier 1 `recommend` |
 | Leave the guessed fixture fingerprints alone | They were wrong. Wiring the drift check without fixing them would have shipped a demo that fails on its first step |
+
+## ADR-034: One selection layer for every model call, with family and invocation as separate axes
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+Three packages in Orbit call a model, and until this task each of them decided for itself which one.
+
+- `@orbit/sop-generation` drafts a graph from free text. It had a provider factory, an Anthropic provider, a Bedrock provider, and a vocabulary of provider names.
+- `@orbit/decision-judge` resolves a judged decision at run time (ADR-032). Anthropic only, with its own client, its own default model, and a character-for-character copy of the token-usage reader.
+- `@orbit/execution-assist` advises a person mapping a workflow to a page. Anthropic only, its own client, and a default of Sonnet — the one call site that had never been brought in line, noted as out of scope by the task that introduced the seam.
+
+The user's request was to choose between Anthropic and Gemini with one variable. Adding a second family to the drafting factory alone would have satisfied that request literally and produced the worst available outcome: `LLM_PROVIDER=gemini` would have moved drafting to Gemini and left judged decisions and authoring advice on Claude, spending against the same budget, writing into the same ledger, and looking entirely coherent while doing it. A configuration switch that moves *some* of the calls is worse than no switch at all, because nothing surfaces the half that did not move.
+
+The second problem was in the existing vocabulary. `ORBIT_LLM_PROVIDER` accepted `anthropic | bedrock` — one variable holding two different questions welded together. `bedrock` is not a vendor of models; it is a way of reaching Anthropic's. So "the same models, direct on a laptop and through Bedrock in production" had no spelling, and a second *family* had nowhere to go that did not collide with a transport.
+
+### Decision
+
+**One package, `@orbit/model-provider`, owns which model is called and how.** All three call sites resolve through it and construct their client through it. It is deliberately narrow: which family, reached how, with which credential, at which model id, reporting usage in one shape. It knows nothing about SOPs, runs or steps.
+
+**The three domain contracts are not merged, and merging them would have been the mistake.** `LLMProvider` returns an unvalidated SOP proposal for a repair loop to fix; `DecisionModel` returns an index into a closed list; `AssistProvider` returns an advisory verdict nothing applies. These are three different contracts with three different failure meanings — a drafting failure means no draft, a judge failure halts a run, an assist failure means no advice — and one interface over them would have had to be the weakest of the three. Each package keeps its own interface and binds its own schema; what it does not keep is a client.
+
+**Family and invocation are separate axes.**
+
+| Axis | Variable | Values | Default |
+|---|---|---|---|
+| Which model family | `LLM_PROVIDER` | `anthropic`, `gemini` | `anthropic` |
+| How it is reached | `LLM_INVOCATION` | `direct`, `bedrock` | `direct` |
+
+This is what makes the deployment story work without a code change: a laptop runs `anthropic` + `direct` with an API key, the same build in an AWS account runs `anthropic` + `bedrock` with a region and the AWS default credential chain, and no application code — not one line in drafting, the judge or assist — knows the difference. The environment decides.
+
+**`gemini` + `bedrock` is refused at resolution, at startup.** Bedrock does not serve Google's models, so the combination cannot be satisfied by anything. The error names the problem and both ways out. Failing at the first drafting request of the day, as an opaque "model not found" from someone else's API, would be a far more expensive way to learn the same fact.
+
+**A mistyped value stops the process; an absent one does not.** An unrecognised `LLM_PROVIDER` or `LLM_INVOCATION` throws — a deployment that wrote `gemni` meant Gemini, and silently serving it Anthropic bills an account it never chose. Missing *credentials* are the opposite case and return an `unconfigured` resolution: the API still boots, every route that does not need a model still works, and the one that does says which variable is missing. Each consumer appends the feature that is affected, so the message names both the variable and the thing that stopped working.
+
+**The superseded names are honoured and translated, not merely tolerated.** `ORBIT_LLM_PROVIDER=bedrock` meant Claude models through Bedrock, so it now sets `LLM_PROVIDER=anthropic` and `LLM_INVOCATION=bedrock` — the same behaviour it always had, now expressible. `ORBIT_LLM_MODEL` maps to the selected family's model variable. The new names win when both are set, because a deployment that adopted the new spelling said so more recently and preferring the old one would make migration impossible to finish. A deprecation notice is emitted once per process, as a warning: refusing to boot over one would defeat the point of accepting it.
+
+**The ledger's existing values keep meaning what they meant.** `providerLabel` reports `bedrock` whenever invocation is Bedrock and the family name otherwise, so `model_usage` still holds `anthropic` and `bedrock` exactly as before, with `gemini` as the only new value. No migration, and no re-reading of history.
+
+**Gemini's default is `gemini-2.5-flash-lite`, and the rate table gained a row for it.** Rates are keyed by model id, so a default with no row would silently fall to `FALLBACK_MODEL_RATE` — conservative, so the failure would show as a spend readout several times too high rather than as anything that looked broken. The test that pins this now iterates `DEFAULT_MODEL_IDS` from the selection layer rather than a hand-written list, so a new family or a new default cannot be added without a rate.
+
+**The judge's bound on its answer is not a provider's to keep, and that is now stated where it matters.** The index is constrained three times: the schema asks for it, LangChain refuses a reply that does not satisfy it, and `@orbit/runtime` re-validates independently before the index reaches control flow. The third is the guarantee, and it is deliberately outside every provider. This matters more under Gemini than under Claude: Gemini's structured output is built on a schema subset that does not carry every JSON Schema keyword, so a numeric bound there is a request rather than an enforcement. Orbit does not rely on anyone but itself to keep it, and ADR-032's guarantees are therefore unchanged by this task.
+
+**`@orbit/runtime` still cannot reach a provider, and the new package is named in the guard.** `decision-judge-boundary.test.ts` walks the whole workspace dependency closure; `@orbit/model-provider` is on its forbidden list for the strongest reason on that list — it is now a single, convenient, entirely reasonable-looking import that would give the process executing approved steps the ability to call any model for any reason.
+
+### Consequences
+
+**A third family, or a fourth call site, is now a small change in one place.** Adding Gemini touched one `if` in one file, one default, and three rate rows; the drafting pipeline, the judge and the assist provider needed no provider-specific code at all. That is the property being bought.
+
+**Authoring advice changed model.** It defaulted to Sonnet and now takes the deployment-wide default, which is Haiku or Flash-Lite. Reading a role, an accessible name and some visible text and saying whether they look related does not need a larger model, and this assist runs on every step a person records. A deployment that disagrees sets one variable.
+
+**Two files became one, twice.** The Anthropic and Bedrock drafting providers were the same file with a different constructor at the top; both are gone. The judge's private copy of `usageOf` is gone. One usage reader now serves every call, which is what makes "the budget means the same thing whichever provider spent it" true rather than intended.
+
+**Gemini and Bedrock are structurally verified and not exercised.** There are no Google or AWS credentials in this environment. What is demonstrated by test: the selection resolves, the client constructs, a schema binds, the descriptor is right, usage is read from the normalised shape, the rate table prices every default, and no boundary was crossed. What is *not* demonstrated: that a real Gemini or Bedrock endpoint replies the way this code expects. Treat the first real call on either as the test. The Anthropic direct path is the only one with a real credential available, and even that is not called by any test — no test in this repository calls a model.
+
+**Every `createUnconfigured*` path is preserved.** Drafting, judging and assisting each still degrade to a clear failure on the route that needs a model, never at boot. What changed is that the reason is now assembled from a shared half that names the variable and a local half that names the feature.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Add Gemini to the drafting factory only | `LLM_PROVIDER` would move one of three call sites and leave two behind, spending from the same budget and looking coherent. The exact failure the requirement is written to prevent |
+| One shared provider interface for all three call sites | They return a proposal, an index, and a verdict, and fail with three different meanings. The union would have to be the weakest of them |
+| Keep `LLM_PROVIDER=bedrock` as a third value | It welds transport to vendor. `anthropic` direct and `anthropic` through Bedrock is one family reached two ways, and Gemini would have no non-colliding place to go |
+| Let `gemini` + `bedrock` fail at the first call | The configuration cannot be satisfied by anything. Startup is where an impossible environment should be reported |
+| Infer invocation from the presence of AWS credentials | A developer with an AWS profile on their laptop would silently be routed through Bedrock. Deployment intent must be stated, not guessed |
+| Add an Orbit variable for AWS keys | A second place a secret could be typed. The AWS default credential chain is what everything else in the account already uses |
+| Drop the `ORBIT_LLM_*` names outright | Someone's working `.env` breaks silently, which is the one thing a rename must not do |
+| Prefer the old names when both are set | Migration could never be completed |
+| Let each package read `process.env` for its own selection | That is precisely the arrangement being removed |
+| Move `DecisionJudge` or a client into `@orbit/runtime` while consolidating | ADR-008 and ADR-032 deny the runtime that capability, and the boundary test that proves it now names the shared package too |
+| Trust Gemini's schema to enforce the judge's index range | Its structured-output schema subset does not carry every keyword. The runtime's own re-validation is the guarantee, and it always was |
+| Add Gemini defaults without rate-table rows | Every Gemini call would silently cost the conservative fallback rate, and the spend readout would be wrong in the safe-looking direction |

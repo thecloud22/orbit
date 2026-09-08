@@ -1,8 +1,9 @@
-import { ChatAnthropic } from '@langchain/anthropic';
+import { createChatModel, type ModelResolution, type ModelSelection } from '@orbit/model-provider';
 import { z } from 'zod';
 
 import {
   AssistProviderError,
+  createUnconfiguredAssistProvider,
   type AssistProvider,
   type DriftRanking,
   type DriftRankingRequest,
@@ -11,20 +12,20 @@ import {
 } from './provider';
 
 /**
- * The Anthropic-backed advisory provider.
+ * The advisory provider, over whichever model the deployment selected.
  *
- * This is the only file in the package that imports a model client, and a test
- * asserts it stays that way — the same isolation @orbit/sop-generation's
- * `anthropic-provider.ts` keeps.
+ * This is the only file in the package that reaches a model, and a test asserts
+ * it stays that way. It used to construct a `ChatAnthropic` itself and default
+ * to Sonnet — the one call site `LLM_PROVIDER` would have missed, and the one
+ * paying for a larger model than its job needs. Both are fixed here: the client
+ * comes from @orbit/model-provider (ADR-034), and the model is the deployment's
+ * one choice rather than this file's.
  *
  * It reads a fingerprint and a step's stated purpose and says whether they look
  * like they belong together. It never sees a page, never fetches anything, and
  * never returns something that is applied automatically. The strongest thing it
  * can do is make a human look twice.
  */
-
-export const ANTHROPIC_ASSIST_PROVIDER = 'anthropic';
-export const DEFAULT_ASSIST_MODEL = 'claude-sonnet-5';
 
 const semanticVerdictSchema = z.object({
   plausible: z.boolean(),
@@ -44,9 +45,7 @@ You are given what the step says it does, and what the element is according to t
 
 Judge only whether the element plausibly matches the described intent. A "Search" button for a step about searching is plausible. A "Delete account" button for a step about searching is not. Be slow to raise a false alarm: a step described loosely is normal, and wording rarely matches exactly. Say so plainly when something looks fine.`;
 
-export interface AnthropicAssistProviderOptions {
-  readonly apiKey: string;
-  readonly model?: string;
+export interface ChatAssistProviderOptions {
   readonly maxRetries?: number;
 }
 
@@ -62,40 +61,53 @@ function describeFingerprint(fingerprint: {
   ].join('\n');
 }
 
-export function createAnthropicAssistProvider(
-  options: AnthropicAssistProviderOptions,
+export function createChatAssistProvider(
+  selection: ModelSelection,
+  options: ChatAssistProviderOptions = {},
 ): AssistProvider {
-  const model = options.model ?? DEFAULT_ASSIST_MODEL;
-
-  const chat = new ChatAnthropic({
-    apiKey: options.apiKey,
-    model,
+  const chat = createChatModel(selection, {
     temperature: 0,
     maxRetries: options.maxRetries ?? 1,
   });
 
-  const semantic = chat.withStructuredOutput<z.infer<typeof semanticVerdictSchema>>(
-    semanticVerdictSchema,
-    { name: 'semantic_verdict' },
-  );
+  const semantic = chat.bindSchema(semanticVerdictSchema, 'semantic_verdict');
+  const drift = chat.bindSchema(driftRankingSchema, 'drift_ranking');
 
-  const drift = chat.withStructuredOutput<z.infer<typeof driftRankingSchema>>(driftRankingSchema, {
-    name: 'drift_ranking',
-  });
+  /**
+   * A reply that did not satisfy the schema is no advice.
+   *
+   * Every call in Orbit now sets `includeRaw`, so an unsatisfied schema arrives
+   * as `parsed: undefined` rather than as a throw. For drafting that is the
+   * repair loop's opening; here there is nothing to repair, and advice that
+   * cannot be trusted is worth exactly as much as advice that never arrived.
+   */
+  function required<T>(parsed: T | undefined): T {
+    if (parsed === undefined || parsed === null) {
+      throw new AssistProviderError('The advisory model did not answer in the required shape.');
+    }
+
+    return parsed;
+  }
 
   return {
-    descriptor: { provider: ANTHROPIC_ASSIST_PROVIDER, model },
+    descriptor: chat.descriptor,
 
     async checkSemanticMatch(request: SemanticCheckRequest): Promise<SemanticCheckVerdict> {
       try {
-        return await semantic.invoke([
+        const response = await semantic.invoke([
           { role: 'system', content: SYSTEM_PROMPT },
           {
             role: 'user',
             content: `The step is a "${request.stepKind}" step, described as: ${request.stepPurpose}\n\nThe element recorded for it:\n${describeFingerprint(request.fingerprint)}`,
           },
         ]);
+
+        return required(response.parsed);
       } catch (error) {
+        if (error instanceof AssistProviderError) {
+          throw error;
+        }
+
         throw new AssistProviderError(
           error instanceof Error
             ? `The advisory model could not be reached: ${error.message}`
@@ -111,14 +123,20 @@ export function createAnthropicAssistProvider(
           .map((candidate) => `[${candidate.index}]\n${describeFingerprint(candidate.fingerprint)}`)
           .join('\n\n');
 
-        return await drift.invoke([
+        const response = await drift.invoke([
           { role: 'system', content: SYSTEM_PROMPT },
           {
             role: 'user',
             content: `A workflow stopped because the page no longer matches what was approved for this step: ${request.stepPurpose}\n\nThe element it expected:\n${describeFingerprint(request.expected)}\n\nElements on the page now:\n${listed}\n\nWhich one, if any, is the same control? Answer with its index, or null if none of them is.`,
           },
         ]);
+
+        return required(response.parsed);
       } catch (error) {
+        if (error instanceof AssistProviderError) {
+          throw error;
+        }
+
         throw new AssistProviderError(
           error instanceof Error
             ? `The advisory model could not be reached: ${error.message}`
@@ -128,4 +146,21 @@ export function createAnthropicAssistProvider(
       }
     },
   };
+}
+
+/**
+ * The advisory provider, or one that reports why there is none.
+ *
+ * Advice is optional by definition, so an unconfigured deployment degrades the
+ * recorder to "no suggestions" rather than breaking it — the null object is
+ * production behaviour, not a test double.
+ */
+export function createAssistProvider(resolution: ModelResolution): AssistProvider {
+  if (resolution.status === 'unconfigured') {
+    return createUnconfiguredAssistProvider(
+      `${resolution.reason} Recording assists are unavailable; everything else in the recorder works.`,
+    );
+  }
+
+  return createChatAssistProvider(resolution.selection);
 }

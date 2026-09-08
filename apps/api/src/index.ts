@@ -1,10 +1,11 @@
 import { requireDatabaseUrl } from '@orbit/db';
+import { noticeDeprecations } from '@orbit/model-provider';
 import { createSopProvider } from '@orbit/sop-generation';
 
 import { startApi } from './bootstrap';
 import { loadRootEnv, resolveRepositoryArtifactRoot } from './env';
 import { resolveModelBudgets, resolveModelRates } from './model-budget-env';
-import { resolveSopProviderConfig } from './model-provider-env';
+import { resolveApiModelSelection } from './model-provider-env';
 
 /**
  * The API process.
@@ -13,8 +14,10 @@ import { resolveSopProviderConfig } from './model-provider-env';
  * (ADR-011), so a dispatched run launches a browser in this process and
  * continues after the HTTP response has been sent.
  *
- * Which *real* model provider to use — Anthropic or Bedrock — is chosen by
- * `createSopProvider` from configuration this module reads. What is deliberately
+ * Which *real* model to use — which family, reached directly or through
+ * Bedrock — is resolved once by @orbit/model-provider from configuration this
+ * module reads, exactly as the browser worker and the recorder resolve it
+ * (ADR-034). What is deliberately
  * absent is any path to the deterministic fake: that lives behind
  * `@orbit/sop-generation/testing` and is reachable only from
  * `src/testing/e2e-server.ts`, which refuses to run outside `orbit_test`.
@@ -32,13 +35,23 @@ loadRootEnv();
  * missing key, or a Bedrock deployment with no region, still fails on the one
  * route that needs a model rather than at boot.
  *
- * A *mistyped provider name* is the one exception, and it does stop the process:
- * see `resolveSopProviderConfig`.
+ * A *mistyped* or *impossible* configuration is the one exception, and it does
+ * stop the process: an unrecognised `LLM_PROVIDER`, or `gemini` combined with
+ * `LLM_INVOCATION=bedrock`, which nothing can satisfy because Bedrock does not
+ * serve Gemini. Booting past either would mean quietly calling a model the
+ * deployment did not choose.
  */
 
 try {
+  const modelSelection = resolveApiModelSelection();
+
+  // Superseded variable names still work; they say so once, on the way past.
+  noticeDeprecations(modelSelection.deprecations, (message) => {
+    process.stderr.write(`${message}\n`);
+  });
+
   await startApi({
-    sopProvider: createSopProvider(resolveSopProviderConfig()),
+    sopProvider: createSopProvider(modelSelection),
     modelBudgets: resolveModelBudgets(),
     modelRates: resolveModelRates(),
     databaseUrl: requireDatabaseUrl('DATABASE_URL'),

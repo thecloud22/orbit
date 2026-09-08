@@ -15,10 +15,11 @@
     "@orbit/artifacts": "workspace:*",
     "@orbit/contracts": "workspace:*",
     "@orbit/db": "workspace:*",
-    "@orbit/drift-recovery": "workspace:*",
     "@orbit/decision-judge": "workspace:*",
+    "@orbit/drift-recovery": "workspace:*",
     "@orbit/executor-playwright": "workspace:*",
     "@orbit/model-budget": "workspace:*",
+    "@orbit/model-provider": "workspace:*",
     "@orbit/runtime": "workspace:*",
     "pino": "^10.0.0"
   },

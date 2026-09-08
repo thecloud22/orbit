@@ -10,10 +10,10 @@
  * artifact bytes with metadata is @orbit/artifact-service's.
  *
  * It legitimately reaches the network, but only in one direction and only from
- * the two provider modules — `anthropic-provider.ts` and `bedrock-provider.ts`,
- * one of which a deployment selects through `createSopProvider`. Nothing
- * here ever fetches, navigates, probes, or resolves a URL that appears *inside*
- * a graph. Those remain untrusted draft references, exactly as they were in
+ * `chat-provider.ts`, which builds its client through @orbit/model-provider —
+ * the one place that decides which model family a deployment uses and how it is
+ * reached (ADR-034). Nothing here ever fetches, navigates, probes, or resolves
+ * a URL that appears *inside* a graph. Those remain untrusted draft references, exactly as they were in
  * sub-phase 2.1 (ADR-016), all the way through generation and persistence.
  *
  * The deterministic fake provider lives behind the `./testing` subpath so that
@@ -21,8 +21,7 @@
  */
 export const PACKAGE_NAME = '@orbit/sop-generation' as const;
 
-export * from './anthropic-provider';
-export * from './bedrock-provider';
+export * from './chat-provider';
 export * from '@orbit/model-budget';
 export * from './generate';
 export * from './prompt';

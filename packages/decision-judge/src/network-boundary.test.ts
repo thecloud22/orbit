@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 const SOURCE_ROOT = fileURLToPath(new URL('.', import.meta.url));
 
 /** The only module permitted to hold a model client. */
-const NETWORK_MODULE = 'anthropic-model.ts';
+const NETWORK_MODULE = 'decision-model.ts';
 
 const FORBIDDEN_IMPORTS = [
   'playwright',
@@ -74,7 +74,14 @@ describe('the decision judge network boundary', () => {
       }
 
       for (const specifier of importsOf(readFileSync(file, 'utf8'))) {
-        if (specifier.startsWith('@langchain/') || specifier.startsWith('@anthropic-ai/')) {
+        // @orbit/model-provider is on the list beside the raw clients: it is
+        // where the model client is constructed now, so importing it is exactly
+        // as much "holding a model" as importing LangChain used to be.
+        if (
+          specifier.startsWith('@langchain/') ||
+          specifier.startsWith('@anthropic-ai/') ||
+          specifier === '@orbit/model-provider'
+        ) {
           offences.push(`${file.replace(SOURCE_ROOT, '')} imports "${specifier}"`);
         }
       }

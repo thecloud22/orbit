@@ -368,43 +368,76 @@ Three outcomes are kept apart: a draft, a graph that failed validation, and a
 provider that could not be reached. The API reports them as `201`, `422` with the
 issues in `details`, and `500`.
 
-This task legitimately calls the network — to the configured model provider, from
-two files and no others, `packages/sop-generation/src/anthropic-provider.ts` and
-`bedrock-provider.ts`. It never contacts a
+This task legitimately calls the network — to the configured model provider,
+from one file and no others, `packages/sop-generation/src/chat-provider.ts`,
+which constructs its client through `@orbit/model-provider` (see **Choosing a
+model provider** below). It never contacts a
 URL that appears *inside* a graph: `urlHint` and `systemHint` stay untrusted draft
 references, and a test replaces global `fetch` with a spy to prove it.
 
-### Configuration
+### Choosing a model provider (Phase 2.13)
 
-Nothing here is required to boot. With no model configured the API still starts
-and every other route works; `POST /v1/sop-drafts` reports that generation is
-unavailable and names the variable that is missing. The one exception is an
-unrecognised `ORBIT_LLM_PROVIDER`, which stops the API deliberately — see below.
+**One choice, for every model call Orbit makes.** Three features call a model —
+drafting a graph from free text, judging a decision at run time, and advising
+while a person records a workflow — and all three resolve through
+`@orbit/model-provider`. These variables move all of them or none of them; there
+is no call site left that reads a provider variable of its own. See **ADR-034**.
+
+Two separate questions, deliberately not one variable:
 
 | Variable | Default | What it does |
 |---|---|---|
-| `ORBIT_LLM_PROVIDER` | `anthropic` | `anthropic` or `bedrock`. Anything else **stops the API from starting**. |
-| `ORBIT_LLM_MODEL` | `claude-haiku-4-5`, or `anthropic.claude-haiku-4-5` on Bedrock | The model, for whichever provider is selected. |
-| `ANTHROPIC_API_KEY` | — | Required by the `anthropic` provider. A real credential: keep it in `.env`, which is gitignored. |
-| `ORBIT_BEDROCK_REGION`, else `AWS_REGION`, else `AWS_DEFAULT_REGION` | — | Required by the `bedrock` provider. Bedrock is region-scoped. |
+| `LLM_PROVIDER` | `anthropic` | Which model **family**: `anthropic` or `gemini`. Anything else **stops the process**. |
+| `LLM_INVOCATION` | `direct` | How it is **reached**: `direct` or `bedrock`. Anything else **stops the process**. |
+| `ANTHROPIC_API_KEY` | — | Required by `anthropic` + `direct`. A real credential: keep it in `.env`, which is gitignored. |
+| `ANTHROPIC_MODEL` | `claude-haiku-4-5`, or `anthropic.claude-haiku-4-5` through Bedrock | The Claude model to use. |
+| `GEMINI_API_KEY`, else `GOOGLE_API_KEY` | — | Required by `gemini`. `GOOGLE_API_KEY` is read because the Google client reads it from the environment itself. |
+| `GEMINI_MODEL` | `gemini-2.5-flash-lite` | The Gemini model to use. |
+| `ORBIT_BEDROCK_REGION`, else `AWS_REGION`, else `AWS_DEFAULT_REGION` | — | Required by `bedrock`. Bedrock is region-scoped. |
 
-**The default is the cheapest current Claude model.** Drafting is bounded
-structured extraction behind a strict schema and a repair loop: what makes the
-output trustworthy is `parseSopGraphDocument`, not model size. A larger model is
-a purchase a deployment can make with one variable, not a requirement.
+Splitting family from invocation is what makes the deployment story work with no
+code change: **direct against an API key locally, through Bedrock once
+deployed**, same build, same application logic, one environment variable. Nothing
+downstream of the selection — not the drafting pipeline, not the judge, not the
+assist provider — knows which it got.
 
-A mistyped provider name is refused rather than defaulted, on the same reasoning
-as a mistyped budget ceiling: a deployment that wrote `bedrok` meant Bedrock, and
-silently serving it Anthropic — over the public internet, quite possibly from an
-account that intended never to leave itself — is not a recovery.
+**`LLM_PROVIDER=gemini` with `LLM_INVOCATION=bedrock` is refused at startup.**
+Bedrock does not serve Google's models, so the combination cannot be satisfied by
+anything. The error names the problem and both ways out, rather than surfacing as
+an opaque "model not found" on the first request of the day.
+
+**Nothing here is required to boot.** With no credential configured the API still
+starts and every other route works: `POST /v1/sop-drafts` reports that generation
+is unavailable and names the missing variable, no judge is wired (a judged agent
+halts with `DECISION_JUDGE_UNAVAILABLE`), and the recorder simply offers no
+suggestions. What *is* refused is a **mistyped** value — a deployment that wrote
+`gemni` meant Gemini, and silently serving it Anthropic bills an account it never
+chose. Absence is a value; a typo is an error.
+
+**The defaults are the cheapest current model of each family.** Every Orbit call
+site is bounded structured extraction behind a strict schema — a proposal
+`parseSopGraphDocument` validates, an index the runtime re-validates, an
+advisory verdict nothing applies — so what makes the output trustworthy is the
+validator, not model size. `gemini-2.5-flash-lite` is Google's cheapest generally
+available model that still supports the function calling structured output is
+built on; model availability changes faster than this file does, so it is one
+variable to override. Both defaults are priced in the rate table, and a test
+fails if a default is ever added without a rate.
+
+#### Superseded names
+
+`ORBIT_LLM_PROVIDER` and `ORBIT_LLM_MODEL` still work and still mean what they
+meant: `ORBIT_LLM_PROVIDER=bedrock` sets `LLM_PROVIDER=anthropic` with
+`LLM_INVOCATION=bedrock`, which is the same behaviour under a name that can now
+express it. They log a deprecation notice once at startup, and the new names win
+when both are set. Prefer the new names.
 
 #### Amazon Bedrock
 
-`ORBIT_LLM_PROVIDER=bedrock` reaches the same Claude models through
-`ChatBedrockConverse`. It satisfies the identical `LLMProvider` contract,
-including the token-usage reporting the spend ledger depends on, so all three
-budget scopes and the cost estimate behave the same whichever provider is
-active. Nothing downstream of `LLMProvider` knows which one it got.
+`LLM_INVOCATION=bedrock` reaches the same Claude models through
+`ChatBedrockConverse`, satisfying every contract identically — including the
+token-usage reporting the spend ledger depends on, so all three budget scopes and
+the cost estimate behave the same whichever provider is active.
 
 **Orbit holds no AWS credentials and offers no variable for one.** Credentials
 resolve through the AWS SDK's default credential provider chain — environment
@@ -418,11 +451,15 @@ Rates are keyed by that id, so a profile id needs its own
 `ORBIT_LLM_RATES_USD_PER_MTOK` entry or it falls to the conservative fallback
 rate.
 
-> **Bedrock is wired but untested here.** There are no AWS credentials in this
-> repository's environment. Its correctness is *structural* — the contract, the
-> wiring, the failure path and the descriptor are covered by tests against a
-> stubbed model — and it has **not** been demonstrated against real Bedrock.
-> Treat the first real call as the test.
+> **What is verified, and what is not.** Gemini and Bedrock are **structurally**
+> verified here and **not exercised against a real service**: there are no Google
+> or AWS credentials in this repository's environment. Covered by test: the
+> selection resolves, the client constructs, a schema binds, the descriptor is
+> right, token usage is read from the normalised shape, the rate table prices
+> every default, and no package boundary is crossed. **Not** demonstrated: that a
+> real Gemini or Bedrock endpoint replies the way this code expects. Treat the
+> first real call on either as the test. No test in this repository calls a model
+> on any provider, including Anthropic.
 
 ### Model spend limits (Phase 2.8)
 
@@ -463,7 +500,10 @@ for the case where the same meaning arrives in different words. See
 `docs/demo/judged-decision-demo.md` and **ADR-032**.
 
 **The widest thing a model does at run time is pick a number between 0 and n−1.**
-It returns an index into a closed list the runtime already holds; nothing it
+It returns an index into a closed list the runtime already holds. That bound is
+kept by the **runtime**, which re-validates the index independently before it
+reaches control flow — not by the provider's schema, so it holds identically
+whichever family is configured (**ADR-034**). Nothing it
 returns becomes a locator, URL, selector, expression or step id, and it is never
 shown where an alternative leads. Every failure halts the run with a reason you
 can act on: `DECISION_JUDGE_UNAVAILABLE`, `DECISION_JUDGE_FAILED`,
@@ -472,8 +512,8 @@ There is no default branch and no retry into a different answer.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | — | Without it **no judge is wired**. Every existing agent runs unchanged; one containing a judged decision halts with `DECISION_JUDGE_UNAVAILABLE`. |
-| `ORBIT_LLM_DECISION_MODEL` | `claude-haiku-4-5` | The model that judges. |
+| `LLM_PROVIDER`, `LLM_INVOCATION`, and the credential for whichever family is selected | see **Choosing a model provider** | Without a credential **no judge is wired**. Every existing agent runs unchanged; one containing a judged decision halts with `DECISION_JUDGE_UNAVAILABLE`. |
+| `ORBIT_LLM_DECISION_MODEL` | the selected family's default | The model that judges, when a deployment wants a different cost profile for decisions than for drafting. |
 | `ORBIT_LLM_DECISION_CONFIDENCE_MIN` | `0.8` | The bar an answer must clear when a step declares no `confidenceThreshold` of its own. A missing confidence **fails closed**. |
 | `ORBIT_LLM_TOKEN_BUDGET_PER_AGENT_RUNTIME` | 1,000,000 tokens | Judged-decision spend for one agent, summed across all its versions. |
 | `ORBIT_LLM_TOKEN_BUDGET_PER_RUN_EXECUTION` | 50,000 tokens | Judged-decision spend within one run. |

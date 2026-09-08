@@ -1,10 +1,11 @@
 import type { AgentId } from '@orbit/contracts';
 import type { OrbitRepositories } from '@orbit/db';
 import {
-  createAnthropicDecisionModel,
+  createChatDecisionModel,
   createModelDecisionJudge,
   type DecisionSpendLedger,
 } from '@orbit/decision-judge';
+import { noticeDeprecations, resolveModelSelection } from '@orbit/model-provider';
 import {
   parseModelRates,
   parseTokenBudget,
@@ -172,24 +173,39 @@ export interface JudgeWiringOptions {
   readonly env?: NodeJS.ProcessEnv;
 }
 
-/** The judge, or undefined when this deployment has configured no model. */
+/**
+ * The judge, or undefined when this deployment has configured no model.
+ *
+ * The selection — which family, reached how, with which credential — is
+ * @orbit/model-provider's, resolved from the same variables the API and the
+ * recorder read (ADR-034). What stays here is the judge's own override: a
+ * decision runs on every execution, so a deployment may want a different cost
+ * profile for it than for drafting, and `ORBIT_LLM_DECISION_MODEL` is that.
+ *
+ * A mistyped or impossible configuration throws out of here rather than
+ * returning undefined. Silently running with no judge because `LLM_PROVIDER`
+ * was misspelled would turn a typo into every judged agent halting, with
+ * nothing saying why.
+ */
 export function createJudge(options: JudgeWiringOptions): DecisionJudge | undefined {
   const env = options.env ?? process.env;
-  const apiKey = env['ANTHROPIC_API_KEY']?.trim();
+  const configuredModel = env[DECISION_MODEL_ENV_VAR]?.trim();
 
-  if (apiKey === undefined || apiKey === '') {
+  const resolution = resolveModelSelection(
+    env,
+    configuredModel === undefined || configuredModel === ''
+      ? {}
+      : { modelOverride: configuredModel },
+  );
+
+  noticeDeprecations(resolution.deprecations);
+
+  if (resolution.status === 'unconfigured') {
     return undefined;
   }
 
-  const configuredModel = env[DECISION_MODEL_ENV_VAR]?.trim();
-
   return createModelDecisionJudge({
-    model: createAnthropicDecisionModel({
-      apiKey,
-      ...(configuredModel === undefined || configuredModel === ''
-        ? {}
-        : { model: configuredModel }),
-    }),
+    model: createChatDecisionModel(resolution.selection),
     ledger: createLedger(options.repositories),
     budgets: resolveExecutionBudgets(options.globalBudget, env),
     rates: options.rates,

@@ -65,6 +65,9 @@ importers:
       '@orbit/model-budget':
         specifier: workspace:*
         version: link:../../packages/model-budget
+      '@orbit/model-provider':
+        specifier: workspace:*
+        version: link:../../packages/model-provider
       '@orbit/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -126,6 +129,9 @@ importers:
       '@orbit/model-budget':
         specifier: workspace:*
         version: link:../../packages/model-budget
+      '@orbit/model-provider':
+        specifier: workspace:*
+        version: link:../../packages/model-provider
       '@orbit/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -243,6 +249,9 @@ importers:
       '@orbit/executor-playwright':
         specifier: workspace:*
         version: link:../../packages/executor-playwright
+      '@orbit/model-provider':
+        specifier: workspace:*
+        version: link:../../packages/model-provider
       '@orbit/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -440,18 +449,15 @@ importers:
 
   packages/decision-judge:
     dependencies:
-      '@langchain/anthropic':
-        specifier: ^1.5.9
-        version: 1.5.9(@langchain/core@1.2.9)
-      '@langchain/core':
-        specifier: ^1.2.9
-        version: 1.2.9
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../contracts
       '@orbit/model-budget':
         specifier: workspace:*
         version: link:../model-budget
+      '@orbit/model-provider':
+        specifier: workspace:*
+        version: link:../model-provider
       '@orbit/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -490,18 +496,15 @@ importers:
 
   packages/execution-assist:
     dependencies:
-      '@langchain/anthropic':
-        specifier: ^1.5.9
-        version: 1.5.9(@langchain/core@1.2.9)
-      '@langchain/core':
-        specifier: ^1.2.9
-        version: 1.2.9
       '@orbit/agent-ir':
         specifier: workspace:*
         version: link:../agent-ir
       '@orbit/execution-mapping':
         specifier: workspace:*
         version: link:../execution-mapping
+      '@orbit/model-provider':
+        specifier: workspace:*
+        version: link:../model-provider
       zod:
         specifier: ^4.5.4
         version: 4.5.4
@@ -567,6 +570,31 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
+  packages/model-provider:
+    dependencies:
+      '@langchain/anthropic':
+        specifier: ^1.5.9
+        version: 1.5.9(@langchain/core@1.2.9)
+      '@langchain/aws':
+        specifier: ^1.4.5
+        version: 1.4.5(@langchain/core@1.2.9)
+      '@langchain/core':
+        specifier: ^1.2.9
+        version: 1.2.9
+      '@langchain/google-genai':
+        specifier: ^2.3.0
+        version: 2.3.0(@langchain/core@1.2.9)
+      '@orbit/model-budget':
+        specifier: workspace:*
+        version: link:../model-budget
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
   packages/runtime:
     dependencies:
       '@orbit/agent-ir':
@@ -594,18 +622,12 @@ importers:
 
   packages/sop-generation:
     dependencies:
-      '@langchain/anthropic':
-        specifier: ^1.5.9
-        version: 1.5.9(@langchain/core@1.2.9)
-      '@langchain/aws':
-        specifier: ^1.4.5
-        version: 1.4.5(@langchain/core@1.2.9)
-      '@langchain/core':
-        specifier: ^1.2.9
-        version: 1.2.9
       '@orbit/model-budget':
         specifier: workspace:*
         version: link:../model-budget
+      '@orbit/model-provider':
+        specifier: workspace:*
+        version: link:../model-provider
       '@orbit/sop-graph':
         specifier: workspace:*
         version: link:../sop-graph
@@ -1381,6 +1403,10 @@ packages:
   '@fastify/proxy-addr@5.1.0':
     resolution: {integrity: sha512-INS+6gh91cLUjB+PVHfu1UqcB76Sqtpyp7bnL+FYojhjygvOPA9ctiD/JDKsyD9Xgu4hUhCSJBPig/w7duNajw==}
 
+  '@google/generative-ai@0.24.1':
+    resolution: {integrity: sha512-MqO+MLfM6kjxcKoy0p1wRzG3b4ZZXtPI+z2IE26UogS2Cm/XHO+7gGRBh6gcJsOiIVoH93UwKvW4HdgiOZCy9Q==}
+    engines: {node: '>=18.0.0'}
+
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
     engines: {node: '>=18.18.0'}
@@ -1441,6 +1467,12 @@ packages:
   '@langchain/core@1.2.9':
     resolution: {integrity: sha512-conzSEj9Zu1AyXJLXsSbgrtxtxinmI1yGqQ5CIJZSoV5rvv+yvQE/vgBnoySpBQ/bl3YPgj2FL/gbDjWykLSfg==}
     engines: {node: '>=20'}
+
+  '@langchain/google-genai@2.3.0':
+    resolution: {integrity: sha512-i797N4UToqFZHaXLR24mhLrlODwiEIxq/pnjHDvfQcrrm/qn+YIPBoIlefN6BVUua96rxumZ4m2iQ7FG6Aa2ww==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@langchain/core': ^1.2.9
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     resolution: {integrity: sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ==}
@@ -3523,6 +3555,8 @@ snapshots:
       '@fastify/forwarded': 3.0.2
       ipaddr.js: 2.5.0
 
+  '@google/generative-ai@0.24.1': {}
+
   '@humanfs/core@0.19.2':
     dependencies:
       '@humanfs/types': 0.15.0
@@ -3595,6 +3629,11 @@ snapshots:
       - '@opentelemetry/sdk-trace-base'
       - openai
       - ws
+
+  '@langchain/google-genai@2.3.0(@langchain/core@1.2.9)':
+    dependencies:
+      '@google/generative-ai': 0.24.1
+      '@langchain/core': 1.2.9
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true

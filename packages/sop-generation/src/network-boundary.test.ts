@@ -40,6 +40,14 @@ function productionSourceFiles(directory: string): readonly string[] {
   return found;
 }
 
+const IMPORT_PATTERN = /(?:import|export)[\s\S]*?from\s+['"]([^'"]+)['"]/g;
+
+function importsOf(contents: string): readonly string[] {
+  return [...contents.matchAll(IMPORT_PATTERN)].flatMap((match) =>
+    match[1] === undefined ? [] : [match[1]],
+  );
+}
+
 const FORBIDDEN_TOKENS = [
   'chromium',
   'firefox.launch',
@@ -77,19 +85,41 @@ describe('the SOP generation network boundary', () => {
     expect(offences).toEqual([]);
   });
 
-  it('reaches the model provider from the provider modules and nowhere else', () => {
-    // The point of this assertion is containment, not tidiness: if the provider
+  it('reaches the model from one module and nowhere else', () => {
+    // The point of this assertion is containment, not tidiness: if the model
     // client spreads across the package, "which code can talk to the network?"
-    // stops having a short answer. It is two files rather than one now, and the
-    // list is exhaustive on purpose — a third provider must be added here
-    // deliberately, and the shared response reader stays on the near side of
-    // the boundary because it imports no client at all.
-    const importers = files.filter((file) => readFileSync(file, 'utf8').includes('@langchain/'));
+    // stops having a short answer. It is one file again — @orbit/model-provider
+    // absorbed the per-family duplication (ADR-034) — and the list is
+    // exhaustive on purpose.
+    //
+    // Constructing a client is the thing being counted, not naming the package
+    // it comes from: `provider-factory.ts` takes a resolved selection as a type
+    // and `structured-response.ts` re-exports a pure usage reader, and neither
+    // can reach a network. `createChatModel` is what can.
+    const importers = files.filter(
+      (file) =>
+        readFileSync(file, 'utf8').includes('createChatModel') ||
+        importsOf(readFileSync(file, 'utf8')).some((specifier) =>
+          specifier.startsWith('@langchain/'),
+        ),
+    );
 
     expect(importers.map((file) => file.replace(SOURCE_ROOT, '')).sort()).toEqual([
-      'anthropic-provider.ts',
-      'bedrock-provider.ts',
+      'chat-provider.ts',
     ]);
+  });
+
+  it('imports no model client directly, anywhere', () => {
+    // A provider constructed here rather than through @orbit/model-provider
+    // would be a call site that `LLM_PROVIDER` does not move, which is the one
+    // failure this whole change exists to prevent.
+    const offenders = files.filter((file) =>
+      importsOf(readFileSync(file, 'utf8')).some((specifier) =>
+        specifier.startsWith('@langchain/'),
+      ),
+    );
+
+    expect(offenders.map((file) => file.replace(SOURCE_ROOT, ''))).toEqual([]);
   });
 
   it('never calls fetch itself', () => {
