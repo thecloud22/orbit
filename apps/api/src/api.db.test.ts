@@ -21,6 +21,7 @@ import {
   createSopCandidateService,
   createSopDraftService,
   createPublishBoundDocumentService,
+  createRecoveryProposalService,
   createPublishRecordingService,
   createSopPublishService,
   createSopRecordingService,
@@ -99,6 +100,7 @@ describe('Orbit API over real persistence', () => {
         publishBoundDocumentService: createPublishBoundDocumentService({
           database: getDatabase().db,
         }),
+        recoveryProposals: createRecoveryProposalService({ database: getDatabase().db }),
         // No browser: these tests never record, and a registry that could open
         // one would be a Chromium per test file for nothing.
         recordingSessions: createRecordingSessionRegistry({

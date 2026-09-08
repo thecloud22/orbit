@@ -1383,3 +1383,95 @@ Leaving overlapping categories on a pick-one node is the failure mode, because i
 | Default `ModelSpend` to zero for unmeasured scopes | Reports a budget satisfied on the strength of having no idea. Refusing is the honest answer |
 | Bump every agent to schema `0.2` | A widening that forces immutable published versions to be reissued is a break wearing a version number |
 | Redact inside the provider | Clean text to the model, raw text to the artifact store. The wrong half of the problem solved |
+
+---
+
+## ADR-033: Recover from UI drift by proposing a reviewed binding, never by applying one
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+ADR-018 gave Orbit a fingerprint check that runs before every action, and it works: when a page stops matching what a person approved, the run stops instead of clicking something nobody reviewed. What it produces is a halt and a stack of evidence, and nothing else. Somebody has to read it, work out what changed, open a browser, and demonstrate the step again — for a change that is usually trivial.
+
+The common case really is trivial. A team renames a `data-testid` in a refactor; the button keeps its role, its label, its position and its meaning. The binding already holds a second way of naming that element, because the recorder captures a ranked chain (ADR-018) — and until this task, **nothing ever used the rest of that chain**. Agent IR carries only the chain's head, so the fallbacks sat in the database being paid for and never read.
+
+Three things were also true when this task started, and only the first was documented:
+
+- `narrowDriftCandidates` had existed in `@orbit/execution-assist` since 2.4b, filtering page elements down to plausible replacements. Nothing in the runtime's drift path referenced it.
+- The drift check itself was **never wired in production**. `executeAgentVersion` takes an optional binding resolver; every real entry point omitted it. The check was live in tests and inert in every actual run.
+- The library demo's fixture fingerprints had never been compared to the library portal, because nothing had ever compared them to anything. Several were wrong.
+
+This is the first Orbit feature whose subject is Orbit's own definitions. Everything before it acted on somebody else's system; this one has opinions about the workflow itself, which is a different kind of authority and needs a different kind of limit.
+
+### Decision
+
+**Four stages, and only the first three are automatic: detect, diagnose, propose, gate.**
+
+**Recovery does not rescue the run that met the drift.** This is the load-bearing sentence and the reason for most of what follows. The drifted run fails, with its typed error and its evidence, exactly as it did before recovery existed. `attemptRecovery` returns `void`, is awaited before the error is constructed, cannot prevent it being thrown, and is not consulted in constructing it. A proposal makes the **next** run possible, after a person approves it. Anything else would be the system quietly substituting an element nobody sanctioned — which is precisely what the drift check exists to prevent, only with a proposal attached to make it look sanctioned. `packages/runtime/src/recovery.test.ts` asserts the run still fails while a proposal is being made, and that no click reached the page.
+
+**Diagnosis is deterministic, and its determinism is a type rather than a promise.** `diagnoseDrift` is **synchronous**. A synchronous function cannot await a network round trip, so "v1 consults no model" is a property of the signature. Switching ranking on means changing that signature, which is a change a reviewer sees — the same property `permissions.model` gives a judged decision.
+
+**Diagnosis searches the binding's own chain and nothing else.** The candidates are the locators a person already demonstrated for this element, probed in place against the live page. Orbit is never handed the page and never asked to search it. An element found by scanning would be a candidate nobody had ever approved; a locator from the chain carries a human's signature and the recorder's proof that it resolved uniquely to the element they meant.
+
+**A candidate "matches" by exactly the comparison the drift check uses, in the same mode.** A replacement is proposed only when the runtime would have accepted that element had the binding named it in the first place. A looser, recovery-specific notion of "close enough" would be a second definition of approval that no reviewer ever agreed to.
+
+**More than one plausible replacement means Orbit proposes nothing.** Ranking lookalikes is what a model is good at and it is switched off. Ambiguity is reported as `ambiguous`, with a request that a person demonstrate the step again. Confidence is the word `high` and never a number: a float computed from a boolean test is false precision, and the moment one exists somebody tunes a threshold against it.
+
+**A proposal is a row in its own table, not a `draft` binding.** This deviates from the shape the task described, and the reason is a property of the existing repository that shape would have broken. `listCurrent` returns the newest non-superseded binding per step, and compile and publish then require that binding to be `approved`. A draft binding written by a failing run would become "current" and shadow the approved binding it hopes to replace, so a pending proposal would silently block publishing a document with nothing wrong with it. `executionBindings.create` also supersedes its parent in the same transaction by design — which is right for a re-recording and wrong for a proposal, which must leave the approved mapping untouched while it waits, including if it waits forever. `binding_recovery_proposals` keeps the intent of "a drafted binding attached to its document, referencing the run that motivated it" without breaking either.
+
+**Accepting one goes through the ordinary binding lifecycle, never around it.** `create` → `submitForReview` → `approve`, the same three calls a demonstrated binding makes, with the drifted binding superseded at accept time and not one moment earlier. There is exactly one way a binding is ever made, and recovery is not a second one. Accepting is also the *only* thing that changes anything: nothing polls for proposals, nothing accepts one on a timer, and accepting does not start a run.
+
+**Accepting refuses whenever the world has moved.** The step re-recorded since the proposal, the step edited so its checksum no longer matches, or a proposed binding that no longer validates against the step — all three are refusals, none are repairs. A proposal is a sentence written at a particular moment, and a stale one is withdrawn rather than adjusted to fit.
+
+**A proposal rewrites the selector chain and nothing else.** The step id, the value source, the extracted variable, the captured revision, the step checksum and **the fingerprint** all carry over untouched. Keeping the fingerprint matters most: Orbit is claiming this is the same element under a different name, so if the claim is wrong the next run drifts again and stops again, rather than quietly adopting whatever the fallback found.
+
+**One open proposal per step, enforced by a partial unique index.** A drifted agent on a schedule would otherwise write one identical proposal per run and a reviewer would open Studio to a hundred copies of one sentence. Later observations are recorded as `recovery.declined` with reason `already_proposed`, which is honest: the proposal exists, it is just not a new one.
+
+**Its own permission, and a trust-tier step up.** `permissions.recovery = { allowed }`, granted per document and compiled into each published version. An agent without it produces no proposals at all — the page is not even probed on its behalf. Under ADR-013 this is Tier 0 `observe` to Tier 1 `recommend`, and it stops there: `autonomous_recovery` is Tier 5 and describes something Orbit does not do. There is no `apply` to grant, because there is no code path that applies a proposal. The grant is frozen into the IR rather than read live, because a published version is immutable and must state its own authority (ADR-005) — withdrawing it stops future versions declaring it and cannot retract it from versions already published.
+
+**The runtime observes; it does not diagnose.** `packages/runtime` gains a `RecoveryProposer` port and no new dependency, exactly as ADR-032 did for the judge. At the moment of drift the runtime is the only place the live page and the approved fingerprint exist together, so it gathers what both say; deciding what the difference *means* needs neither, so neither happens there. `decision-judge-boundary.test.ts` now proves the runtime cannot reach `@orbit/drift-recovery` or `@orbit/execution-assist` through the whole workspace closure.
+
+**The model seam is built and inert, and this is stated in the code rather than only here.** `DriftCandidateRanker` is declared, implemented by nothing, called by nothing, and unreachable from a synchronous `diagnoseDrift`. `narrowDriftCandidates` is called in the position a ranker would attach to — and the comment there says plainly that with the exact-match filter below it currently removes nothing the comparison would not also remove. It is the seam in the seam's proper place, not hidden work. **No model call exists, so no spend is recorded**; if a ranker is ever added, `@orbit/model-budget`'s three scopes and the `model_usage` ledger apply from the first call, as they do for the judge.
+
+**Two evidence events, and no third.** `recovery.proposed` and `recovery.declined`, both appended by the run that hit the drift and both about the *document*. Declining is reported as precisely as proposing, because "Orbit looked and would not guess" is the claim this feature most needs to be able to prove afterwards. There is deliberately no `recovery.applied`: an event type for it would describe a code path that does not exist and invite one that should not.
+
+**An unresolvable approved locator is drift.** The original check compared an element it had found, so the most ordinary way a page changes — the test id renamed, the button untouched — escaped the drift path entirely and surfaced as a raw executor timeout with none of the evidence ADR-018 promises. It is drift, it is now reported as drift with a typed `drift.failure` of `unresolved`, and it is the case recovery is best at explaining.
+
+**The binding resolver is wired into both composition roots.** Without it none of this is reachable, because the drift check had never been fed a binding in a real run. Bindings are loaded from **the candidate the version was published from**, never from the document's current bindings: a run executes an immutable Agent Version and must be checked against the fingerprints compiled into it, not ones edited afterwards.
+
+### Consequences
+
+**The drift check is live in production for the first time, and that is a behaviour change.** Any bound agent whose recorded fingerprints do not match its page will now stop where it previously proceeded. That is the correct behaviour and it is why ADR-018 exists — but it was latent until now, and turning it on immediately found real wrong data: several library-demo fixture fingerprints were guesses that had never been compared to the portal. They are now measured through the executor's own `describeElement`. Anyone with existing bindings recorded against a page they no longer match will see runs stop; the fix is to re-demonstrate, which recovery will often propose for them.
+
+**Two duplicated event-type lists had silently diverged, and the duplication is now pinned.** `@orbit/db` holds its own copy of the vocabulary because a CHECK constraint must be a literal list at migration time. Adding a type to `@orbit/contracts` alone produces code that typechecks, passes every unit test, and **drops the event at run time** — which is exactly what happened while this was being built, hidden by the deliberate decision that a failed evidence write must not replace the failure being recorded. `packages/db/src/index.test.ts` now asserts the two lists are identical.
+
+**A proposal is durable and broadly readable, so it holds element identity and nothing else.** Roles, accessible names, control labels, and which locators were tried. Never page content and never a value the workflow read. A run event carries even less: which locators were probed and whether each resolved.
+
+**Recovery cannot help the case it would be most valuable for.** A binding with a single locator has nothing to fall back on, so a page that renames its only test id produces `no_candidate` and a request to re-demonstrate. `adviseOnSelectors` already warns about single-locator chains; this is the cost of ignoring that warning, made concrete.
+
+**A decision binding is not recoverable.** It names one element per branch and the runtime never drift-checks one, so there is no single target to replace. Refused explicitly rather than half-handled.
+
+**The demo requires a page that really changed, and the portal is not left changed.** `apps/library-portal` renames one test id for a page load when the URL carries `?drift=1` — opt-in, off by default, nothing to revert, and pinned by three e2e tests including one asserting the default page is unchanged.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Let the runtime retry through the surviving fallback | The system substituting an element nobody approved, at run time, silently. The exact thing ADR-018 exists to prevent |
+| Write the proposal as a `draft` execution binding | It becomes the step's "current" binding and blocks compiling and publishing a document with nothing wrong with it |
+| Set `parentBindingId` at proposal time | `create` supersedes the parent in the same transaction. A proposal that supersedes something is not a proposal |
+| Rank candidates with a model in v1 | The common case needs no model, and a model here turns a wrong guess into a proposal a busy person accepts. Deterministic first, seam ready |
+| Report a numeric confidence | A float from a boolean test is false precision, and someone will tune a threshold against it |
+| Propose the best of several plausible candidates | That is judgement, and judgement about which element to click is the decision this whole design withholds |
+| Search the page for lookalike elements | Produces candidates no human ever approved. The chain is a bounded set with a person's signature on it |
+| Let the proposal carry a fresh fingerprint | Orbit would adopt whatever the fallback found. Keeping the approved fingerprint means a wrong claim drifts again |
+| Give the runtime the diagnosis logic | It already holds the page; adding "and decides what changes mean" is capability creep past ADR-008 |
+| A `recovery.applied` event | Describes a code path that does not exist and invites one that should not |
+| Re-run the workflow automatically after accepting | Accepting is a review decision; starting a run is a separate human act, and merging them hides one behind the other |
+| Read the document's current bindings at run time | A published agent would silently change what it verifies when someone re-records an unrelated step |
+| Grant recovery under an existing browser permission | An agent granted `click` would have quietly been granted opinions about its own mapping |
+| Move recovery-enabled agents to Tier 5 `autonomous_recovery` | Tier 5 describes recovery that acts. This one proposes, which is Tier 1 `recommend` |
+| Leave the guessed fixture fingerprints alone | They were wrong. Wiring the drift check without fixing them would have shipped a demo that fails on its first step |

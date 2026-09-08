@@ -17,6 +17,7 @@
     "@orbit/artifacts": "workspace:*",
     "@orbit/contracts": "workspace:*",
     "@orbit/db": "workspace:*",
+    "@orbit/drift-recovery": "workspace:*",
     "@orbit/execution-mapping": "workspace:*",
     "@orbit/execution-recorder": "workspace:*",
     "@orbit/executor-playwright": "workspace:*",

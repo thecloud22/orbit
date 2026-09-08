@@ -1,6 +1,7 @@
 import { Bookmark, BookPlus, Search } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 
+import { driftedTestId } from './demo-drift';
 import { Layout } from './components/Layout';
 import {
   searchCatalog,
@@ -354,7 +355,7 @@ export function CatalogPage() {
 
           <button
             className="flex items-center gap-1.5 rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-            data-testid="catalog-search-button"
+            data-testid={driftedTestId('catalog-search-button')}
             type="submit"
           >
             <Search aria-hidden="true" className="h-4 w-4" />

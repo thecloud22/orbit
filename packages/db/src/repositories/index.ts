@@ -7,6 +7,10 @@ import { createAgentRepository, type AgentRepository } from './agents';
 import { createAgentVersionRepository, type AgentVersionRepository } from './agent-versions';
 import { createArtifactRepository, type ArtifactRepository } from './artifacts';
 import {
+  createBindingRecoveryProposalRepository,
+  type BindingRecoveryProposalRepository,
+} from './binding-recovery-proposals';
+import {
   createExecutionBindingRepository,
   type ExecutionBindingRepository,
 } from './execution-bindings';
@@ -24,6 +28,7 @@ export * from './agent-ir-candidates';
 export * from './agent-versions';
 export * from './agents';
 export * from './artifacts';
+export * from './binding-recovery-proposals';
 export * from './execution-bindings';
 export * from './model-usage';
 export * from './run-events';
@@ -43,6 +48,8 @@ export interface OrbitRepositories {
   readonly sopGraphRevisions: SopGraphRevisionRepository;
   readonly executionBindings: ExecutionBindingRepository;
   readonly agentIrCandidates: AgentIrCandidateRepository;
+  /** Bounded recovery proposals awaiting a person (ADR-033). */
+  readonly bindingRecoveryProposals: BindingRecoveryProposalRepository;
   /** The model-spend ledger: one row per provider call (ADR-029). */
   readonly modelUsage: ModelUsageRepository;
 }
@@ -59,6 +66,7 @@ export function createRepositories(executor: Executor): OrbitRepositories {
     sopGraphRevisions: createSopGraphRevisionRepository(executor),
     executionBindings: createExecutionBindingRepository(executor),
     agentIrCandidates: createAgentIrCandidateRepository(executor),
+    bindingRecoveryProposals: createBindingRecoveryProposalRepository(executor),
     modelUsage: createModelUsageRepository(executor),
   };
 }

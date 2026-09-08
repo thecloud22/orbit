@@ -29,6 +29,9 @@ export const EVENT_TYPES = [
   'decision.resolved',
   'decision.refused',
 
+  'recovery.proposed',
+  'recovery.declined',
+
   'artifact.created',
 ] as const;
 

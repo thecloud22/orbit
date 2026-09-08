@@ -30,10 +30,12 @@ import type {
   BrowserExecutorFactory,
   DecisionJudge,
   RecordedArtifact,
+  RecoveryProposer,
   RunRecorder,
   RunStore,
 } from './ports';
 import { assertExecutableProfile, assertNavigable, timeoutFor } from './profile';
+import type { RecoveryContext } from './recovery';
 
 /**
  * The Agent IR interpreter.
@@ -75,6 +77,16 @@ export interface ExecuteAgentVersionInput {
    */
   readonly judge?: DecisionJudge;
   readonly decisions?: DecisionSettings;
+  /**
+   * Bounded recovery, when this deployment has a proposer wired.
+   *
+   * Absent is a legitimate configuration and changes nothing about how any run
+   * behaves: a drifted step fails identically with or without it. What a
+   * proposer adds is a *proposal* attached to the workflow's document, which a
+   * person may later accept (ADR-033). It is consulted only for an agent whose
+   * Agent IR declares `permissions.recovery.allowed`.
+   */
+  readonly recovery?: RecoveryProposer;
 }
 
 export interface ExecutedStepSummary {
@@ -176,6 +188,7 @@ export async function executeAgentVersion(
         logger,
         bindings: input.bindings,
         judge: input.judge,
+        recovery: input.recovery,
         decisions: input.decisions ?? DEFAULT_DECISION_SETTINGS,
         artifacts,
         steps,
@@ -240,6 +253,7 @@ interface InterpretInput {
   readonly bindings: ExecutionBindingResolver | undefined;
   readonly judge: DecisionJudge | undefined;
   readonly decisions: DecisionSettings;
+  readonly recovery: RecoveryProposer | undefined;
 }
 
 async function interpretSteps(context: InterpretInput): Promise<Outcome> {
@@ -353,6 +367,29 @@ function nextStepId(
   return successors[0];
 }
 
+/**
+ * The recovery context for one step, or nothing.
+ *
+ * Two gates, and both must open. The deployment must have wired a proposer, and
+ * the Agent Version must declare `permissions.recovery.allowed` — an agent that
+ * has not been granted the capability produces no proposals at all, and the
+ * page is not even probed on its behalf (ADR-013, ADR-033).
+ */
+function recoveryContextFor(context: PerformStepInput): RecoveryContext | undefined {
+  if (context.recovery === undefined) {
+    return undefined;
+  }
+
+  return {
+    proposer: context.recovery,
+    permitted: context.agentIr.permissions.recovery?.allowed === true,
+    recorder: context.recorder,
+    runStepId: context.runStepId,
+    agentVersionId: context.agentVersionId,
+    agentId: context.agentIr.id,
+  };
+}
+
 interface PerformStepInput extends InterpretInput {
   readonly step: AgentIrStep;
   readonly runStepId: RunStepId;
@@ -364,6 +401,7 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
   const { step, executor, recorder, agentIr, inputs, variables } = context;
   const scope: ResolutionScope = { inputs, variables };
   const timeoutMs = timeoutFor(step);
+  const recovery = recoveryContextFor(context);
 
   switch (step.type) {
     case 'browser.navigate': {
@@ -401,6 +439,7 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
         agentStepId: step.id,
         timeoutMs,
         logger: context.logger,
+        ...(recovery === undefined ? {} : { recovery }),
       });
 
       await executor.fill({ locator: step.locator, value, timeoutMs });
@@ -432,6 +471,7 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
         agentStepId: step.id,
         timeoutMs,
         logger: context.logger,
+        ...(recovery === undefined ? {} : { recovery }),
       });
 
       await executor.click({ locator: step.locator, timeoutMs });

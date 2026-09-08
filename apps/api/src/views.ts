@@ -569,3 +569,35 @@ export interface ModelUsageView {
   /** Stated on every surface that shows a figure derived from it. */
   readonly costIsEstimated: true;
 }
+
+/**
+ * One recovery proposal, as Studio shows it (ADR-033).
+ *
+ * Before and after, side by side, plus the sentence explaining why Orbit
+ * believes they are the same element. `deterministic` is published rather than
+ * assumed: a reader must be able to tell a proposal no model touched from one a
+ * model ranked, without knowing when — or whether — ranking was switched on.
+ */
+export interface RecoveryProposalView {
+  readonly proposalId: string;
+  readonly stepId: string;
+  readonly state: string;
+  /** The binding this would replace. Unchanged while the proposal waits. */
+  readonly replacesBindingId: string;
+  readonly observedInRunId: string | null;
+  readonly summary: string;
+  readonly confidence: string;
+  readonly deterministic: boolean;
+  /** The locator that stopped working, and the one proposed in its place. */
+  readonly before: readonly SopBindingSelectorView[];
+  readonly after: readonly SopBindingSelectorView[];
+  readonly approvedFingerprint: SopBindingFingerprintView | null;
+  readonly proposedAt: string;
+}
+
+export interface RecoveryProposalsView {
+  readonly documentId: string;
+  /** Whether this document grants Orbit permission to propose at all. */
+  readonly recoveryEnabled: boolean;
+  readonly proposals: readonly RecoveryProposalView[];
+}

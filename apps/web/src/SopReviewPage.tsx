@@ -1,11 +1,14 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 
-import type { SopBindingsView, SopReviewView } from '@orbit/api/views';
+import type { RecoveryProposalView, SopBindingsView, SopReviewView } from '@orbit/api/views';
 
 import {
   answerSopQuestion,
   ApiRequestError,
   editSopStep,
+  acceptRecoveryProposal,
+  dismissRecoveryProposal,
+  getRecoveryProposals,
   getSopBindings,
   getSopReview,
   insertSopStep,
@@ -60,6 +63,8 @@ export function SopReviewPage({
 }: SopReviewPageProps) {
   const [review, setReview] = useState<SopReviewView | null>(null);
   const [bindings, setBindings] = useState<SopBindingsView | null>(null);
+  const [proposals, setProposals] = useState<readonly RecoveryProposalView[]>([]);
+  const [resolvingProposalId, setResolvingProposalId] = useState<string | null>(null);
   const [failure, setFailure] = useState<ReviewFailure | null>(null);
   const [busy, setBusy] = useState(false);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
@@ -82,6 +87,13 @@ export function SopReviewPage({
       .then(setBindings)
       .catch(() => setBindings(null));
 
+    // Same treatment, for the same reason: a document with no proposals and a
+    // document whose proposals could not be fetched both read as "none here",
+    // and neither is a reason to stop someone reviewing the workflow.
+    void getRecoveryProposals(documentId)
+      .then((view) => setProposals(view.proposals))
+      .catch(() => setProposals([]));
+
     try {
       setReview(await getSopReview(documentId));
       setFailure(null);
@@ -95,6 +107,42 @@ export function SopReviewPage({
       );
     }
   }, [documentId]);
+
+  /**
+   * Accepting or dismissing one proposal, then reloading.
+   *
+   * Accepting creates a new approved binding, so the binding panel and the
+   * publish gate both change underneath it — reloading is how they stay
+   * truthful rather than optimistically patched in place. It deliberately does
+   * *not* start a run: accepting makes the next run possible and starting one
+   * stays a separate, human act (ADR-033).
+   */
+  const resolveProposal = useCallback(
+    async (proposalId: string, action: 'accept' | 'dismiss') => {
+      setResolvingProposalId(proposalId);
+
+      try {
+        if (action === 'accept') {
+          await acceptRecoveryProposal(documentId, proposalId);
+        } else {
+          await dismissRecoveryProposal(documentId, proposalId);
+        }
+
+        await load();
+      } catch (caught) {
+        setFailure(
+          describeReviewFailure(
+            caught instanceof ApiRequestError
+              ? caught
+              : new ApiRequestError({ status: 0, message: 'The API could not be reached.' }),
+          ),
+        );
+      } finally {
+        setResolvingProposalId(null);
+      }
+    },
+    [documentId, load],
+  );
 
   useEffect(() => {
     void load();
@@ -354,7 +402,11 @@ export function SopReviewPage({
         bindings={bindings}
         isStarting={isStartingBinding}
         onBind={(stepId) => void bindStep(stepId)}
+        onAcceptProposal={(proposalId) => void resolveProposal(proposalId, 'accept')}
+        onDismissProposal={(proposalId) => void resolveProposal(proposalId, 'dismiss')}
         onStartUrlChange={setStartUrl}
+        proposals={proposals}
+        resolvingProposalId={resolvingProposalId}
         startUrl={bindingSessionId === null ? (startUrl ?? '') : null}
         steps={review.steps}
       />

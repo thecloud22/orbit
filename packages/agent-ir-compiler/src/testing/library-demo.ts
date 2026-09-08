@@ -18,16 +18,68 @@ import type { SopGraph } from '@orbit/sop-graph';
 
 const REVISION_ID = 'soprev_library_demo';
 
-function target(testId: string, role: string, name: string) {
+/**
+ * An element as a person demonstrating it would have had it recorded.
+ *
+ * Two locators, not one, and that is the whole reason drift here is
+ * *diagnosable*. A single test id has nothing to fall back on, so a page that
+ * renames one leaves Orbit able to say only "this stopped working". With the
+ * accessible role and name recorded beside it, a run that finds the test id
+ * gone can check whether the same button is still there under its own name —
+ * which is what turns "it broke" into a proposal somebody can accept (ADR-033).
+ *
+ * Agent IR still carries only the head of the chain, so adding the fallback
+ * changes nothing about what any published version executes.
+ *
+ * The fingerprints are what `apps/library-portal` actually reports, measured
+ * through the executor's own `describeElement` rather than guessed. They were
+ * guessed originally, and were wrong — a text field's visible text is empty
+ * rather than its label, and the confirmation paragraphs have no accessible
+ * name at all. Nothing could tell, because until ADR-033 wired the binding
+ * resolver into a real run, nothing had ever compared them to a page.
+ */
+function target(testId: string, role: string, name: string | null, text: string | null) {
   return {
-    selectors: [{ strategy: 'test_id' as const, value: testId }],
+    selectors: [
+      { strategy: 'test_id' as const, value: testId },
+      // Only when the element has an accessible name to be found by. A
+      // `role_and_name` locator with no name would match every paragraph on the
+      // page, which is a fallback that resolves ambiguously — worse than none.
+      ...(name === null ? [] : [{ strategy: 'role_and_name' as const, value: role, name }]),
+    ],
     fingerprint: {
       role,
       accessibleName: name,
-      text: name,
+      text,
       boundingBox: { x: 0, y: 0, width: 120, height: 32 },
     },
   };
+}
+
+/** A control: its visible text is its own label, and is stable. */
+function control(testId: string, role: string, name: string) {
+  return target(testId, role, name, name);
+}
+
+/**
+ * A text field: named by its label, and showing no text of its own.
+ *
+ * The empty string rather than the label, which is what the page reports and
+ * what an `action` comparison checks.
+ */
+function field(testId: string, name: string) {
+  return target(testId, 'textbox', name, '');
+}
+
+/**
+ * A value the workflow reads.
+ *
+ * No accessible name and no recorded text: the text *is* the extracted value
+ * and differs every run, which is exactly why a `read` fingerprint compares
+ * identity and never content (ADR-018).
+ */
+function readout(testId: string, role: string) {
+  return target(testId, role, null, null);
 }
 
 /**
@@ -86,12 +138,12 @@ export function borrowOrHoldBindings(): readonly ExecutionBinding[] {
   return [
     binding('enter_isbn', {
       kind: 'fill',
-      target: target('catalog-search-input', 'textbox', 'Search the catalog'),
+      target: field('catalog-search-input', 'Title or ISBN'),
       valueSource: { kind: 'sop_variable', name: 'bookIsbn' },
     }),
     binding('search_catalog', {
       kind: 'click',
-      target: target('catalog-search-button', 'button', 'Search'),
+      target: control('catalog-search-button', 'button', 'Search'),
     }),
     binding('check_availability', {
       kind: 'decision',
@@ -102,41 +154,41 @@ export function borrowOrHoldBindings(): readonly ExecutionBinding[] {
         // runtime's race between them a decision rather than a guess.
         {
           when: available.when,
-          ...target('catalog-borrow-button', 'button', 'Borrow'),
+          ...control('catalog-borrow-button', 'button', 'Borrow'),
         },
         {
           when: onLoan.when,
-          ...target('catalog-hold-button', 'button', 'Place a hold'),
+          ...control('catalog-hold-button', 'button', 'Place a hold'),
         },
       ],
     }),
     binding('enter_borrow_member_id', {
       kind: 'fill',
-      target: target('catalog-borrow-input', 'textbox', 'Member ID to borrow'),
+      target: field('catalog-borrow-input', 'Member ID to borrow'),
       valueSource: { kind: 'sop_variable', name: 'memberId' },
     }),
     binding('borrow_title', {
       kind: 'click',
-      target: target('catalog-borrow-button', 'button', 'Borrow'),
+      target: control('catalog-borrow-button', 'button', 'Borrow'),
     }),
     binding('read_borrow_confirmation', {
       kind: 'extract',
-      target: target('catalog-borrow-result', 'paragraph', 'Borrowed'),
+      target: readout('catalog-borrow-result', 'paragraph'),
       readMethod: { kind: 'text' },
       variable: 'borrowConfirmation',
     }),
     binding('enter_hold_member_id', {
       kind: 'fill',
-      target: target('catalog-hold-input', 'textbox', 'Member ID to place a hold'),
+      target: field('catalog-hold-input', 'Member ID to place a hold'),
       valueSource: { kind: 'sop_variable', name: 'memberId' },
     }),
     binding('place_hold', {
       kind: 'click',
-      target: target('catalog-hold-button', 'button', 'Place a hold'),
+      target: control('catalog-hold-button', 'button', 'Place a hold'),
     }),
     binding('read_hold_confirmation', {
       kind: 'extract',
-      target: target('catalog-hold-result', 'paragraph', 'in line'),
+      target: readout('catalog-hold-result', 'paragraph'),
       readMethod: { kind: 'text' },
       variable: 'holdConfirmation',
     }),
@@ -173,7 +225,10 @@ export function judgedAvailabilityBindings(): readonly ExecutionBinding[] {
     throw new Error('fixture changed: judgedAvailabilityGraph must contain a decision');
   }
 
-  const status = target('catalog-result-status', 'status', 'Availability');
+  // The availability line the judge reads. `text` with no accessible name is
+  // what the portal actually reports for it, and its content is the value being
+  // judged, so nothing about it is recorded as stable.
+  const status = readout('catalog-result-status', 'text');
 
   // Only the decision step differs between the two graphs, so every other
   // binding's checksum still matches its step and is reused unchanged. The

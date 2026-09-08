@@ -1,5 +1,10 @@
 import type { Locator } from '@orbit/agent-ir';
 import type {
+  ComparisonMode,
+  ElementFingerprint,
+  FingerprintMismatch,
+} from '@orbit/execution-mapping';
+import type {
   ArtifactId,
   ArtifactKind,
   ArtifactLinkRole,
@@ -309,3 +314,107 @@ export interface JudgeUsage {
   readonly estimatedCostMicroUsd: number;
   readonly latencyMs: number;
 }
+
+/**
+ * The recovery seam.
+ *
+ * The same shape as `DecisionJudge` and `BrowserExecutor`, for the same reason:
+ * @orbit/runtime declares the interface and depends on no implementation of it.
+ * The composition root injects one. `recovery-boundary.test.ts` proves this
+ * package cannot reach @orbit/execution-assist — where candidate narrowing and
+ * the reserved model seam live — through the whole workspace closure.
+ *
+ * The runtime's half of recovery is deliberately the half that needs a page:
+ * gathering what the live DOM and the approved fingerprint say, at the one
+ * moment both exist together. Deciding what that means, and writing a proposal
+ * a person will read, needs neither, so neither happens here.
+ *
+ * Nothing this returns changes the run. `propose` is awaited only so its outcome
+ * can be recorded as evidence; the step fails either way (ADR-033).
+ */
+export interface RecoveryProposer {
+  propose(observation: DriftObservation): Promise<RecoveryProposalOutcome>;
+}
+
+/**
+ * What the page and the approved binding said, at the moment they disagreed.
+ *
+ * `candidates` is the whole of what recovery gets to reason from, and it is
+ * short by construction: the binding's *own* selector chain, probed in place.
+ * Recovery is never handed the page, never asked to search it, and is given no
+ * way to name an element the person who recorded this step did not already
+ * name. An alternative found that way would be a guess with a fingerprint
+ * attached; an alternative from the chain is a locator a human already
+ * demonstrated resolves to the element they meant.
+ */
+export interface DriftObservation {
+  readonly context: {
+    readonly runId: RunId;
+    readonly agentVersionId: AgentVersionId;
+    readonly agentId: string;
+    readonly agentStepId: string;
+  };
+  /** The approved binding that stopped this step. */
+  readonly bindingId: string;
+  readonly mode: ComparisonMode;
+  /** What a person approved. */
+  readonly expected: ElementFingerprint;
+  /** The locator the Agent IR carries, which is the chain's preferred entry. */
+  readonly failedLocator: Locator;
+  /**
+   * How the preferred locator failed.
+   *
+   * `unresolved` — it found no element at all, which is what a renamed test id
+   * looks like. `mismatched` — it found one, and the element is not the one
+   * that was approved.
+   */
+  readonly failure: 'unresolved' | 'mismatched';
+  /** Present only for `mismatched`; there is nothing to describe otherwise. */
+  readonly observed: ElementFingerprint | null;
+  readonly mismatches: readonly FingerprintMismatch[];
+  readonly candidates: readonly DriftCandidateObservation[];
+}
+
+/** One fallback locator from the binding's chain, as the page answers it now. */
+export interface DriftCandidateObservation {
+  readonly locator: Locator;
+  /** False when the locator found nothing; `fingerprint` is then null. */
+  readonly resolved: boolean;
+  readonly fingerprint: ElementFingerprint | null;
+}
+
+/**
+ * Whether a proposal was made, and if not, why not.
+ *
+ * Recorded as a `recovery.proposed` or `recovery.declined` event. Declining is
+ * the expected outcome and is reported as precisely as proposing, because
+ * "Orbit looked and would not guess" is the claim this feature most needs to be
+ * able to prove afterwards.
+ */
+export type RecoveryProposalOutcome =
+  | {
+      readonly proposed: true;
+      readonly proposalId: string;
+      readonly summary: string;
+    }
+  | {
+      readonly proposed: false;
+      readonly reason: RecoveryDeclineReason;
+      readonly summary: string;
+    };
+
+/**
+ * Why no proposal was made.
+ *
+ * `ambiguous` is the one worth naming separately: narrowing left more than one
+ * plausible replacement, and choosing between them is exactly the judgement
+ * this version refuses to make. It is a request for a person to re-demonstrate
+ * the step, not a failure.
+ */
+export type RecoveryDeclineReason =
+  | 'no_candidate'
+  | 'ambiguous'
+  | 'not_recoverable'
+  | 'already_proposed'
+  | 'unknown_binding'
+  | 'store_failed';

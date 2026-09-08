@@ -46,6 +46,22 @@ export const eventTypeSchema = z.enum([
   'decision.resolved',
   'decision.refused',
 
+  /**
+   * Bounded recovery from UI drift (ADR-033).
+   *
+   * Appended by the run that hit the drift, and about the *document*, not about
+   * this run: the run has already failed by the time either lands. `proposed`
+   * records that Orbit believes it found the element that replaced the one a
+   * person approved; `declined` records that it looked and refused to guess,
+   * which is the far more common outcome and the one worth being able to prove.
+   *
+   * There is deliberately no `recovery.applied`. Nothing in Orbit applies a
+   * recovery, so an event type for it would describe a code path that does not
+   * exist and invite one that should not.
+   */
+  'recovery.proposed',
+  'recovery.declined',
+
   'artifact.created',
 ]);
 export type EventType = z.infer<typeof eventTypeSchema>;

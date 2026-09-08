@@ -134,6 +134,21 @@ export const agentIrCandidateIdSchema = z
   .brand<'AgentIrCandidateId'>();
 export type AgentIrCandidateId = z.infer<typeof agentIrCandidateIdSchema>;
 
+/**
+ * Recovery proposal identifier (Phase 2 Task 12).
+ *
+ * A proposal is Orbit's suggestion that a step's element has moved and this
+ * other element is the one that replaced it. It is not a binding: it names no
+ * live mapping, supersedes nothing, and does nothing until a person accepts it
+ * (ADR-033). Its own id, because it outlives the run that motivated it and can
+ * be dismissed while the binding it talks about stands unchanged.
+ */
+export const bindingRecoveryProposalIdSchema = z
+  .string()
+  .regex(idPattern('recprop'), 'must be an opaque id prefixed with "recprop_"')
+  .brand<'BindingRecoveryProposalId'>();
+export type BindingRecoveryProposalId = z.infer<typeof bindingRecoveryProposalIdSchema>;
+
 export const artifactLinkIdSchema = z
   .string()
   .regex(idPattern('artl'), 'must be an opaque id prefixed with "artl_"')

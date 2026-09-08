@@ -4,6 +4,7 @@ import type { ModelBudgets } from '@orbit/sop-generation';
 import type {
   PublishBoundDocumentService,
   PublishRecordingService,
+  RecoveryProposalService,
   SopCandidateService,
   SopDraftService,
   SopPublishService,
@@ -44,6 +45,14 @@ export interface ApiContext {
   readonly publishRecordingService: PublishRecordingService;
   /** The same, for a drafted workflow whose every step has been bound (ADR-027). */
   readonly publishBoundDocumentService: PublishBoundDocumentService;
+  /**
+   * Bounded recovery proposals: reading them, accepting one, dismissing one,
+   * and granting or withdrawing the capability per document (ADR-033).
+   *
+   * Accepting is the only write in Orbit that turns a proposal into a mapping,
+   * and it goes through the ordinary binding lifecycle rather than around it.
+   */
+  readonly recoveryProposals: RecoveryProposalService;
   /**
    * Recording sessions the API is holding open.
    *

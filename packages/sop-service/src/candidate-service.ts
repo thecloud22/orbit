@@ -152,6 +152,11 @@ export function createSopCandidateService(options: {
         version: '0.0.0',
         sopId: input.documentId,
         sopVersion: String(revision.revisionNumber),
+        // The document's grant, frozen into the version at compile time. A
+        // document whose grant is later withdrawn cannot retract it from
+        // versions already published, which is why it is expressed in the IR
+        // rather than consulted at run time (ADR-005, ADR-033).
+        recoveryAllowed: document.recoveryEnabled,
       });
 
       if (!compiled.ok) {

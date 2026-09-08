@@ -1,4 +1,9 @@
-import type { SopBindingsView, SopReviewStepView, SopStepBindingView } from '@orbit/api/views';
+import type {
+  RecoveryProposalView,
+  SopBindingsView,
+  SopReviewStepView,
+  SopStepBindingView,
+} from '@orbit/api/views';
 
 /**
  * Every decision the binding panel makes, as pure functions.
@@ -259,4 +264,52 @@ export function isFullyApproved(bindings: SopBindingsView | null): boolean {
     bindings.summary.approved === bindings.summary.bindable &&
     bindings.summary.stale === 0
   );
+}
+
+/**
+ * How a recovery proposal reads to a person (ADR-033).
+ *
+ * The sentence a reviewer needs is not "selector chain updated". It is *this
+ * step's element changed, and here is what Orbit thinks replaced it* — with
+ * both sides visible, so accepting is a judgement rather than a leap of faith.
+ */
+export interface ProposalSummary {
+  readonly headline: string;
+  readonly before: string;
+  readonly after: string;
+  readonly provenance: string;
+}
+
+export function describeProposal(proposal: RecoveryProposalView): ProposalSummary {
+  const render = (
+    selectors: readonly { strategy: string; value: string; name: string | null }[],
+  ) =>
+    selectors.length === 0
+      ? 'nothing recorded'
+      : selectors
+          .map(
+            (selector) =>
+              `${selector.strategy}=${selector.value}${selector.name === null ? '' : ` "${selector.name}"`}`,
+          )
+          .join(', then ');
+
+  return {
+    headline: 'This step\u2019s element changed. Orbit thinks this is what replaced it.',
+    before: render(proposal.before),
+    after: render(proposal.after),
+    // Said out loud rather than implied. A reader should not have to know when —
+    // or whether — model ranking was ever switched on to know what they are
+    // looking at.
+    provenance: proposal.deterministic
+      ? 'Worked out by comparing what the page shows against what was approved. No model was involved.'
+      : 'Ranked by a model, then checked against what was approved.',
+  };
+}
+
+/** The open proposal for one step, if there is one. */
+export function proposalForStep(
+  proposals: readonly RecoveryProposalView[],
+  stepId: string,
+): RecoveryProposalView | null {
+  return proposals.find((proposal) => proposal.stepId === stepId) ?? null;
 }

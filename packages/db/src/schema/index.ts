@@ -20,6 +20,7 @@ export * from './agents';
 export * from './execution-bindings';
 export * from './model-usage';
 export * from './artifact-links';
+export * from './binding-recovery-proposals';
 export * from './artifacts';
 export * from './run-events';
 export * from './run-steps';
@@ -33,6 +34,8 @@ export const ORBIT_TABLE_NAMES = [
   // Before revisions: a candidate references one with `restrict`, so truncating
   // revisions first would fail rather than cascade.
   'agent_ir_candidates',
+  // Before bindings and runs: a proposal references both.
+  'binding_recovery_proposals',
   'execution_bindings',
   // Before documents: a usage row references one with `set null`, and the
   // reset truncates rather than nulls.

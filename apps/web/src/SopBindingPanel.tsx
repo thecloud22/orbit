@@ -1,10 +1,12 @@
-import type { SopBindingsView, SopReviewStepView } from '@orbit/api/views';
+import type { RecoveryProposalView, SopBindingsView, SopReviewStepView } from '@orbit/api/views';
 
 import {
   bindActionLabel,
   bindingRows,
   canBindStep,
+  describeProposal,
   isFullyApproved,
+  proposalForStep,
   summarizeBindings,
   type BindingRow,
   type BindingTone,
@@ -19,6 +21,18 @@ export interface SopBindingPanelProps {
   /** Where a new browser would open. Null while a session is already open. */
   readonly startUrl: string | null;
   readonly onStartUrlChange: (startUrl: string) => void;
+  /**
+   * Open recovery proposals for this document (ADR-033).
+   *
+   * Rendered inside the step each one is about rather than in a list of their
+   * own: a proposal is only meaningful next to the mapping it would replace,
+   * and a separate panel would make accepting one a decision taken away from
+   * the thing being changed.
+   */
+  readonly proposals: readonly RecoveryProposalView[];
+  readonly onAcceptProposal: (proposalId: string) => void;
+  readonly onDismissProposal: (proposalId: string) => void;
+  readonly resolvingProposalId: string | null;
 }
 
 const TONE_CLASSES: Readonly<Record<BindingTone, string>> = {
@@ -50,6 +64,10 @@ export function SopBindingPanel({
   isStarting,
   startUrl,
   onStartUrlChange,
+  proposals,
+  onAcceptProposal,
+  onDismissProposal,
+  resolvingProposalId,
 }: SopBindingPanelProps) {
   const rows = bindingRows(steps, bindings);
 
@@ -110,7 +128,16 @@ export function SopBindingPanel({
 
       <ul className="mt-3 flex flex-col gap-2">
         {rows.map((row) => (
-          <BindingRowItem isStarting={isStarting} key={row.stepId} onBind={onBind} row={row} />
+          <BindingRowItem
+            isStarting={isStarting}
+            key={row.stepId}
+            onBind={onBind}
+            onAcceptProposal={onAcceptProposal}
+            onDismissProposal={onDismissProposal}
+            proposal={proposalForStep(proposals, row.stepId)}
+            resolvingProposalId={resolvingProposalId}
+            row={row}
+          />
         ))}
       </ul>
     </section>
@@ -121,10 +148,18 @@ function BindingRowItem({
   row,
   onBind,
   isStarting,
+  proposal,
+  onAcceptProposal,
+  onDismissProposal,
+  resolvingProposalId,
 }: {
   readonly row: BindingRow;
   readonly onBind: (stepId: string) => void;
   readonly isStarting: boolean;
+  readonly proposal: RecoveryProposalView | null;
+  readonly onAcceptProposal: (proposalId: string) => void;
+  readonly onDismissProposal: (proposalId: string) => void;
+  readonly resolvingProposalId: string | null;
 }) {
   // Open when the detail is the answer to a question the reader has: a stale
   // binding, a rejected one, or one the server raised issues about.
@@ -215,6 +250,15 @@ function BindingRowItem({
         </details>
       )}
 
+      {proposal !== null && (
+        <RecoveryProposalCard
+          busy={resolvingProposalId === proposal.proposalId}
+          onAccept={onAcceptProposal}
+          onDismiss={onDismissProposal}
+          proposal={proposal}
+        />
+      )}
+
       {row.binding.issues.length > 0 && (
         <ul className="mt-2 list-disc pl-5 text-xs text-amber-900" data-testid="sop-binding-issues">
           {row.binding.issues.map((issue) => (
@@ -223,5 +267,103 @@ function BindingRowItem({
         </ul>
       )}
     </li>
+  );
+}
+
+/**
+ * One proposal, and the single action that resolves it.
+ *
+ * Accepting reuses the ordinary approve path on the server — the same
+ * `create` -> `submitForReview` -> `approve` a demonstrated binding goes
+ * through — rather than inventing a second way for a mapping to become live.
+ * That is why there is one button here and not a small review workflow of its
+ * own.
+ *
+ * The wording avoids implying the run was saved. It was not: the run that hit
+ * this drift failed and stays failed, and what accepting buys is the *next*
+ * run (ADR-033).
+ */
+function RecoveryProposalCard({
+  proposal,
+  onAccept,
+  onDismiss,
+  busy,
+}: {
+  readonly proposal: RecoveryProposalView;
+  readonly onAccept: (proposalId: string) => void;
+  readonly onDismiss: (proposalId: string) => void;
+  readonly busy: boolean;
+}) {
+  const summary = describeProposal(proposal);
+
+  return (
+    <div
+      className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3"
+      data-testid={`recovery-proposal-${proposal.stepId}`}
+    >
+      <p className="text-xs font-semibold text-amber-900" data-testid="recovery-proposal-headline">
+        {summary.headline}
+      </p>
+
+      <p className="mt-1 text-xs text-amber-900" data-testid="recovery-proposal-summary">
+        {proposal.summary}
+      </p>
+
+      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-amber-900">
+        <dt className="font-medium">Was</dt>
+        <dd className="font-mono" data-testid="recovery-proposal-before">
+          {summary.before}
+        </dd>
+        <dt className="font-medium">Now</dt>
+        <dd className="font-mono" data-testid="recovery-proposal-after">
+          {summary.after}
+        </dd>
+        {proposal.approvedFingerprint !== null && (
+          <>
+            <dt className="font-medium">Still</dt>
+            <dd data-testid="recovery-proposal-fingerprint">
+              {proposal.approvedFingerprint.role ?? 'unknown role'}
+              {proposal.approvedFingerprint.accessibleName === null
+                ? ''
+                : ` "${proposal.approvedFingerprint.accessibleName}"`}
+            </dd>
+          </>
+        )}
+      </dl>
+
+      <p className="mt-2 text-xs text-amber-800" data-testid="recovery-proposal-provenance">
+        {summary.provenance}
+      </p>
+
+      <p className="mt-1 text-xs text-amber-800">
+        The run that found this still failed, and stays failed. Accepting records a new approved
+        mapping for this step, which the next published version will use.
+      </p>
+
+      <div className="mt-2 flex gap-2">
+        <button
+          className="rounded-md border border-amber-500 bg-white px-2 py-1 text-xs font-medium text-amber-900 transition-colors hover:border-amber-600 disabled:text-slate-400"
+          data-testid={`recovery-proposal-accept-${proposal.stepId}`}
+          disabled={busy}
+          onClick={() => {
+            onAccept(proposal.proposalId);
+          }}
+          type="button"
+        >
+          {busy ? 'Working…' : 'Accept this mapping'}
+        </button>
+        <button
+          className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition-colors hover:border-slate-400 disabled:text-slate-400"
+          data-testid={`recovery-proposal-dismiss-${proposal.stepId}`}
+          disabled={busy}
+          onClick={() => {
+            onDismiss(proposal.proposalId);
+          }}
+          type="button"
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
   );
 }

@@ -458,3 +458,45 @@ test.describe('events', () => {
     await expect(firstEvent.getByTestId('event-registered-name')).toHaveCount(1);
   });
 });
+
+/**
+ * The drift demo switch (ADR-033).
+ *
+ * Two claims, and the first matters more than the second: the portal in this
+ * repository is *not* a drifted portal. Recovery needs a page that has really
+ * changed to be demonstrable, and the way not to pay for that forever is to
+ * make the change opt-in per page load and prove it stays off.
+ */
+test.describe('the drift demo', () => {
+  test('is off by default, so the recorded test id is the one on the page', async ({ page }) => {
+    await page.goto('/catalog');
+
+    await expect(page.getByTestId('catalog-search-button')).toBeVisible();
+    await expect(page.getByTestId('catalog-search-submit')).toHaveCount(0);
+  });
+
+  test('renames only the test id, leaving the button itself identical', async ({ page }) => {
+    await page.goto('/catalog?drift=1');
+
+    // Gone by its recorded test id — which is what makes a bound agent stop.
+    await expect(page.getByTestId('catalog-search-button')).toHaveCount(0);
+    await expect(page.getByTestId('catalog-search-submit')).toBeVisible();
+
+    // And still exactly the button that was approved: same role, same
+    // accessible name, same visible label. That is the whole premise of the
+    // deterministic diagnosis — the test id changed, the button did not.
+    const button = page.getByRole('button', { name: 'Search', exact: true });
+    await expect(button).toBeVisible();
+    await expect(button).toHaveText('Search');
+  });
+
+  test('still works as a page, so the drift is in the locator and nowhere else', async ({
+    page,
+  }) => {
+    await page.goto('/catalog?drift=1');
+    await page.getByTestId('catalog-search-input').fill('Clean Code');
+    await page.getByTestId('catalog-search-submit').click();
+
+    await expect(page.getByTestId('catalog-result-title')).toHaveText('Clean Code');
+  });
+});

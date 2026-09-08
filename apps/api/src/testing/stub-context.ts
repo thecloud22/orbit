@@ -5,6 +5,7 @@ import type {
   AgentRepository,
   AgentVersionRepository,
   ArtifactRepository,
+  BindingRecoveryProposalRepository,
   ExecutionBindingRepository,
   RunEventRepository,
   RunRepository,
@@ -18,6 +19,7 @@ import type { ModelBudgets } from '@orbit/sop-generation';
 import type {
   PublishBoundDocumentService,
   PublishRecordingService,
+  RecoveryProposalService,
   SopCandidateService,
   SopDraftService,
   SopPublishService,
@@ -77,8 +79,10 @@ export interface StubContextOptions {
   readonly sopPublishService?: Partial<SopPublishService>;
   readonly publishRecordingService?: Partial<PublishRecordingService>;
   readonly publishBoundDocumentService?: Partial<PublishBoundDocumentService>;
+  readonly recoveryProposals?: Partial<RecoveryProposalService>;
   readonly recordingSessions?: Partial<RecordingSessionRegistry>;
   readonly bindingSessions?: Partial<BindingSessionRegistry>;
+  readonly bindingRecoveryProposals?: Partial<BindingRecoveryProposalRepository>;
   readonly modelBudgets?: ModelBudgets;
 }
 
@@ -103,6 +107,10 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
       executionBindings: stubbed('executionBindings', options.executionBindings ?? {}),
       modelUsage: stubbed('modelUsage', options.modelUsage ?? {}),
       agentIrCandidates: stubbed('agentIrCandidates', options.agentIrCandidates ?? {}),
+      bindingRecoveryProposals: stubbed(
+        'bindingRecoveryProposals',
+        options.bindingRecoveryProposals ?? {},
+      ),
     },
     artifactService: stubbed('artifactService', options.artifactService ?? {}),
     dispatcher: stubbed('dispatcher', options.dispatcher ?? {}),
@@ -114,6 +122,7 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
       'publishRecordingService',
       options.publishRecordingService ?? {},
     ),
+    recoveryProposals: stubbed('recoveryProposals', options.recoveryProposals ?? {}),
     publishBoundDocumentService: stubbed(
       'publishBoundDocumentService',
       options.publishBoundDocumentService ?? {},

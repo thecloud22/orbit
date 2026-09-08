@@ -42,6 +42,17 @@ export interface CompileInput {
   readonly version: string;
   readonly sopId: string;
   readonly sopVersion: string;
+  /**
+   * Whether the document grants Orbit permission to propose repairs for drift
+   * in agents published from it (ADR-033).
+   *
+   * Compiled into the version rather than read live at run time, because a
+   * published version is immutable and must state its own authority: a run
+   * consults the IR it is executing, never the document it came from. Default
+   * off, so a document that has never been asked the question produces exactly
+   * the IR it produced before this existed.
+   */
+  readonly recoveryAllowed?: boolean;
 }
 
 export type CompileResult =
@@ -758,6 +769,11 @@ export function compileCandidate(input: CompileInput): CompileResult {
       // machine and costs money, and smuggling it in under a browser grant
       // would mean an agent granted `click` had quietly been granted judgement.
       ...(usesModel ? { model: { allowed: true, maxCallsPerRun: countJudgedSteps(graph) } } : {}),
+      // Its own section for the same reason, and a step up from Tier 0
+      // `observe` to Tier 1 `recommend` under ADR-013: an agent that may
+      // propose a repair is an agent that has opinions about its own mapping.
+      // There is no `apply` to grant — nothing applies a proposal.
+      ...(input.recoveryAllowed === true ? { recovery: { allowed: true } } : {}),
     },
     steps,
   };

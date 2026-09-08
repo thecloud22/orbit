@@ -1,5 +1,5 @@
 import type { SopDocumentId } from '@orbit/contracts';
-import { pgTable, text } from 'drizzle-orm/pg-core';
+import { boolean, pgTable, text } from 'drizzle-orm/pg-core';
 
 import { createdAt, opaqueId, updatedAt } from './columns';
 
@@ -22,6 +22,19 @@ export const sopDocuments = pgTable('sop_documents', {
   title: text('title').notNull(),
   /** The free-form SOP as authored. Immutable. */
   sourceText: text('source_text').notNull(),
+  /**
+   * Whether Orbit may propose a repair when an agent published from this
+   * document hits UI drift (ADR-033).
+   *
+   * Off by default and opt-in per document, which is what makes it a grant
+   * rather than a behaviour. It is carried into every Agent Version published
+   * from the document as `permissions.recovery`, so the version a run executes
+   * states its own authority and a run never has to consult the document to
+   * know what it may do. Turning it off later cannot retract it from versions
+   * already published — those are immutable (ADR-005) — which is why it is
+   * expressed in the IR at all rather than read live.
+   */
+  recoveryEnabled: boolean('recovery_enabled').notNull().default(false),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

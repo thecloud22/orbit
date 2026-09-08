@@ -9,7 +9,14 @@ import {
   prepareExecution,
   RuntimeError,
 } from '@orbit/runtime';
-import { createDatabaseRunStore } from '@orbit/runtime/persistence';
+import {
+  createDatabaseExecutionBindingResolver,
+  createDatabaseRunStore,
+} from '@orbit/runtime/persistence';
+import {
+  createDatabaseRecoveryProposalStore,
+  createDriftRecoveryProposer,
+} from '@orbit/drift-recovery';
 import { createPlaywrightExecutorFactory } from '@orbit/executor-playwright';
 import { pino } from 'pino';
 
@@ -161,6 +168,19 @@ try {
     globalBudget: resolveGlobalBudget(),
   });
 
+  // The approved fingerprints this version was compiled from. A version with no
+  // candidate — every Phase 1 agent — resolves to none and runs unchanged.
+  const bindings = await createDatabaseExecutionBindingResolver({
+    database: handle.db,
+    agentVersionId: prepared.agentVersionId,
+  });
+
+  // Always wired; the agent's own `permissions.recovery` decides whether it is
+  // ever consulted, and a proposal never rescues the run that produced it.
+  const recovery = createDriftRecoveryProposer({
+    store: createDatabaseRecoveryProposalStore({ database: handle.db }),
+  });
+
   const result = await executeAgentVersion({
     agentVersionId: prepared.agentVersionId,
     agentIr: prepared.agentIr,
@@ -172,6 +192,8 @@ try {
     }),
     logger,
     ...(judge === undefined ? {} : { judge }),
+    ...(bindings === undefined ? {} : { bindings }),
+    recovery,
     decisions: resolveDecisionSettings(),
   });
 

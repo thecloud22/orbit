@@ -1,0 +1,28 @@
+{
+  "name": "@orbit/drift-recovery",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@orbit/agent-ir": "workspace:*",
+    "@orbit/contracts": "workspace:*",
+    "@orbit/db": "workspace:*",
+    "@orbit/execution-assist": "workspace:*",
+    "@orbit/execution-mapping": "workspace:*",
+    "@orbit/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}

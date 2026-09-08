@@ -2,6 +2,7 @@ import { newSopDocumentId, type SopDocumentId } from '@orbit/contracts';
 import { desc, eq } from 'drizzle-orm';
 
 import type { Executor } from '../client';
+import { RecordNotFoundError } from '../errors';
 import { toSopDocumentRecord, type SopDocumentRecord } from '../mappers';
 import { sopDocuments, sopGraphRevisions, type SopRevisionState } from '../schema';
 
@@ -9,6 +10,8 @@ export interface CreateSopDocumentInput {
   readonly title: string;
   /** The free-form SOP as authored. Cannot be changed afterwards. */
   readonly sourceText: string;
+  /** Opt-in at creation; defaults to off, which is what every caller uses. */
+  readonly recoveryEnabled?: boolean;
   readonly id?: SopDocumentId;
 }
 
@@ -32,6 +35,13 @@ export interface SopDocumentSummary extends SopDocumentRecord {
  * There is no `updateSourceText`, and that absence is the enforcement: the
  * original text is what a reviewer's approval refers back to, so it is written
  * once. Re-authoring means a new document.
+ *
+ * `setRecoveryEnabled` is the one mutable thing about a document, and it is a
+ * *grant* rather than content: it says whether Orbit may propose repairs for
+ * agents published from it (ADR-033). It changes nothing about any Agent
+ * Version already published, because those carry their own `permissions` and
+ * are immutable — which is exactly why the grant is compiled into the IR rather
+ * than read live at run time.
  */
 export interface SopDocumentRepository {
   create(input: CreateSopDocumentInput): Promise<SopDocumentRecord>;
@@ -39,6 +49,7 @@ export interface SopDocumentRepository {
   list(): Promise<readonly SopDocumentRecord[]>;
   /** The document plus its derived current status. */
   summarize(id: SopDocumentId): Promise<SopDocumentSummary | null>;
+  setRecoveryEnabled(id: SopDocumentId, enabled: boolean): Promise<SopDocumentRecord>;
 }
 
 export function createSopDocumentRepository(executor: Executor): SopDocumentRepository {
@@ -50,6 +61,9 @@ export function createSopDocumentRepository(executor: Executor): SopDocumentRepo
           id: input.id ?? newSopDocumentId(),
           title: input.title,
           sourceText: input.sourceText,
+          ...(input.recoveryEnabled === undefined
+            ? {}
+            : { recoveryEnabled: input.recoveryEnabled }),
         })
         .returning();
 
@@ -68,6 +82,20 @@ export function createSopDocumentRepository(executor: Executor): SopDocumentRepo
     async list() {
       const rows = await executor.select().from(sopDocuments).orderBy(desc(sopDocuments.createdAt));
       return rows.map(toSopDocumentRecord);
+    },
+
+    async setRecoveryEnabled(id, enabled) {
+      const [row] = await executor
+        .update(sopDocuments)
+        .set({ recoveryEnabled: enabled, updatedAt: new Date() })
+        .where(eq(sopDocuments.id, id))
+        .returning();
+
+      if (row === undefined) {
+        throw new RecordNotFoundError(`SOP document ${id} does not exist.`);
+      }
+
+      return toSopDocumentRecord(row);
     },
 
     async summarize(id) {

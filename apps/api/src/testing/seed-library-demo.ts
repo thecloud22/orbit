@@ -41,6 +41,10 @@ try {
     }
 
     const document = await repositories.sopDocuments.create({
+      // Granted here so the drift demo works out of the box (ADR-033). It is
+      // off by default for every other document, and it grants one thing: that
+      // Orbit may *propose* a repair. Nothing applies one.
+      recoveryEnabled: true,
       title: DEMO_TITLE,
       sourceText:
         'Open the library catalog and search for a title by ISBN. If the title is available, ' +
@@ -83,7 +87,9 @@ try {
   process.stdout.write(
     `${result.created ? 'Seeded' : 'Already present'}: "${DEMO_TITLE}" (${result.documentId}).\n` +
       `Open it at http://localhost:3000/?documentId=${result.documentId}\n` +
-      `Start the library portal with: pnpm --filter @orbit/library-portal dev\n`,
+      `Start the library portal with: pnpm --filter @orbit/library-portal dev\n` +
+      `Drift demo: publish, then run against http://localhost:3020/catalog?drift=1 — ` +
+      `see docs/demo/drift-recovery-demo.md\n`,
   );
 } finally {
   await handle.close();

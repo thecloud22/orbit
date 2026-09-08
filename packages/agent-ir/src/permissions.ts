@@ -51,9 +51,29 @@ export const modelPermissionsSchema = z.strictObject({
 });
 export type ModelPermissions = z.infer<typeof modelPermissionsSchema>;
 
+/**
+ * Whether Orbit may *propose* a repair when this agent hits UI drift.
+ *
+ * Its own section, for the reason `permissions.model` has one: proposing a
+ * repair is a different capability from anything a browser action grants. An
+ * agent granted `click` has been granted the right to press a button somebody
+ * approved — not the right to have opinions about what should replace it.
+ *
+ * Absent means not permitted, and an agent without this grant produces no
+ * proposals at all: the runtime gathers no observation and the proposer is
+ * never reached. Under ADR-013 this is the step from Tier 0 `observe` to
+ * Tier 1 `recommend`, and it stops there. There is no `apply` to grant,
+ * because there is no code path that applies a proposal (ADR-033).
+ */
+export const recoveryPermissionsSchema = z.strictObject({
+  allowed: z.boolean(),
+});
+export type RecoveryPermissions = z.infer<typeof recoveryPermissionsSchema>;
+
 export const permissionsSchema = z.strictObject({
   browser: browserPermissionsSchema,
   model: modelPermissionsSchema.optional(),
+  recovery: recoveryPermissionsSchema.optional(),
 });
 export type Permissions = z.infer<typeof permissionsSchema>;
 

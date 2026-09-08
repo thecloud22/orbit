@@ -19,4 +19,5 @@ export * from './publish-pipeline';
 export * from './publish-recording-service';
 export * from './publish-service';
 export * from './recording-service';
+export * from './recovery-service';
 export * from './revision-service';

@@ -38,6 +38,14 @@ import type {
 export interface FakeBrowserOptions {
   /** Test ids the page will never show, to force a locator failure. */
   readonly missingTestIds?: readonly string[];
+  /**
+   * Extra locator values the page resolves.
+   *
+   * A binding's fallback locators name the same element a different way — by
+   * role and name, or by label — and the fake resolves by `locator.value`, so a
+   * test exercising a fallback has to say that value is on the page.
+   */
+  readonly alsoVisible?: readonly string[];
   /** Makes both `expect_one_of` states visible at once, to force ambiguity. */
   readonly showBothResultStates?: boolean;
   readonly failNavigation?: boolean;
@@ -92,7 +100,11 @@ export function createFakeBrowser(options: FakeBrowserOptions = {}): FakeBrowser
   let describeCalls = 0;
   const describeTimeouts: number[] = [];
   let filled = '';
-  let visible = new Set<string>(['request-number-input', 'search-request-button']);
+  let visible = new Set<string>([
+    'request-number-input',
+    'search-request-button',
+    ...(options.alsoVisible ?? []),
+  ]);
   let text: Record<string, string> = {};
 
   function present(locator: Locator): boolean {
@@ -127,7 +139,11 @@ export function createFakeBrowser(options: FakeBrowserOptions = {}): FakeBrowser
         });
       }
 
-      visible = new Set(['request-number-input', 'search-request-button']);
+      visible = new Set([
+        'request-number-input',
+        'search-request-button',
+        ...(options.alsoVisible ?? []),
+      ]);
       text = {};
       return { url: request.url, httpStatus: 200 };
     },

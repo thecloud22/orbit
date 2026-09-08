@@ -50,6 +50,9 @@ importers:
       '@orbit/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@orbit/drift-recovery':
+        specifier: workspace:*
+        version: link:../../packages/drift-recovery
       '@orbit/execution-mapping':
         specifier: workspace:*
         version: link:../../packages/execution-mapping
@@ -114,6 +117,9 @@ importers:
       '@orbit/decision-judge':
         specifier: workspace:*
         version: link:../../packages/decision-judge
+      '@orbit/drift-recovery':
+        specifier: workspace:*
+        version: link:../../packages/drift-recovery
       '@orbit/executor-playwright':
         specifier: workspace:*
         version: link:../../packages/executor-playwright
@@ -452,6 +458,31 @@ importers:
       zod:
         specifier: ^4.5.4
         version: 4.5.4
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
+  packages/drift-recovery:
+    dependencies:
+      '@orbit/agent-ir':
+        specifier: workspace:*
+        version: link:../agent-ir
+      '@orbit/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@orbit/db':
+        specifier: workspace:*
+        version: link:../db
+      '@orbit/execution-assist':
+        specifier: workspace:*
+        version: link:../execution-assist
+      '@orbit/execution-mapping':
+        specifier: workspace:*
+        version: link:../execution-mapping
+      '@orbit/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
       typescript:
         specifier: ^5.9.0

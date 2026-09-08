@@ -6,4 +6,5 @@
  * stays free of @orbit/db, exactly as @orbit/db/testing keeps Vitest out of
  * @orbit/db.
  */
+export * from './binding-resolver';
 export * from './database-run-recorder';

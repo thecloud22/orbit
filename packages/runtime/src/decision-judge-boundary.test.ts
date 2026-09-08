@@ -42,6 +42,18 @@ const FORBIDDEN = [
   'openai',
   '@orbit/decision-judge',
   '@orbit/sop-generation',
+  /**
+   * Recovery's implementation, on the list for exactly the same reason.
+   *
+   * ADR-033 gave the runtime a second reason to want capability it should not
+   * have: at the moment of drift it holds the live page and the approved
+   * fingerprint, and it would be very natural to also let it decide what the
+   * difference means. It does not. It gathers an observation and hands it to
+   * `RecoveryProposer`; @orbit/drift-recovery diagnoses, and @orbit/execution-assist
+   * is where a ranker would attach — neither is reachable from here.
+   */
+  '@orbit/drift-recovery',
+  '@orbit/execution-assist',
 ];
 
 const IMPORT_PATTERN = /(?:import|export)[\s\S]*?from\s+['"]([^'"]+)['"]/g;

@@ -22,6 +22,7 @@ export * from './interpreter';
 export * from './inputs';
 export * from './logger';
 export * from './ports';
+export * from './recovery';
 export * from './redact';
 export * from './prepare';
 export * from './profile';

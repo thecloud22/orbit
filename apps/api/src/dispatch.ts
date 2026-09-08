@@ -10,7 +10,14 @@ import {
   type RunStore,
   type RuntimeLogger,
 } from '@orbit/runtime';
-import { createDatabaseRunStore } from '@orbit/runtime/persistence';
+import {
+  createDatabaseExecutionBindingResolver,
+  createDatabaseRunStore,
+} from '@orbit/runtime/persistence';
+import {
+  createDatabaseRecoveryProposalStore,
+  createDriftRecoveryProposer,
+} from '@orbit/drift-recovery';
 
 /**
  * The run dispatch seam (ADR-011).
@@ -67,6 +74,13 @@ export function createInProcessRunDispatcher(deps: InProcessDispatcherDependenci
   const browser =
     deps.browser ?? createPlaywrightExecutorFactory({ headless: deps.headless ?? true });
 
+  // Always wired; the *agent* decides whether it is ever consulted. An Agent
+  // Version that does not declare `permissions.recovery.allowed` produces no
+  // proposals and is not even probed on drift (ADR-033).
+  const recovery = createDriftRecoveryProposer({
+    store: createDatabaseRecoveryProposalStore({ database: deps.database }),
+  });
+
   return {
     async dispatch(request: DispatchRunRequest): Promise<DispatchedRun> {
       const store = createDatabaseRunStore({ database: deps.database, storage: deps.storage });
@@ -87,6 +101,19 @@ export function createInProcessRunDispatcher(deps: InProcessDispatcherDependenci
         },
       };
 
+      // The approved fingerprints this version was compiled from, and the
+      // proposer that turns a drift into a proposal. Both are loaded before the
+      // run row exists, so a version with no bindings costs one query and
+      // executes exactly as it did before either existed.
+      //
+      // Wiring the resolver here is what makes the drift check (ADR-018) live
+      // in a real run for the first time: it has been implemented since 2.4 and
+      // no production entry point had ever supplied it a binding.
+      const bindings = await createDatabaseExecutionBindingResolver({
+        database: deps.database,
+        agentVersionId: request.agentVersionId,
+      });
+
       const completed = executeAgentVersion({
         agentVersionId: request.agentVersionId,
         agentIr: request.agentIr,
@@ -95,6 +122,8 @@ export function createInProcessRunDispatcher(deps: InProcessDispatcherDependenci
         store: observing,
         browser,
         logger: deps.logger,
+        ...(bindings === undefined ? {} : { bindings }),
+        recovery,
       })
         .then((result) => {
           deps.logger.info(

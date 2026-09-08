@@ -35,8 +35,8 @@ silently.
 checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
-**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10
-and 2.11** are complete.
+**Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10,
+2.11 and 2.12** are complete.
 `@orbit/sop-graph` provides the non-executable graph contract and its validation;
 `@orbit/sop-generation` turns free text into a proposed graph; `@orbit/sop-service` persists drafts
 and drives review; `@orbit/execution-mapping` defines the Execution Binding and the runtime verifies
@@ -296,6 +296,27 @@ they must also partition what each branch can then *do* — the demo gets the se
 and its test says so. Redaction of page text before it reaches a model is a reduction, not a
 guarantee. See `docs/demo/judged-decision-demo.md`.
 
+**Task 12 is complete: bounded recovery from UI drift (ADR-033).** When a run stops on drift, Orbit
+can now say — deterministically, with no model call — that the approved test id stopped resolving
+while the same binding's `role_and_name` fallback still finds the element that was approved. It
+writes a **proposal** against the workflow document, which a person accepts in Studio; accepting
+creates a binding through the ordinary lifecycle and supersedes the drifted one. **The run that met
+the drift still fails and stays failed**, and no code path applies a proposal. Recovery is granted
+per document (`permissions.recovery`, compiled into each published version) and is Tier 1
+`recommend` under ADR-013; an agent without the grant is not even probed. When narrowing leaves more
+than one plausible candidate, Orbit proposes nothing and asks for a re-demonstration. The model seam
+is declared and inert — `diagnoseDrift` is synchronous, so it cannot call one — and no spend exists
+to record. See `docs/demo/drift-recovery-demo.md`.
+
+Two things this task turned on for the first time, both worth knowing before touching adjacent code:
+the **drift check now runs in production runs** (`createDatabaseExecutionBindingResolver` is wired
+into both composition roots; it had never been supplied a binding outside tests), and an approved
+locator that resolves to *nothing* is now typed drift rather than a raw executor timeout. Wiring it
+immediately found wrong data — several library-demo fixture fingerprints were guesses that had never
+been compared to the portal, and are now measured through `describeElement`. It also found that
+`@orbit/db` keeps its own copy of the event-type vocabulary; the two lists are now pinned equal by a
+test.
+
 ### Where the pieces live
 
 | Concern | Owner |
@@ -311,13 +332,16 @@ guarantee. See `docs/demo/judged-decision-demo.md`.
 | Model spend caps, scopes and rate estimates | `@orbit/model-budget` (Phase 2 Task 9) |
 | Judged-decision provider, prompt and ledger write | `@orbit/decision-judge` (Phase 2 Task 9) |
 | Judged-decision interpretation and refusal | `@orbit/runtime` over the `DecisionJudge` port (Phase 2 Task 9) |
+| Drift diagnosis and proposal writing | `@orbit/drift-recovery` (Phase 2 Task 12, ADR-033) |
+| Drift observation at the moment it happens | `@orbit/runtime` over the `RecoveryProposer` port (Phase 2 Task 12) |
+| Accepting or dismissing a proposal, and the per-document grant | `@orbit/sop-service` (Phase 2 Task 12) |
 
 `prepareExecution` in `@orbit/runtime` is the single validation gate the API and the browser-worker
 CLI both use.
 
 ### Before starting Phase 2
 
-Read the Task 9 report's limitations section first. The open items carried out of Phase 1 are:
+Read the Task 12 report's limitations section first, then Task 9's. The open items carried out of Phase 1 are:
 `NOT_FOUND` missing from the error taxonomy; no server-side duplicate-dispatch suppression; no
 recovery for runs orphaned by a killed API process; no retention or orphan reconciliation; and
 database-level enforcement of immutability and append-only still deferred (ADR-014).

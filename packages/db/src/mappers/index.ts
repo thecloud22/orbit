@@ -2,6 +2,7 @@ export * from './agent-ir-candidate';
 export * from './agent';
 export * from './agent-version';
 export * from './artifact';
+export * from './binding-recovery-proposal';
 export * from './run';
 export * from './run-event';
 export * from './run-step';

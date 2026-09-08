@@ -5,6 +5,8 @@ import {
   agentVersionIdSchema,
   artifactIdSchema,
   artifactLinkIdSchema,
+  bindingRecoveryProposalIdSchema,
+  type BindingRecoveryProposalId,
   eventIdSchema,
   executionBindingIdSchema,
   modelRequestIdSchema,
@@ -177,6 +179,10 @@ export function newSopAnswerId(): SopAnswerId {
 
 export function newExecutionBindingId(): ExecutionBindingId {
   return executionBindingIdSchema.parse(`execbind_${monotonicUlid()}`);
+}
+
+export function newBindingRecoveryProposalId(): BindingRecoveryProposalId {
+  return bindingRecoveryProposalIdSchema.parse(`recprop_${monotonicUlid()}`);
 }
 
 export function newAgentIrCandidateId(): AgentIrCandidateId {

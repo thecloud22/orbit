@@ -10,6 +10,8 @@ import type {
   FinishedRecordingView,
   RecordingSessionView,
   SavedBindingView,
+  RecoveryProposalsView,
+  RecoveryProposalView,
   SopBindingsView,
   PublishedAgentVersionView,
   SopDocumentSummaryView,
@@ -266,6 +268,39 @@ export async function transitionSopRevision(
  */
 export async function getSopBindings(documentId: string): Promise<SopBindingsView> {
   return getJson<SopBindingsView>(`/v1/sop-documents/${documentId}/bindings`);
+}
+
+/**
+ * Recovery proposals: what Orbit thinks replaced an element that moved.
+ *
+ * Reading them is safe and idempotent. Accepting one is the only call in this
+ * client that turns a proposal into a live mapping, and it goes through the
+ * ordinary binding lifecycle on the server (ADR-033).
+ */
+export async function getRecoveryProposals(documentId: string): Promise<RecoveryProposalsView> {
+  return getJson<RecoveryProposalsView>(`/v1/sop-documents/${documentId}/recovery-proposals`);
+}
+
+export async function acceptRecoveryProposal(
+  documentId: string,
+  proposalId: string,
+): Promise<{ bindingId: string; stepId: string; state: string }> {
+  return send(
+    `/v1/sop-documents/${documentId}/recovery-proposals/${proposalId}/accept`,
+    'POST',
+    {},
+  );
+}
+
+export async function dismissRecoveryProposal(
+  documentId: string,
+  proposalId: string,
+): Promise<RecoveryProposalView> {
+  return send<RecoveryProposalView>(
+    `/v1/sop-documents/${documentId}/recovery-proposals/${proposalId}/dismiss`,
+    'POST',
+    {},
+  );
 }
 
 /** Opens a browser on the Orbit machine, aimed at one step of one workflow. */

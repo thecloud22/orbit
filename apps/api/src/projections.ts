@@ -18,6 +18,7 @@ import {
   bindingTargets,
   isBindableStepKind,
   validateBindingAgainstStep,
+  type ExecutionBinding,
 } from '@orbit/execution-mapping';
 import {
   describeStep,
@@ -54,6 +55,7 @@ import {
   type ModelBudgetScopeView,
   type ModelUsageTotalsView,
   type ModelUsageView,
+  type RecoveryProposalView,
 } from './views';
 
 /**
@@ -464,6 +466,84 @@ export function toSopBindingsView(input: {
       stale: bindableSteps.filter((step) => step.stale).length,
     },
   };
+}
+
+/**
+ * One recovery proposal, projected for Studio.
+ *
+ * "Before" is read from the binding the proposal replaces rather than from the
+ * proposal's own diagnosis, so what a reviewer compares against is the live
+ * mapping as it stands right now — not a copy taken when the run failed, which
+ * could have been superseded since.
+ */
+export function toRecoveryProposalView(input: {
+  readonly id: string;
+  readonly stepId: string;
+  readonly state: string;
+  readonly proposedForBindingId: string;
+  readonly observedInRunId: string | null;
+  readonly proposedBinding: ExecutionBinding;
+  readonly diagnosis: Record<string, unknown>;
+  readonly deterministic: boolean;
+  readonly createdAt: Date;
+}): RecoveryProposalView {
+  const [target] = bindingTargets(input.proposedBinding.body);
+  const diagnosis = input.diagnosis;
+
+  const before = readSelectorList(diagnosis['failedLocator']);
+  const after =
+    target === undefined
+      ? []
+      : target.selectors.map((locator) => ({
+          strategy: locator.strategy,
+          value: locator.value,
+          name: locator.name ?? null,
+        }));
+
+  return {
+    proposalId: input.id,
+    stepId: input.stepId,
+    state: input.state,
+    replacesBindingId: input.proposedForBindingId,
+    observedInRunId: input.observedInRunId,
+    summary: typeof diagnosis['summary'] === 'string' ? diagnosis['summary'] : '',
+    confidence: typeof diagnosis['confidence'] === 'string' ? diagnosis['confidence'] : 'unknown',
+    deterministic: input.deterministic,
+    before,
+    after,
+    approvedFingerprint:
+      target === undefined
+        ? null
+        : {
+            role: target.fingerprint.role,
+            accessibleName: target.fingerprint.accessibleName,
+            text: target.fingerprint.text,
+            width: target.fingerprint.boundingBox?.width ?? null,
+            height: target.fingerprint.boundingBox?.height ?? null,
+          },
+    proposedAt: input.createdAt.toISOString(),
+  };
+}
+
+/**
+ * The locator that stopped working, as the diagnosis recorded it.
+ *
+ * Stored as the human-readable `describeSelector` string rather than a
+ * structured locator, so it is parsed back into the one field the view needs
+ * and never re-interpreted as something to act on.
+ */
+function readSelectorList(
+  value: unknown,
+): readonly { strategy: string; value: string; name: string | null }[] {
+  if (typeof value !== 'string') {
+    return [];
+  }
+
+  const separator = value.indexOf('=');
+
+  return separator === -1
+    ? [{ strategy: 'unknown', value, name: null }]
+    : [{ strategy: value.slice(0, separator), value: value.slice(separator + 1), name: null }];
 }
 
 /**

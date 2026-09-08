@@ -4,11 +4,13 @@ import {
   type ComparisonMode,
   type ElementFingerprint,
   type FingerprintMismatch,
+  type SelectorChain,
 } from '@orbit/execution-mapping';
 
 import { RuntimeError } from './errors';
 import type { RuntimeLogger } from './logger';
-import type { BrowserExecutor } from './ports';
+import type { BrowserExecutor, DriftObservation } from './ports';
+import { attemptRecovery, type RecoveryContext } from './recovery';
 
 /**
  * The drift check: does the page still show what a human approved?
@@ -61,6 +63,21 @@ export interface StepBinding {
   readonly fingerprint: ElementFingerprint;
   /** `action` compares text; `read` does not — the text is the value. */
   readonly mode: ComparisonMode;
+  /**
+   * The binding's whole selector chain, and the only use it has ever had.
+   *
+   * Agent IR carries one locator per step — the chain's preferred entry — so
+   * the fallbacks have never been tried by the runtime and are deliberately
+   * still not tried *to act with*. Acting through a fallback would mean
+   * choosing a different element than the one a human approved, silently, at
+   * run time, which is precisely what ADR-018 exists to prevent.
+   *
+   * They are read here for one purpose: when the preferred locator fails, they
+   * are the bounded, human-signed set of alternatives recovery is allowed to
+   * reason about (ADR-033). Optional, because a resolver may not supply one and
+   * a binding without fallbacks simply produces no candidates.
+   */
+  readonly selectors?: SelectorChain;
 }
 
 /**
@@ -82,6 +99,14 @@ export interface VerifyBindingInput {
   readonly agentStepId: string;
   readonly timeoutMs: number;
   readonly logger: RuntimeLogger;
+  /**
+   * Bounded recovery, if this deployment and this agent both permit it.
+   *
+   * Absent everywhere it is not wired, which is every call site that existed
+   * before ADR-033. Its presence changes what is *recorded* about a drifted
+   * step and never whether that step fails.
+   */
+  readonly recovery?: RecoveryContext;
 }
 
 function delay(milliseconds: number): Promise<void> {
@@ -101,6 +126,14 @@ function describeMismatches(mismatches: readonly FingerprintMismatch[]): string 
  * Verifies the element about to be acted on, or refuses to act.
  *
  * Returns quietly when there is no binding to check, which is the Phase 1 path.
+ *
+ * Two things count as drift, not one. The original check compared an element it
+ * had found; but the most ordinary way a page changes is that the approved
+ * locator stops finding anything at all — a renamed `data-testid` while the
+ * button itself is untouched. That used to surface as a raw executor timeout
+ * from inside `describeElement`, escaping the drift path entirely and producing
+ * a failure with none of the evidence ADR-018 promises. It is drift, it is
+ * reported as drift, and it is the case recovery is best at explaining.
  */
 export async function verifyBinding(input: VerifyBindingInput): Promise<void> {
   const binding = input.bindings?.forStep(input.agentStepId) ?? null;
@@ -115,11 +148,23 @@ export async function verifyBinding(input: VerifyBindingInput): Promise<void> {
   // the settle window would make the drift check *less* patient than the action
   // it guards, and a page that simply took a while to render would fail as
   // though it had changed.
-  const first = compareFingerprint(
-    binding.fingerprint,
-    await input.executor.describeElement({ locator: input.locator, timeoutMs: input.timeoutMs }),
-    binding.mode,
-  );
+  let described: ElementFingerprint;
+
+  try {
+    described = await input.executor.describeElement({
+      locator: input.locator,
+      timeoutMs: input.timeoutMs,
+    });
+  } catch (cause) {
+    throw await stop(
+      input,
+      binding,
+      { failure: 'unresolved', observed: null, mismatches: [] },
+      cause,
+    );
+  }
+
+  const first = compareFingerprint(binding.fingerprint, described, binding.mode);
 
   if (first.matches) {
     return;
@@ -129,53 +174,120 @@ export async function verifyBinding(input: VerifyBindingInput): Promise<void> {
   // is bounded by the settle window, and only the step's own budget can cut it
   // shorter.
   let mismatches = first.mismatches;
+  let observed = described;
   const deadline = Date.now() + Math.min(input.timeoutMs, DRIFT_SETTLE_WINDOW_MS);
 
   while (Date.now() < deadline) {
     await delay(Math.min(DRIFT_POLL_INTERVAL_MS, Math.max(deadline - Date.now(), 0)));
 
-    const comparison = compareFingerprint(
-      binding.fingerprint,
+    let current: ElementFingerprint;
+
+    try {
       // Already visible by now; this only needs to read it again.
-      await input.executor.describeElement({
+      current = await input.executor.describeElement({
         locator: input.locator,
         timeoutMs: DRIFT_POLL_INTERVAL_MS,
-      }),
-      binding.mode,
-    );
+      });
+    } catch (cause) {
+      // It was there a moment ago and is not now. Re-reported as `unresolved`
+      // rather than as the stale mismatch, because that is what a person
+      // reopening the page would actually find.
+      throw await stop(
+        input,
+        binding,
+        { failure: 'unresolved', observed: null, mismatches: [] },
+        cause,
+      );
+    }
+
+    const comparison = compareFingerprint(binding.fingerprint, current, binding.mode);
 
     if (comparison.matches) {
       return;
     }
 
     mismatches = comparison.mismatches;
+    observed = current;
   }
 
-  throw driftDetected(input, binding.bindingId, mismatches);
+  throw await stop(input, binding, { failure: 'mismatched', observed, mismatches });
+}
+
+/**
+ * Records the drift, offers it to recovery, and produces the error that stops
+ * the run.
+ *
+ * The order is the guarantee. Recovery is attempted before the error is thrown
+ * and cannot prevent it from being thrown: `attemptRecovery` returns `void`,
+ * never throws, and nothing it produces is consulted below. A proposal makes
+ * the *next* run work once a person has approved it; this run fails with its
+ * evidence either way (ADR-033).
+ */
+async function stop(
+  input: VerifyBindingInput,
+  binding: StepBinding,
+  outcome: {
+    readonly failure: DriftObservation['failure'];
+    readonly observed: ElementFingerprint | null;
+    readonly mismatches: readonly FingerprintMismatch[];
+  },
+  cause?: unknown,
+): Promise<RuntimeError> {
+  await attemptRecovery({
+    ...(input.recovery === undefined ? {} : { recovery: input.recovery }),
+    executor: input.executor,
+    binding,
+    agentStepId: input.agentStepId,
+    failedLocator: input.locator,
+    failure: outcome.failure,
+    observed: outcome.observed,
+    mismatches: outcome.mismatches,
+    logger: input.logger,
+  });
+
+  return driftDetected(input, binding.bindingId, outcome, cause);
 }
 
 /** The fail-safe stop, and the evidence a person needs to re-map the step. */
 function driftDetected(
   input: VerifyBindingInput,
   bindingId: string,
-  mismatches: readonly FingerprintMismatch[],
+  outcome: {
+    readonly failure: DriftObservation['failure'];
+    readonly mismatches: readonly FingerprintMismatch[];
+  },
+  cause: unknown,
 ): RuntimeError {
   input.logger.warn(
-    { agentStepId: input.agentStepId, bindingId },
+    { agentStepId: input.agentStepId, bindingId, failure: outcome.failure },
     'Stopping: the page no longer matches the approved binding.',
   );
+
+  const explanation =
+    outcome.failure === 'unresolved'
+      ? `nothing on the page matches ${describeLocator(input.locator)} any more`
+      : `the page no longer matches what was approved: ${describeMismatches(outcome.mismatches)}`;
 
   return new RuntimeError({
     code: 'UNEXPECTED_UI_STATE',
     message:
-      `Step "${input.agentStepId}" was stopped because the page no longer matches what was approved: ` +
-      `${describeMismatches(mismatches)}. The workflow needs re-mapping before it can run again.`,
+      `Step "${input.agentStepId}" was stopped because ${explanation}. ` +
+      'The workflow needs re-mapping before it can run again.',
     details: [
       { field: 'bindingId', message: bindingId },
-      ...mismatches.map((mismatch) => ({
+      { field: 'drift.failure', message: outcome.failure },
+      ...outcome.mismatches.map((mismatch) => ({
         field: `fingerprint.${mismatch.field}`,
         message: `approved "${mismatch.expected ?? ''}", observed "${mismatch.observed ?? ''}"`,
       })),
     ],
+    agentStepId: input.agentStepId,
+    ...(cause === undefined ? {} : { cause }),
   });
+}
+
+function describeLocator(locator: Locator): string {
+  return locator.strategy === 'role_and_name'
+    ? `${locator.strategy}=${locator.value}${locator.name === undefined ? '' : ` "${locator.name}"`}`
+    : `${locator.strategy}=${locator.value}`;
 }

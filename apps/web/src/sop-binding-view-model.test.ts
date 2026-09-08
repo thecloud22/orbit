@@ -1,4 +1,9 @@
-import type { SopBindingsView, SopReviewStepView, SopStepBindingView } from '@orbit/api/views';
+import type {
+  RecoveryProposalView,
+  SopBindingsView,
+  SopReviewStepView,
+  SopStepBindingView,
+} from '@orbit/api/views';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -6,8 +11,10 @@ import {
   bindingRows,
   canBindStep,
   describeBindingStatus,
+  describeProposal,
   isFullyApproved,
   isFullyBoundForPublish,
+  proposalForStep,
   summarizeBindings,
 } from './sop-binding-view-model';
 
@@ -298,5 +305,60 @@ describe('isFullyBoundForPublish', () => {
 
   it('is false when bindings could not be loaded', () => {
     expect(isFullyBoundForPublish(null)).toBe(false);
+  });
+});
+
+describe('recovery proposals in the binding panel', () => {
+  function proposal(overrides: Partial<RecoveryProposalView> = {}): RecoveryProposalView {
+    return {
+      proposalId: 'recprop_1',
+      stepId: 'search_catalog',
+      state: 'proposed',
+      replacesBindingId: 'execbind_1',
+      observedInRunId: 'run_1',
+      summary: 'The test id changed; the button did not.',
+      confidence: 'high',
+      deterministic: true,
+      before: [{ strategy: 'test_id', value: 'catalog-search-button', name: null }],
+      after: [{ strategy: 'role_and_name', value: 'button', name: 'Search' }],
+      approvedFingerprint: {
+        role: 'button',
+        accessibleName: 'Search',
+        text: 'Search',
+        width: null,
+        height: null,
+      },
+      proposedAt: '2026-09-07T10:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  it('leads with what changed rather than with the mechanism', () => {
+    // "Selector chain updated" is true and useless. The reader is deciding
+    // whether this is the same button, so the headline has to be about that.
+    expect(describeProposal(proposal()).headline).toContain('element changed');
+  });
+
+  it('renders both sides so accepting is a comparison, not a leap of faith', () => {
+    const summary = describeProposal(proposal());
+
+    expect(summary.before).toBe('test_id=catalog-search-button');
+    expect(summary.after).toBe('role_and_name=button "Search"');
+  });
+
+  it('says out loud whether a model was involved', () => {
+    // A reader should not need to know when — or whether — ranking was ever
+    // switched on to know which kind of proposal they are looking at.
+    expect(describeProposal(proposal()).provenance).toContain('No model was involved');
+    expect(describeProposal(proposal({ deterministic: false })).provenance).toContain(
+      'Ranked by a model',
+    );
+  });
+
+  it('matches a proposal to its own step and to no other', () => {
+    const proposals = [proposal()];
+
+    expect(proposalForStep(proposals, 'search_catalog')?.proposalId).toBe('recprop_1');
+    expect(proposalForStep(proposals, 'enter_isbn')).toBeNull();
   });
 });
