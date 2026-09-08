@@ -1223,8 +1223,9 @@ The short version:
 | Configure it | [`.env.example`](./.env.example), then [`docs/guides/configuration.md`](./docs/guides/configuration.md) |
 | Understand a drifted run | [`docs/guides/ui-drift-recovery.md`](./docs/guides/ui-drift-recovery.md) |
 | Fix something | [Troubleshooting](#troubleshooting) below, then [`docs/guides/troubleshooting.md`](./docs/guides/troubleshooting.md) |
-| Change the code | [`CLAUDE.md`](./CLAUDE.md), then [`docs/architecture/decisions.md`](./docs/architecture/decisions.md) |
-| Know why something is the way it is | [`docs/architecture/decisions.md`](./docs/architecture/decisions.md) — 35 ADRs |
+| Understand how it fits together | [`docs/architecture/system-design.md`](./docs/architecture/system-design.md) |
+| Change the code | [`CLAUDE.md`](./CLAUDE.md), then [`docs/architecture/system-design.md`](./docs/architecture/system-design.md) |
+| Know why something is the way it is | [`docs/architecture/decisions.md`](./docs/architecture/decisions.md) — 35 ADRs, indexed and status-marked |
 
 ## Contribution workflow
 

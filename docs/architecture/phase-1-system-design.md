@@ -1,6 +1,26 @@
 # Orbit Phase 1 System Design
 
-**Status:** Active Phase 1 architecture
+**Status:** Historical record. Accurate for Phase 1 as designed and built; **not
+a description of the current system.**
+
+**Current architecture: [`system-design.md`](./system-design.md).**
+
+Phase 1's core still runs exactly as described here — the request flow, the
+persistence model and the failure model are all still true of a Phase 1 agent.
+What has changed is everything Phase 2 added around it. Five statements below are
+now wrong, and are flagged inline where they appear:
+
+| Below | Superseded by |
+|---|---|
+| "Browser navigation checks localhost allowlist" | Per-agent `allowedDomains` (**ADR-022**) |
+| Business outcome is `none` / `request_found` / `request_not_found` | A workflow declares its own outcome names (**ADR-030**) |
+| The browser worker executes runs | The API executes runs; the worker is a CLI composition root (**ADR-011**) |
+| "No LLM" | Bounded drafting, judged decisions (**ADR-032**), and advisory suggestions |
+| "No Studio" | Studio is the authoring surface, in the same application (**ADR-031**) |
+
+This document is kept because the Phase 1 material in it is correct and because
+deleting the record of what was built first would lose the reasoning that the
+rest was built on.
 
 ## Purpose
 
@@ -28,7 +48,7 @@ Orbit API and Worker
 | API | Validates requests, persists run intent, dispatches work, queries run/evidence data |
 | Agent Registry | Loads seeded immutable Agent Version from PostgreSQL |
 | Runtime | Interprets Agent IR and manages run/step state transitions |
-| Browser Worker | Executes Playwright actions in a separate process |
+| Browser Worker | Executes Playwright actions in a separate process. **Superseded:** the API executes runs (ADR-011); the worker is a CLI composition root |
 | Demo Portal | Controlled target UI with stable test IDs |
 | PostgreSQL | Agent Versions, runs, steps, events, artifact metadata/links |
 | Artifact Storage | Local filesystem bytes for screenshots, DOM snapshots, and trace ZIPs |
@@ -50,6 +70,12 @@ Orbit API and Worker
 12. Watchtower polls GET /v1/runs/:runId and renders persisted data.
 ```
 
+**Superseded in steps 7–11:** "Worker" here means the runtime, which runs inside
+the API process. `RunDispatcher` is in-process and abstracted, off the HTTP
+request lifecycle, but nothing hands work to a separate process (ADR-011). The
+`browser-worker` app is the composition root for `pnpm agent:run`, not a queue
+consumer. Every other step is still exactly what happens.
+
 ## Data flow
 
 ```text
@@ -67,7 +93,7 @@ Agent IR YAML fixture
 
 - API and browser worker are separate Node.js processes.
 - Browser worker creates an isolated Playwright browser context for each run.
-- Browser navigation checks localhost allowlist.
+- Browser navigation checks localhost allowlist. **Superseded by ADR-022:** navigation is constrained per agent, by the `allowedDomains` its version declares.
 - Demo portal requires no credentials.
 - Artifact storage root is outside public web assets and gitignored.
 
@@ -104,6 +130,11 @@ request_not_found
 
 A run may be `succeeded/request_not_found`.
 
+**Superseded by ADR-030:** a workflow declares its own outcome names, matching
+`^[a-z][a-z0-9_]{0,63}$`, with `none` reserved for a run that reached no business
+conclusion. The two names above are what the seeded Phase 1 agent happens to
+declare, not a closed vocabulary.
+
 ## Phase 1 failure model
 
 | Failure | Expected handling |
@@ -122,8 +153,11 @@ A run may be `succeeded/request_not_found`.
 - No auth: fixed development actor only.
 - No multi-tenancy: no customer data or credentials.
 - No real target system: controlled local portal only.
-- No LLM: fixture Agent IR is manually seeded.
-- No Studio: Watchtower is the initial trigger/inspection UI.
+- No LLM: fixture Agent IR is manually seeded. **No longer true:** drafting from
+  free text, judged decisions at run time (ADR-032) and advisory recording
+  suggestions all exist, each bounded.
+- No Studio: Watchtower is the initial trigger/inspection UI. **No longer true:**
+  Studio is the authoring surface, in the same application (ADR-031).
 
 ## Extension points to preserve
 

@@ -1,6 +1,7 @@
 # Orbit Architecture Decisions
 
-**Status:** Active decisions
+**Status:** Active. This file is maintained continuously and is the authoritative
+record of why Orbit is shaped as it is.
 
 **Purpose:** Record the architecture decisions that guide the current implementation. Add a new decision record when a material technical or product architecture decision changes.
 
@@ -9,7 +10,70 @@
 - Do not rewrite prior decisions silently.
 - Mark superseded decisions rather than deleting their history.
 - Each decision should include context, decision, consequences, alternatives, and phase relevance.
-- The active Phase 1 requirements override future-state architecture aspirations.
+- Where a decision has been amended or is only partly built, its **Status** says
+  so and a note under it says which part. Read the note before treating a
+  decision as describing what runs today.
+
+## Status vocabulary
+
+| Status | Means |
+|---|---|
+| **Accepted** | Decided and implemented. Describes what runs today |
+| **Partially implemented** | Decided, and part of it is built. The note under the status says which part is not, and that part is forward-looking |
+| **Accepted — amended by ADR-nnn** | Still in force, with one clause changed by a later decision. The note says which clause |
+| **Accepted — partly superseded by ADR-nnn** | The core stands; a named mechanism in it was replaced |
+| **Superseded by ADR-nnn** | No longer in force. Retained for history |
+| **Deprecated** | In force but being retired |
+| **Proposed** | Not decided. Nothing depends on it |
+
+No ADR is currently **Superseded**, **Deprecated** or **Proposed** outright.
+Every decision here still holds in its core; nine carry a qualifier.
+
+**Nothing in this file is speculative except where a status says so.** Two
+decisions describe capabilities that do not exist yet — ADR-010's S3 adapter and
+ADR-013's tier-gated policy engine — and both are marked *Partially implemented*
+with the unbuilt half named. ADR-034 is implemented but has never run against a
+real Gemini or Bedrock service.
+
+## Index
+
+| ADR | Decision | Status |
+|---|---|---|
+| [ADR-001](#adr-001-use-a-modular-typescript-monolith-first) | Use a modular TypeScript monolith first | Accepted |
+| [ADR-002](#adr-002-preserve-sop-graph-separately-from-agent-ir) | Preserve SOP Graph separately from Agent IR | Accepted |
+| [ADR-003](#adr-003-start-with-deterministic-browser-execution) | Start with deterministic browser execution | Accepted — amended by ADR-032 |
+| [ADR-004](#adr-004-treat-evidence-as-first-class-product-data) | Treat evidence as first-class product data | Accepted |
+| [ADR-005](#adr-005-use-version-pinned-immutable-agent-versions) | Use version-pinned immutable Agent Versions | Accepted |
+| [ADR-006](#adr-006-separate-runtime-status-from-business-outcome) | Separate runtime status from business outcome | Accepted — amended by ADR-030 |
+| [ADR-007](#adr-007-use-a-restricted-expressioninterpolation-model) | Use a restricted expression/interpolation model | Accepted |
+| [ADR-008](#adr-008-use-playwright-behind-an-executor-boundary) | Use Playwright behind an executor boundary | Accepted |
+| [ADR-009](#adr-009-start-with-watchtower-as-the-trigger-ui) | Start with Watchtower as the trigger UI | Accepted — amended by ADR-031 |
+| [ADR-010](#adr-010-local-filesystem-artifacts-first-s3-compatible-storage-later) | Local filesystem artifacts first, S3-compatible storage later | Partially implemented |
+| [ADR-011](#adr-011-no-durable-queue-in-the-first-vertical-slice) | No durable queue in the first vertical slice | Accepted |
+| [ADR-012](#adr-012-introduce-llms-as-bounded-structured-services) | Introduce LLMs as bounded structured services | Accepted |
+| [ADR-013](#adr-013-adopt-trust-tiers-for-agent-authority) | Adopt trust tiers for agent authority | Partially implemented |
+| [ADR-014](#adr-014-enforce-agent-version-immutability-and-event-append-only-in-the-repository-layer-first) | Enforce Agent Version immutability and event append-only in the repository layer first | Partially implemented |
+| [ADR-015](#adr-015-contain-artifact-storage-with-a-generated-key-grammar-and-exclusive-publication) | Contain artifact storage with a generated key grammar and exclusive publication | Accepted |
+| [ADR-016](#adr-016-keep-the-sop-graph-non-executable-by-construction-and-version-it-as-immutable-checksummed-revisions) | Keep the SOP Graph non-executable by construction, and version it as immutable checksummed revisions | Accepted |
+| [ADR-017](#adr-017-hold-sop-review-workflow-rules-in-the-service-layer-not-in-the-revision-state-machine) | Hold SOP review-workflow rules in the service layer, not in the revision state machine | Accepted |
+| [ADR-018](#adr-018-bind-sop-steps-to-elements-with-a-fingerprint-the-runtime-checks-before-every-action) | Bind SOP steps to elements with a fingerprint the runtime checks before every action | Accepted |
+| [ADR-019](#adr-019-record-execution-bindings-from-a-terminal-with-script-injection-confined-to-one-file-and-parity-proven-by-test) | Record Execution Bindings from a terminal, with script injection confined to one file and parity proven by test | Accepted — partly superseded by ADR-020 and ADR-028 |
+| [ADR-020](#adr-020-record-from-watchtower-over-a-session-api-narrowing-adr-019s-ban-rather-than-lifting-it) | Record from Watchtower over a session API, narrowing ADR-019's ban rather than lifting it | Accepted — amended by ADR-022 |
+| [ADR-021](#adr-021-compile-candidate-agent-ir-by-refusing-everything-not-fully-understood-and-gate-approval-on-a-fail-closed-sandbox-check) | Compile candidate Agent IR by refusing everything not fully understood, and gate approval on a fail-closed sandbox check | Accepted |
+| [ADR-022](#adr-022-contain-browser-navigation-per-agent-and-lift-the-blanket-localhost-allowlist) | Contain browser navigation per agent, and lift the blanket localhost allowlist | Accepted |
+| [ADR-023](#adr-023-mint-an-agent-version-at-publication-rather-than-promoting-a-candidate-and-keep-the-sop-graph-non-executable) | Mint an Agent Version at publication rather than promoting a candidate, and keep the SOP Graph non-executable | Accepted |
+| [ADR-024](#adr-024-reach-compile-and-approve-from-watchtower-and-close-the-review-lifecycle-gap-that-exposing-them-surfaced) | Reach compile and approve from Watchtower, and close the review-lifecycle gap that exposing them surfaced | Accepted |
+| [ADR-025](#adr-025-collapse-review-compile-and-candidate-approval-into-one-publish-action-for-a-recorded-workflow) | Collapse review, compile, and candidate approval into one publish action for a recorded workflow | Accepted |
+| [ADR-026](#adr-026-archive-an-agent-by-retiring-its-identity-never-by-deleting-or-mutating-a-version) | Archive an agent by retiring its identity, never by deleting or mutating a version | Accepted |
+| [ADR-027](#adr-027-bind-a-drafted-workflows-steps-from-watchtower-in-a-sitting-that-holds-one-browser-open) | Bind a drafted workflow's steps from Watchtower, in a sitting that holds one browser open | Accepted |
+| [ADR-028](#adr-028-hold-an-interaction-until-it-has-been-derived-and-stop-asking-anyone-to-approve-a-workflow) | Hold an interaction until it has been derived, and stop asking anyone to approve a workflow | Accepted |
+| [ADR-029](#adr-029-bind-a-decision-per-branch-and-cap-model-spend-in-three-scopes-before-the-call) | Bind a decision per branch, and cap model spend in three scopes before the call | Accepted |
+| [ADR-030](#adr-030-let-a-workflow-declare-its-own-business-outcomes-and-let-a-reviewer-add-a-step) | Let a workflow declare its own business outcomes, and let a reviewer add a step | Accepted |
+| [ADR-031](#adr-031-name-the-authoring-surface-studio-and-read-a-run-as-one-timeline) | Name the authoring surface Studio, and read a run as one timeline | Accepted |
+| [ADR-032](#adr-032-let-a-model-decide-a-branch-bounded-to-an-index-into-a-closed-list) | Let a model decide a branch, bounded to an index into a closed list | Accepted |
+| [ADR-033](#adr-033-recover-from-ui-drift-by-proposing-a-reviewed-binding-never-by-applying-one) | Recover from UI drift by proposing a reviewed binding, never by applying one | Accepted |
+| [ADR-034](#adr-034-one-selection-layer-for-every-model-call-with-family-and-invocation-as-separate-axes) | One selection layer for every model call, with family and invocation as separate axes | Accepted — not exercised against a real Gemini or Bedrock service |
+| [ADR-035](#adr-035-bind-a-whole-workflow-from-one-walkthrough-by-proposing-an-alignment-nobody-has-to-trust) | Bind a whole workflow from one walkthrough, by proposing an alignment nobody has to trust | Accepted |
 
 ---
 
@@ -83,7 +147,9 @@ Agent IR = typed execution plan
 
 ## ADR-003: Start with deterministic browser execution
 
-**Status:** Accepted
+**Status:** Accepted — amended by ADR-032
+
+> The decision stands: browser execution is deterministic and the runtime never improvises. ADR-032 opened exactly one hole in it — a model may choose a branch, bounded to an index into a list the workflow already declares — and that call is gated by `permissions.model` on the published version. Nothing else at run time consults a model.
 
 **Phase:** 1
 
@@ -161,7 +227,9 @@ Every run references one immutable Agent Version. Drafts may be edited, but publ
 
 ## ADR-006: Separate runtime status from business outcome
 
-**Status:** Accepted
+**Status:** Accepted — amended by ADR-030
+
+> The separation of run status from business outcome is unchanged and is load-bearing. What ADR-030 amended is the *vocabulary*: outcomes are no longer a fixed pair but names a workflow declares for itself.
 
 **Phase:** 1 onward
 
@@ -234,7 +302,9 @@ Runtime depends on executor interfaces. `executor-playwright` implements approve
 
 ## ADR-009: Start with Watchtower as the trigger UI
 
-**Status:** Accepted
+**Status:** Accepted — amended by ADR-031
+
+> Watchtower is still the trigger and evidence surface. This ADR's "Studio comes later" clause is satisfied: ADR-031 named the authoring surface Studio and put it in the same application, as this ADR anticipated.
 
 **Phase:** 1
 
@@ -256,7 +326,11 @@ Watchtower is the Phase 1 manual trigger interface. Studio is introduced later f
 
 ## ADR-010: Local filesystem artifacts first, S3-compatible storage later
 
-**Status:** Accepted
+**Status:** Partially implemented
+
+> **Implemented:** the `ArtifactStorage` interface and its local filesystem adapter, with the generated key grammar of ADR-015.
+>
+> **Not implemented:** the S3-compatible adapter. It exists only as a sentence in `packages/artifacts/src/storage.ts` saying a future implementation must be able to replace the filesystem one. The seam is real and tested; the second implementation behind it does not exist. Treat S3 as forward-looking, not as available.
 
 **Phase:** 1
 
@@ -322,7 +396,11 @@ All LLM outputs must be schema-constrained, versioned, validated, and routed thr
 
 ## ADR-013: Adopt trust tiers for agent authority
 
-**Status:** Accepted
+**Status:** Partially implemented
+
+> **Implemented:** the tier vocabulary (`trustTier` in `@orbit/agent-ir`), the persisted `trust_tier` column on `agent_versions`, and a first step beyond pure observation — recovery, granted per document through `permissions.recovery` (ADR-033).
+>
+> **Not implemented:** any tier-gated policy engine. The compiler writes `observe` unconditionally and **nothing in the codebase branches on the value**. Containment today comes from per-agent domains (ADR-022), `permissions.model` (ADR-032) and `permissions.recovery` (ADR-033), each checked directly — not from the tier. The tiers are a designed vocabulary awaiting an engine, and should be read as forward-looking.
 
 **Phase:** 1 onward
 
@@ -353,7 +431,11 @@ Tier 5: bounded autonomous recovery
 
 ## ADR-014: Enforce Agent Version immutability and event append-only in the repository layer first
 
-**Status:** Accepted
+**Status:** Partially implemented
+
+> **Implemented as decided:** immutability and append-only enforcement in the repository layer, with tests.
+>
+> **Still deferred:** the database-level half. There are no triggers, rules or constraints enforcing this in any migration `0000`–`0010`; a direct `UPDATE` against `agent_versions` or `run_events` in `psql` would succeed. This ADR always presented the database half as a later hardening step, and it remains one.
 
 **Phase:** 1
 
@@ -602,7 +684,11 @@ So the two-second window bounds *post-visibility settling only*, never overall p
 
 ## ADR-019: Record Execution Bindings from a terminal, with script injection confined to one file and parity proven by test
 
-**Status:** Accepted
+**Status:** Accepted — partly superseded by ADR-020 and ADR-028
+
+> **Narrowed, then partly replaced, and both were deliberate.** ADR-020 narrowed the ban on script injection to one API directory rather than lifting it, so recording became reachable from Watchtower without reaching any process that executes an agent — a module-graph test proves the two stay apart. ADR-028 replaced this ADR's action mode with holding an interaction until it has been derived.
+>
+> What survives unchanged, and is the part that matters: **injection is confined to one file**, everything else is derived in Node through first-class Playwright APIs, and a test asserts that file is the whole of the injection surface.
 
 **Phase:** 2
 
@@ -662,7 +748,9 @@ Three questions followed. Where does the human confirm what was captured? How mu
 
 ## ADR-020: Record from Watchtower over a session API, narrowing ADR-019's ban rather than lifting it
 
-**Status:** Accepted
+**Status:** Accepted — amended by ADR-022
+
+> The session API and the Watchtower recording flow stand. This ADR's localhost clause does not: ADR-022 lifted the blanket allowlist and replaced it with per-agent domains. Recording may now target any `http` or `https` URL, because a person is driving the browser; other protocols are still refused everywhere.
 
 **Phase:** 2
 
@@ -1478,7 +1566,9 @@ This is the first Orbit feature whose subject is Orbit's own definitions. Everyt
 
 ## ADR-034: One selection layer for every model call, with family and invocation as separate axes
 
-**Status:** Accepted
+**Status:** Accepted — not exercised against a real Gemini or Bedrock service
+
+> The selection layer is implemented and unit-tested across both axes, and the Anthropic direct path is exercised continuously. The **Gemini and Bedrock paths have never been called against a real service** — they are structurally correct and unproven. `.env.example` says so at each of them. Treat them as untested integrations rather than as supported configurations.
 
 **Phase:** 2
 

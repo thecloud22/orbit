@@ -1,10 +1,131 @@
 # Orbit Product Vision and Requirements
 
-**Document status:** Initial build brief
+**Document status:** Active for the vision and principles (sections 0–6). **Sections 7
+onward are the Phase 1 build brief and are a historical record** — they describe
+what was specified before Phase 2 was built, and several of their statements are
+no longer true of the system. Each such statement is flagged where it appears.
 
 **Audience:** Product owner, technical architect, and Claude Code
 
 **Purpose:** Define Orbit's product vision, architectural principles, phased roadmap, and the narrowly scoped first implementation. This document is an input to Claude Code. It is deliberately specific about Phase 1 and deliberately non-prescriptive about later implementation details.
+
+**For what is actually built:** [`../architecture/system-design.md`](../architecture/system-design.md)
+for the architecture, [`../guides/usage.md`](../guides/usage.md) for the product,
+and [`../architecture/decisions.md`](../architecture/decisions.md) for why.
+
+---
+
+## 0. The product today
+
+Phase 1 is complete and sub-phases 2.1–2.14 have landed. This section describes
+what exists; everything below section 6 describes what was originally specified.
+
+### Who it is for
+
+| Person | What they do with it | What they need from it |
+|---|---|---|
+| **The operations lead** who owns a procedure | Records themselves doing the task once, reviews what Orbit understood, publishes it | To not have to write anything technical, and to recognise their own procedure in what comes back |
+| **The reviewer** accountable for it running | Reads the workflow, checks which element each step acts on, approves, publishes | To see exactly what will happen before it can happen, and for nothing to change without them |
+| **The person who has to answer for a run** | Opens a run and reads what it did | Proof: what executed, what it saw, what it concluded, and what it changed |
+
+None of these is a developer. The one thing all three need is the same thing:
+**to be able to tell what the agent did, and to be sure it could not have done
+anything else.**
+
+### The value
+
+An SOP already describes valuable work. Today a person performs it — moving
+between systems, entering data, checking results, recording outcomes. Orbit makes
+that procedure executable **without turning it into a prompt**, and produces
+evidence that stands up afterwards.
+
+The differentiator is not that a browser can be automated. It is that:
+
+- The business procedure stays readable, and stays the source of intent.
+- What executes is a separate, typed, version-pinned artifact compiled from it.
+- Every run references the exact immutable version it ran.
+- Every material action leaves evidence, as a product feature rather than as
+  debug output.
+- Autonomy is granted deliberately, in named increments, and is visible in the
+  published version.
+
+### The workflow
+
+```text
+record a demonstration, or describe it in words
+  -> review and correct the structured workflow
+  -> bind each step to the element it acts on   (a person demonstrates)
+  -> compile, which refuses what it cannot resolve
+  -> approve
+  -> publish an immutable version
+  -> run
+  -> read the evidence
+```
+
+**Every arrow is a deliberate human act.** Nothing advances a workflow on its
+own, and that is the product, not a limitation of it.
+
+### The safety philosophy
+
+Five commitments, each enforced structurally rather than by policy:
+
+1. **Refuse rather than guess.** The compiler refuses everything it does not
+   fully understand. A workflow that cannot be compiled honestly is not
+   published with a plausible interpretation of the missing part.
+2. **A person demonstrates; Orbit records.** Which element a step acts on is
+   never inferred. It is shown, once, by somebody who knows.
+3. **Check before acting, not after.** Before every fill and click the runtime
+   confirms the live element still matches what a person approved. The point is
+   not to type into the wrong field, not to discover afterwards that it did.
+4. **Bound every model call, and make the bound structural.** A judged decision
+   returns an index into a list the workflow already declares — it cannot invent
+   a branch. Drift diagnosis is a synchronous function, so "consults no model" is
+   a property of its type rather than a promise. Spend is capped in three scopes,
+   checked before the call.
+5. **Nothing becomes live without a person.** Accepting a repair does not
+   publish it. Publishing is always a separate, human act.
+
+The recurring shape: **the safe thing is the thing the code cannot not do.** A
+rule somebody has to remember is a rule that will eventually be forgotten.
+
+### What it does not do
+
+Stated here rather than discovered:
+
+- **No authentication, RBAC or multi-tenancy.** Any caller who can reach the API
+  can read any run and its evidence. This is not deployable to a shared
+  environment as it stands.
+- **Nothing behind a login is reachable**, because Orbit cannot supply a secret.
+- **No state-changing business actions.** No refunds, payments, messages, account
+  updates, deletions or permission changes.
+- **No durable queue.** Runs execute in the API process; an API restart mid-run
+  loses the run.
+- **No cancellation.** A started run runs to completion.
+- **No scheduling or triggering** by API, webhook, schedule, email, file or event
+  bus. A run is started by a person.
+- **A recording produces one path.** Branches are added afterwards, by a person.
+- **Sessions are in-memory.** Binding and walkthrough sessions do not survive an
+  API restart.
+- **Two integrations are unproven.** The Gemini and Bedrock paths are
+  structurally complete and have never been called against a real service.
+
+### Future direction, labelled as such
+
+The following are **designed and not built**. Nothing depends on them, and they
+should not be described as capabilities:
+
+| Direction | State |
+|---|---|
+| S3-compatible artifact storage | Interface exists; no adapter (ADR-010) |
+| A tier-gated policy engine | `trust_tier` is persisted; **nothing branches on it** (ADR-013) |
+| Database-level immutability enforcement | Repository layer only; no triggers (ADR-014) |
+| Ranked drift recovery | The narrowing seam is called in position and currently removes nothing (ADR-033) |
+| A durable queue | `RunDispatcher` is the seam (ADR-011) |
+| Real identity and multi-tenancy | Actor contract and ownership fields exist, unpopulated |
+
+Section 6's phase roadmap and section 9.2–9.3's later-phase requirements are
+forward-looking throughout, and should be read as intent rather than as
+description.
 
 ---
 
@@ -207,6 +328,18 @@ Start with read-only workflows. Increase authority only after introducing the ap
 
 Phase 1 is Tier 0 only.
 
+> **Status: the vocabulary is real; the engine is not** (ADR-013). `trustTier` is
+> part of the Agent IR contract and `trust_tier` is persisted on every version,
+> but the compiler writes `observe` unconditionally and **nothing in the codebase
+> branches on the value.** Containment today comes from three permissions checked
+> directly — per-agent domains (ADR-022), `permissions.model` (ADR-032) and
+> `permissions.recovery` (ADR-033) — not from a tier.
+>
+> Read this table as the intended vocabulary, not as an implemented control.
+> Note also that Tier 5 as described here is **not** what shipped: drift recovery
+> never repairs a run and never applies a locator on its own. It writes a
+> proposal a person accepts and then publishes (ADR-033).
+
 ---
 
 ## 5. Process contract
@@ -394,6 +527,15 @@ none
 ```
 
 A run can have `status = succeeded` and `businessOutcome = request_not_found` because the agent completed the documented procedure correctly.
+
+> **Superseded by ADR-030.** A workflow declares its own outcome names on its own
+> outcome steps, matching `^[a-z][a-z0-9_]{0,63}$`. `none` is the single reserved
+> name, for a run that reached no business conclusion. The two names above are
+> what the seeded Phase 1 agent happens to declare — ordinary names under that
+> rule, not a closed vocabulary.
+>
+> The separation of run status from business outcome, which is the point of this
+> section, is unchanged and still load-bearing (ADR-006).
 
 ### 7.8 Phase 1 event types
 
@@ -916,6 +1058,20 @@ For each task, Claude must:
 ---
 
 ## 15. Explicit out-of-scope items for Phase 1
+
+> **Historical.** This was the Phase 1 exclusion list and it did its job. Five of
+> its entries have since been implemented deliberately, each with an ADR:
+>
+> | Was excluded | Now |
+> |---|---|
+> | LLM SOP parsing | Implemented, bounded: output is re-parsed through the ordinary graph validator before storage |
+> | Runtime LLM decision-making | Implemented, bounded to an index into a closed branch list, gated by `permissions.model` (**ADR-032**) |
+> | LLM recovery | **Not** implemented, and deliberately not. Drift recovery is deterministic and consults no model (**ADR-033**) |
+> | Full SOP Graph editor; Studio UI | Studio is the authoring surface, in the same application (**ADR-031**). A visual graph canvas is still out |
+> | External website automation | Implemented, contained per agent by the domains its version declares (**ADR-022**). Real credentials, MFA and CAPTCHA remain out |
+>
+> Everything else on the list below is still out of scope. See
+> [the README's Scope section](../../README.md#scope) for the current list.
 
 Do not implement any of the following in the initial vertical slice:
 
