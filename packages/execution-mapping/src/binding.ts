@@ -99,7 +99,55 @@ export type DecisionBranchBinding = z.infer<typeof decisionBranchBindingSchema>;
  * nothing to automate about routing to a human, so a binding for one is not a
  * thing this schema can express.
  */
+/**
+ * Where one argument to an API call comes from.
+ *
+ * The same three sources a `fill` uses, minus anything captured from a page:
+ * a call is not demonstrated on a screen, so there is nothing to capture.
+ */
+export const argumentSourceSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('input'), inputId: z.string().min(1) }),
+  z.strictObject({ kind: z.literal('variable'), name: z.string().min(1) }),
+  z.strictObject({ kind: z.literal('literal'), value: z.string() }),
+]);
+export type ArgumentSource = z.infer<typeof argumentSourceSchema>;
+
+/**
+ * How a call authenticates, when the operation requires it.
+ *
+ * Names a credential reference the Agent Version must also grant; it never
+ * carries a value, and the runtime resolves it at the moment the header is
+ * built (ADR-038). Absent means the operation needs no credential -- which is
+ * a claim the reviewer makes, not something inferred from the contract.
+ */
+export const callAuthSchema = z.strictObject({
+  scheme: z.enum(['bearer', 'header']),
+  /** The header name for `header`; ignored for `bearer`, which is Authorization. */
+  headerName: z.string().min(1).optional(),
+  credentialRef: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/),
+});
+export type CallAuth = z.infer<typeof callAuthSchema>;
+
 export const bindingBodySchema = z.discriminatedUnion('kind', [
+  /**
+   * A call names an operation, and has no element at all.
+   *
+   * The only body that does not spread `bindingBase`, because `target` is an
+   * element on a page and a call points at an operation in a contract. Giving it
+   * a placeholder target to keep the shapes uniform would be inventing a page
+   * that does not exist -- and every consumer that reads `target` would then
+   * quietly treat a call as something it could click.
+   */
+  z.strictObject({
+    kind: z.literal('call'),
+    catalogId: z.string().regex(/^[a-z][a-z0-9_-]*$/),
+    operationId: z.string().min(1),
+    /** Operation parameter name to where its value comes from. */
+    arguments: z.record(z.string().min(1), argumentSourceSchema),
+    /** Graph variable to a JSON Pointer into the response body. */
+    reads: z.record(z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/), z.string().startsWith('/')),
+    auth: callAuthSchema.optional(),
+  }),
   z.strictObject({
     ...bindingBase,
     kind: z.literal('navigate'),
@@ -185,13 +233,34 @@ export function comparisonModeFor(kind: BindingKind): 'action' | 'read' {
 }
 
 /**
+ * Bodies that name exactly one element, narrowed for the callers that need it.
+ *
+ * A type guard rather than a `kind !== 'decision'` check at each call site: that
+ * comparison was correct while `decision` was the only body without a single
+ * target, and silently wrong the moment `call` arrived. Stating the property
+ * once means the next body with a different element arity breaks one place.
+ */
+export function hasSingleTarget(
+  body: BindingBody,
+): body is Extract<BindingBody, { target: ElementTarget }> {
+  return body.kind !== 'decision' && body.kind !== 'call';
+}
+
+/**
  * Every element a binding names, in order.
  *
- * One for every kind but `decision`, which names one per branch. Callers that
- * used to reach for `body.target` go through this instead, so adding a body
- * with a different element arity again does not silently break them.
+ * One for most kinds, one per branch for a `decision`, and **none for a `call`**,
+ * which points at an operation in a contract rather than at anything on a page.
+ * Callers that used to reach for `body.target` go through this instead, so a
+ * body with a different element arity does not silently break them -- which is
+ * what this function was written for, and the empty case is the first time that
+ * has actually paid off.
  */
 export function bindingTargets(body: BindingBody): readonly ElementTarget[] {
+  if (body.kind === 'call') {
+    return [];
+  }
+
   return body.kind === 'decision'
     ? body.branches.map((branch) => ({
         selectors: branch.selectors,

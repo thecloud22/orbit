@@ -60,8 +60,10 @@ export async function createDatabaseExecutionBindingResolver(options: {
 
     // A decision binding carries one element per branch and no single target,
     // and the runtime never drift-checks a decision step, so there is nothing
-    // to resolve for one.
-    if (record.binding.body.kind === 'decision') {
+    // to resolve for one. A call binding names no element at all: there is no
+    // page to drift against, which is the same reason an API step has no drift
+    // detection to speak of.
+    if (record.binding.body.kind === 'decision' || record.binding.body.kind === 'call') {
       continue;
     }
 

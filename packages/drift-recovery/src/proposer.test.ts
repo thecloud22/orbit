@@ -1,4 +1,4 @@
-import type { ExecutionBinding } from '@orbit/execution-mapping';
+import { hasSingleTarget, type ExecutionBinding } from '@orbit/execution-mapping';
 import type { DriftObservation } from '@orbit/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -92,7 +92,7 @@ describe('the drift recovery proposer', () => {
       kind: 'fill',
       valueSource: { kind: 'sop_variable', name: 'memberId' },
     });
-    expect(proposed.body.kind !== 'decision' && proposed.body.target.selectors).toEqual([FALLBACK]);
+    expect(hasSingleTarget(proposed.body) && proposed.body.target.selectors).toEqual([FALLBACK]);
   });
 
   it('keeps the approved fingerprint, so a wrong guess drifts again next run', async () => {
@@ -105,7 +105,7 @@ describe('the drift recovery proposer', () => {
     await createDriftRecoveryProposer({ store: store({ save }) }).propose(observation());
 
     const proposed = save.mock.calls[0]![0].proposedBinding;
-    expect(proposed.body.kind !== 'decision' && proposed.body.target.fingerprint).toEqual(
+    expect(hasSingleTarget(proposed.body) && proposed.body.target.fingerprint).toEqual(
       APPROVED_FINGERPRINT,
     );
   });

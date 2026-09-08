@@ -19,6 +19,7 @@
     "@orbit/db": "workspace:*",
     "@orbit/decision-judge": "workspace:*",
     "@orbit/drift-recovery": "workspace:*",
+    "@orbit/execution-mapping": "workspace:*",
     "@orbit/executor-playwright": "workspace:*",
     "@orbit/model-budget": "workspace:*",
     "@orbit/model-provider": "workspace:*",

@@ -223,9 +223,14 @@ function irInputFor(declaration: SopInputDeclaration): IrInputDeclaration | null
 }
 
 function locatorFor(binding: ExecutionBinding): Locator | undefined {
-  return binding.body.kind === 'decision'
-    ? undefined
-    : locatorFromChain(binding.body.target.selectors);
+  // A decision names one element per branch, and a call names none at all --
+  // it points at an operation in a contract. Neither has a single locator to
+  // put in the compiled step.
+  if (binding.body.kind === 'decision' || binding.body.kind === 'call') {
+    return undefined;
+  }
+
+  return locatorFromChain(binding.body.target.selectors);
 }
 
 /**

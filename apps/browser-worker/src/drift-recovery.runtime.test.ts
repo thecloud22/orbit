@@ -1,3 +1,4 @@
+import { hasSingleTarget } from '@orbit/execution-mapping';
 import { createLocalFilesystemArtifactStorage, type ArtifactStorage } from '@orbit/artifacts';
 import { createTestArtifactRoot, removeTestArtifactRoot } from '@orbit/artifacts/testing';
 import { borrowOrHoldBindings, borrowOrHoldGraph } from '@orbit/agent-ir-compiler/testing';
@@ -259,7 +260,7 @@ describe('recovering from a renamed test id on a real page', () => {
 
     const body = proposal.proposedBinding.body;
     expect(body.kind).toBe('click');
-    expect(body.kind !== 'decision' && body.target.selectors[0]).toEqual({
+    expect(hasSingleTarget(body) && body.target.selectors[0]).toEqual({
       strategy: 'role_and_name',
       value: 'button',
       name: 'Search',
@@ -279,7 +280,9 @@ describe('recovering from a renamed test id on a real page', () => {
     // working. Orbit has an opinion and no authority.
     expect(current?.state).toBe('approved');
     expect(
-      current?.binding.body.kind !== 'decision' && current?.binding.body.target.selectors[0]?.value,
+      current != null &&
+        hasSingleTarget(current.binding.body) &&
+        current.binding.body.target.selectors[0]?.value,
     ).toBe(RECORDED_TEST_ID);
 
     // Accepting is the whole of what changes it, and it goes through the
@@ -298,8 +301,9 @@ describe('recovering from a renamed test id on a real page', () => {
 
     expect(replaced?.state).toBe('approved');
     expect(
-      replaced?.binding.body.kind !== 'decision' &&
-        replaced?.binding.body.target.selectors[0]?.strategy,
+      replaced != null &&
+        hasSingleTarget(replaced.binding.body) &&
+        replaced.binding.body.target.selectors[0]?.strategy,
     ).toBe('role_and_name');
     expect((await repositories.executionBindings.findById(current!.id))?.state).toBe('superseded');
   }, 180_000);

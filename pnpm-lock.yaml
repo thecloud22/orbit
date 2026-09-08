@@ -135,6 +135,9 @@ importers:
       '@orbit/drift-recovery':
         specifier: workspace:*
         version: link:../../packages/drift-recovery
+      '@orbit/execution-mapping':
+        specifier: workspace:*
+        version: link:../../packages/execution-mapping
       '@orbit/executor-playwright':
         specifier: workspace:*
         version: link:../../packages/executor-playwright

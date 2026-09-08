@@ -1,4 +1,8 @@
-import type { ExecutionBinding, SelectorChain } from '@orbit/execution-mapping';
+import {
+  hasSingleTarget,
+  type ExecutionBinding,
+  type SelectorChain,
+} from '@orbit/execution-mapping';
 import { bindingTargets } from '@orbit/execution-mapping';
 import type { DriftObservation, RecoveryProposalOutcome, RecoveryProposer } from '@orbit/runtime';
 
@@ -63,16 +67,18 @@ export type SaveRecoveryProposalResult =
  * drifts again and stops again.
  */
 function rebind(binding: ExecutionBinding, selectors: SelectorChain): ExecutionBinding | null {
-  if (binding.body.kind === 'decision') {
-    // A decision has one element per branch and is resolved by racing them, so
-    // no single `target` exists to replace and the runtime never drift-checks
-    // one. Refused rather than half-handled.
+  if (!hasSingleTarget(binding.body)) {
+    // A decision has one element per branch and is resolved by racing them; a
+    // call has no element at all. Neither has a single `target` to replace, and
+    // the runtime drift-checks neither. Refused rather than half-handled.
     return null;
   }
 
+  const body = binding.body;
+
   return {
     ...binding,
-    body: { ...binding.body, target: { ...binding.body.target, selectors } },
+    body: { ...body, target: { ...body.target, selectors } },
   };
 }
 
