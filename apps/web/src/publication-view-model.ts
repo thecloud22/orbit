@@ -22,14 +22,40 @@ export type PublicationStage =
   /** Approved. This is the only stage that offers a Publish action. */
   | { readonly kind: 'publishable'; readonly candidateId: string }
   /** Published. The page links out rather than changing its own claim. */
-  | { readonly kind: 'published'; readonly agentVersionId: string; readonly version: string };
+  | {
+      readonly kind: 'published';
+      readonly agentVersionId: string;
+      readonly version: string;
+      /**
+       * The document has moved on since that version was compiled.
+       *
+       * True from the moment somebody revises a published workflow (ADR-036):
+       * a version is still running, and the revision on screen is not the one
+       * it was built from. It is what re-opens the publish action, which would
+       * otherwise disappear for good the first time a workflow was published.
+       */
+      readonly hasNewerRevision: boolean;
+    };
 
-export function publicationStage(publication: SopPublicationView): PublicationStage {
+/**
+ * @param currentRevisionId The revision being reviewed. Omit when the caller is
+ * only naming the stage and has no revision in hand; `hasNewerRevision` is then
+ * false, which is the conservative reading — it withholds a publish action
+ * rather than offering one on an unknown.
+ */
+export function publicationStage(
+  publication: SopPublicationView,
+  currentRevisionId?: string,
+): PublicationStage {
   if (publication.agentVersionId !== null) {
     return {
       kind: 'published',
       agentVersionId: publication.agentVersionId,
       version: publication.agentVersion ?? '',
+      hasNewerRevision:
+        currentRevisionId !== undefined &&
+        publication.compiledFromRevisionId !== null &&
+        publication.compiledFromRevisionId !== currentRevisionId,
     };
   }
 
@@ -58,7 +84,9 @@ export function publicationSummary(stage: PublicationStage): string {
     case 'publishable':
       return 'This workflow has been approved and can be published as a runnable agent.';
     case 'published':
-      return `Published as version ${stage.version}. Running it happens on the agent, not here.`;
+      return stage.hasNewerRevision
+        ? `Version ${stage.version} is running. This revision has not been published — publishing it mints the next version under the same agent, and leaves ${stage.version} exactly as it is.`
+        : `Published as version ${stage.version}. Running it happens on the agent, not here.`;
   }
 }
 
@@ -75,13 +103,28 @@ export interface CompileFailure {
  * boundary the server enforces (`publish-recording-service.ts`): a person
  * demonstrated every action in a recording personally, which stands in for
  * the business-judgement review a generated draft still needs for real. Once
- * published there is nothing left to do here but link to the agent.
+ * published there is nothing left to do here but link to the agent — unless the
+ * workflow has been revised since, which is a workflow on its way to a *next*
+ * version rather than a finished one (ADR-036).
  */
 export function offersOneClickPublish(input: {
   readonly provenanceKind: string;
   readonly stage: PublicationStage;
 }): boolean {
-  return input.provenanceKind === 'recorded' && input.stage.kind !== 'published';
+  return input.provenanceKind === 'recorded' && isPublishableStage(input.stage);
+}
+
+/**
+ * Whether a stage still has a publish in front of it.
+ *
+ * The one place "published" stops meaning "finished". Before ADR-036 a
+ * published document had no way back to editable, so `kind !== 'published'` was
+ * a complete answer; now a revised one is published *and* has an unpublished
+ * revision, and withholding the button there would leave the fork with nothing
+ * to do.
+ */
+function isPublishableStage(stage: PublicationStage): boolean {
+  return stage.kind !== 'published' || stage.hasNewerRevision;
 }
 
 /**
@@ -100,9 +143,7 @@ export function offersBoundPublish(input: {
   readonly stage: PublicationStage;
   readonly fullyBound: boolean;
 }): boolean {
-  return (
-    input.provenanceKind !== 'recorded' && input.fullyBound && input.stage.kind !== 'published'
-  );
+  return input.provenanceKind !== 'recorded' && input.fullyBound && isPublishableStage(input.stage);
 }
 
 /** One line per refusal, when the server named them (ADR-021). Empty otherwise. */

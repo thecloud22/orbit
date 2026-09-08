@@ -1,11 +1,15 @@
+import { newSopDocumentId } from '@orbit/contracts';
 import {
   createRepositories,
   SOP_REVISION_TRANSITIONS,
   sopGraphRevisions as sopGraphRevisionsTable,
+  stepChecksum,
   type OrbitDatabase,
   type SopGraphRevisionRecord,
   type SopRevisionState,
 } from '@orbit/db';
+import { buttonFingerprint } from '@orbit/execution-mapping/testing';
+import { isBindingUsable, type SelectorChain } from '@orbit/execution-mapping';
 import { useTestDatabase } from '@orbit/db/testing';
 import {
   createFakeSopProvider,
@@ -15,6 +19,7 @@ import {
 import { describeStep, type SopStep } from '@orbit/sop-graph';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { createBinding, declaredNames } from './binding-service';
 import { createSopDraftService } from './draft-service';
 import {
   availableActionsFor,
@@ -674,6 +679,174 @@ describe('SOP revision review', () => {
 
     it('permits editing only in the states declared editable', async () => {
       expect([...EDITABLE_REVISION_STATES].sort()).toEqual(['draft', 'needs_clarification']);
+    });
+  });
+
+  /**
+   * Revising a workflow that has stopped being editable (ADR-036).
+   *
+   * `approved` is terminal but for supersession, so this forks rather than
+   * reopens. What the tests below are really about is the property the whole
+   * feature rests on: a fork is cheap, because a binding is keyed by step and
+   * step content and knows nothing about which revision is current.
+   */
+  describe('revising a finished workflow', () => {
+    /** Drives the fixture draft to `approved`, which is where publishing leaves it. */
+    async function approveIt(): Promise<void> {
+      await answerEveryQuestion();
+      expect(
+        (await service().transition({ revisionId: revision.id, action: 'submit_for_review' })).ok,
+      ).toBe(true);
+      expect((await service().transition({ revisionId: revision.id, action: 'approve' })).ok).toBe(
+        true,
+      );
+    }
+
+    it('forks an approved revision into an editable one, and supersedes it', async () => {
+      await approveIt();
+      const before = await countRevisions();
+
+      const result = await service().reviseDocument({ documentId: revision.documentId });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.revision.state).toBe('draft');
+      expect(result.revision.revisionNumber).toBe(revision.revisionNumber + 1);
+      expect(result.revision.parentRevisionId).toBe(revision.id);
+      expect(result.revision.provenance.kind).toBe('edited');
+      expect(await countRevisions()).toBe(before + 1);
+
+      // The approved revision is kept exactly as it was approved, and points at
+      // what replaced it. This is the whole reason revising forks rather than
+      // reopening: a version was published from these bytes.
+      const parent = await createRepositories(getDatabase().db).sopGraphRevisions.findById(
+        revision.id,
+      );
+      expect(parent?.state).toBe('superseded');
+      expect(parent?.supersededByRevisionId).toBe(result.revision.id);
+      expect(parent?.graphSha256).toBe(revision.graphSha256);
+    });
+
+    it('carries the note through as the new revision’s provenance', async () => {
+      await approveIt();
+
+      const result = await service().reviseDocument({
+        documentId: revision.documentId,
+        note: 'The portal moved the search box.',
+      });
+
+      expect(result.ok && result.revision.provenance).toEqual({
+        kind: 'edited',
+        note: 'The portal moved the search box.',
+      });
+    });
+
+    it('copies the graph byte for byte, so no step’s checksum moves', async () => {
+      // The load-bearing fact. Binding staleness is `binding.stepSha256 !==
+      // stepChecksum(step)` — a per-step content checksum, never revision
+      // identity — so a fork that changed a single byte of any step would
+      // stale a mapping that had nothing wrong with it.
+      await approveIt();
+
+      const result = await service().reviseDocument({ documentId: revision.documentId });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.revision.graph).toEqual(revision.graph);
+      expect(result.revision.graphSha256).toBe(revision.graphSha256);
+
+      for (const step of revision.graph.steps) {
+        const forked = result.revision.graph.steps.find((candidate) => candidate.id === step.id);
+        expect(forked).toBeDefined();
+        expect(stepChecksum(forked!)).toBe(stepChecksum(step));
+      }
+    });
+
+    it('leaves an approved binding approved, fresh and usable across the fork', async () => {
+      // The same claim as above, made against a real persisted binding and the
+      // same validator the publish gate and the review page both run.
+      const bindable = revision.graph.steps.find((step) => step.kind === 'click');
+      expect(bindable).toBeDefined();
+
+      const created = await createBinding({
+        database: getDatabase().db,
+        documentId: revision.documentId,
+        revisionId: revision.id,
+        graph: revision.graph,
+        step: bindable!,
+        body: {
+          kind: 'click',
+          target: {
+            selectors: [
+              { strategy: 'test_id', value: 'search-request-button' },
+              { strategy: 'role_and_name', value: 'button', name: 'Search' },
+            ] as SelectorChain,
+            fingerprint: buttonFingerprint(),
+          },
+        },
+        confirmedByDemonstration: { reviewNote: 'Demonstrated against the portal.' },
+      });
+
+      expect(created.ok && created.binding.state).toBe('approved');
+
+      await approveIt();
+      const result = await service().reviseDocument({ documentId: revision.documentId });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const current = await createRepositories(getDatabase().db).executionBindings.findCurrent(
+        revision.documentId,
+        bindable!.id,
+      );
+
+      expect(current?.state).toBe('approved');
+      expect(
+        isBindingUsable(current!.binding, {
+          stepId: bindable!.id,
+          kind: bindable!.kind,
+          declaredNames: declaredNames(result.revision.graph),
+          stepSha256: stepChecksum(bindable!),
+        }),
+      ).toBe(true);
+    });
+
+    it('refuses a revision that is already editable, and writes nothing', async () => {
+      const before = await countRevisions();
+
+      const result = await service().reviseDocument({ documentId: revision.documentId });
+
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.reason).toBe('already_editable');
+      expect(!result.ok && result.reason === 'already_editable' && result.state).toBe('draft');
+      expect(await countRevisions()).toBe(before);
+    });
+
+    it('refuses a document that does not exist', async () => {
+      const result = await service().reviseDocument({ documentId: newSopDocumentId() });
+      expect(!result.ok && result.reason).toBe('not_found');
+    });
+
+    it('makes the forked revision editable through the ordinary edit path', async () => {
+      // Not a special mode: what a fork buys is exactly the editability every
+      // draft has, which is why nothing about `editStep` had to change.
+      await approveIt();
+
+      const revised = await service().reviseDocument({ documentId: revision.documentId });
+      expect(revised.ok).toBe(true);
+      if (!revised.ok) return;
+
+      const review = await service().reviewDocument(revision.documentId);
+      expect(review.ok && review.review.editable).toBe(true);
+      expect(review.ok && review.review.revision.id).toBe(revised.revision.id);
+
+      const edited = await service().editStep({
+        revisionId: revised.revision.id,
+        stepId: editedStep().id,
+        step: editedStep({ purpose: 'Open the portal on the new address.' }),
+      });
+
+      expect(edited.ok).toBe(true);
     });
   });
 });

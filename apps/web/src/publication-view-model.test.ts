@@ -14,6 +14,7 @@ function publication(overrides: Partial<SopPublicationView> = {}): SopPublicatio
   return {
     candidateId: null,
     candidateState: null,
+    compiledFromRevisionId: null,
     sandboxState: null,
     agentVersionId: null,
     agentVersion: null,
@@ -67,11 +68,70 @@ describe('publicationStage', () => {
       }),
     );
 
-    expect(stage).toEqual({ kind: 'published', agentVersionId: 'agentv_1', version: '0.1.0' });
+    expect(stage).toEqual({
+      kind: 'published',
+      agentVersionId: 'agentv_1',
+      version: '0.1.0',
+      hasNewerRevision: false,
+    });
 
     // The summary points somewhere else on purpose: the document did not become
     // runnable, a separate artifact did (ADR-016).
     expect(publicationSummary(stage)).toContain('not here');
+  });
+
+  it('reports a published workflow whose revision has moved on since (ADR-036)', () => {
+    const stage = publicationStage(
+      publication({
+        candidateId: 'aircand_1',
+        candidateState: 'approved',
+        compiledFromRevisionId: 'sopr_1',
+        agentVersionId: 'agentv_1',
+        agentVersion: '0.1.0',
+      }),
+      'sopr_2',
+    );
+
+    expect(stage).toEqual({
+      kind: 'published',
+      agentVersionId: 'agentv_1',
+      version: '0.1.0',
+      hasNewerRevision: true,
+    });
+
+    // Both halves said out loud: the version is still running, and this is not
+    // it. The second half is what revising produces and the first is what a
+    // person is most afraid it undid.
+    const summary = publicationSummary(stage);
+    expect(summary).toContain('0.1.0 is running');
+    expect(summary).toContain('has not been published');
+  });
+
+  it('reads a published workflow at the revision it was compiled from as unchanged', () => {
+    const stage = publicationStage(
+      publication({
+        compiledFromRevisionId: 'sopr_1',
+        agentVersionId: 'agentv_1',
+        agentVersion: '0.1.0',
+      }),
+      'sopr_1',
+    );
+
+    expect(stage.kind === 'published' && stage.hasNewerRevision).toBe(false);
+  });
+
+  it('withholds the newer-revision claim when no revision was supplied', () => {
+    // The conservative reading. A caller naming the stage without a revision in
+    // hand must not have a publish action offered to it on an unknown.
+    const stage = publicationStage(
+      publication({
+        compiledFromRevisionId: 'sopr_1',
+        agentVersionId: 'agentv_1',
+        agentVersion: '0.1.0',
+      }),
+    );
+
+    expect(stage.kind === 'published' && stage.hasNewerRevision).toBe(false);
   });
 });
 
@@ -176,5 +236,35 @@ describe('offersBoundPublish', () => {
     expect(offersBoundPublish({ provenanceKind: 'generated', stage, fullyBound: true })).toBe(
       false,
     );
+  });
+
+  it('offers publishing again once a published workflow has been revised', () => {
+    // The action the fork would otherwise have no way to finish: after ADR-036
+    // a published document can be editable again, and withholding Publish there
+    // would make revising a dead end.
+    const stage = publicationStage(
+      publication({
+        compiledFromRevisionId: 'sopr_1',
+        agentVersionId: 'agentv_1',
+        agentVersion: '0.1.0',
+      }),
+      'sopr_2',
+    );
+
+    expect(offersBoundPublish({ provenanceKind: 'edited', stage, fullyBound: true })).toBe(true);
+    expect(offersOneClickPublish({ provenanceKind: 'recorded', stage })).toBe(true);
+  });
+
+  it('still refuses a revised workflow whose steps are no longer all bound', () => {
+    const stage = publicationStage(
+      publication({
+        compiledFromRevisionId: 'sopr_1',
+        agentVersionId: 'agentv_1',
+        agentVersion: '0.1.0',
+      }),
+      'sopr_2',
+    );
+
+    expect(offersBoundPublish({ provenanceKind: 'edited', stage, fullyBound: false })).toBe(false);
   });
 });

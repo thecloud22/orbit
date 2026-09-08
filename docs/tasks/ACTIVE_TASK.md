@@ -36,7 +36,7 @@ checkout via `pnpm dev` and is asserted by `pnpm verify:phase1`. See
 `docs/tasks/reports/PHASE-1-SUMMARY-report.md`.
 
 **Phase 2 is underway.** Sub-phases 2.1, 2.2, 2.3, **2.4a, 2.4b, 2.4f, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10,
-2.11, 2.12, 2.13 and 2.14** are complete.
+2.11, 2.12, 2.13, 2.14 and 2.15** are complete.
 `@orbit/sop-graph` provides the non-executable graph contract and its validation;
 `@orbit/sop-generation` turns free text into a proposed graph; `@orbit/sop-service` persists drafts
 and drives review; `@orbit/execution-mapping` defines the Execution Binding and the runtime verifies
@@ -336,6 +336,7 @@ test.
 | Drift observation at the moment it happens | `@orbit/runtime` over the `RecoveryProposer` port (Phase 2 Task 12) |
 | Accepting or dismissing a proposal, and the per-document grant | `@orbit/sop-service` (Phase 2 Task 12) |
 | Aligning one walkthrough against a drafted workflow's unbound steps | `@orbit/sop-recording` (Phase 2 Task 14, ADR-035) |
+| Forking a finished workflow into a new editable revision | `@orbit/sop-service` (Phase 2 Task 15, ADR-036) |
 | Turning that alignment into validated proposals | `@orbit/sop-service` (Phase 2 Task 14) |
 | Which model family is called, how it is reached, and with which credential | `@orbit/model-provider` (Phase 2 Task 13, ADR-034) |
 
@@ -393,9 +394,52 @@ drift demos.
 **Home now offers recording first and describing second.** Content unchanged, order swapped; nothing
 asserted their order before, so the e2e suite now pins it.
 
+**Sub-phase 2.15 is complete: a published workflow has a next version, and the review page has one
+shape per phase.**
+
+**Revising forks; it does not reopen (ADR-036).** `approved` has always been terminal but for
+supersession, and ADR-028's one-click publish drives a workflow past the last state anyone could
+have turned back from without their ever seeing it — so a published workflow was finished,
+permanently. `reviseDocument` copies the current revision's graph into revision N+1 as a `draft`
+with provenance `edited`, superseding the parent in the same transaction through the one
+`sopGraphRevisions.create({ ..., parentRevisionId })` path every edit already uses. The approved
+revision is kept exactly as it was approved, because a live, immutable Agent Version was compiled
+from it (ADR-005, ADR-014). `POST /v1/sop-documents/:documentId/revisions`; revising something
+already editable is refused as `already_editable`, typed, not thrown.
+
+**Forking is cheap, and the whole feature rests on it.** Binding staleness is
+`binding.stepSha256 !== stepChecksum(step)` and a binding row is keyed by `(document, step)` —
+neither knows what a revision is — so a byte-identical fork leaves every binding approved and fresh.
+Only a step somebody then actually edits goes stale. Asserted directly, not assumed: checksum
+equality across the fork, a real persisted approved binding still passing `isBindingUsable`
+afterwards, and an end-to-end publish → revise → publish loop producing two versions under one
+agent.
+
+**Publish came back for a revised document.** It was gated on `stage.kind !== 'published'`, a
+complete answer only while published meant finished. `PublicationStatus` gained
+`compiledFromRevisionId`, read off the candidate row that already recorded it — nothing new is
+persisted — and a document whose current revision is not the one its version was compiled from is
+offered Publish again. A revised *recorded* workflow publishes through the **bound** path, because
+its new revision's provenance is `edited`: the recorded fast path exists because a person
+demonstrated every action personally, which stops being true of a graph somebody has since edited.
+
+**The review page is laid out from one derived phase.** `reviewPhase(review, bindings)` returns
+`drafting`, `ready` or `published`, and the page leads with what that makes relevant — what is still
+unmapped, or Publish, or what is running. Published wins over everything, because a revised document
+is published *and* editable *and* fully bound at once. On a published document the binding surfaces
+stay **available and collapsed, not hidden behind Revise**: binding is legal on an approved revision
+and is how a drifted mapping is repaired and republished without changing any step (ADR-033). The
+walkthrough offer moved **inside** the binding panel — a walkthrough is a binding action, and its
+being a sibling section was most of the reported confusion. The two live workspaces, a binding
+sitting and an open walkthrough, stay outside anything that collapses: each holds a real Chromium,
+and a window a person cannot see is a window they cannot close.
+
+Known and deliberate: revising and immediately republishing an unchanged fork mints a version that
+behaves identically to the last one. Harmless, and not prevented.
+
 ### Before starting Phase 2
 
-Read the Task 14 report's limitations section first, then Task 13's, Task 12's and Task 9's. The open items carried out of Phase 1 are:
+Read the Task 15 report's limitations section first, then Task 14's, Task 13's, Task 12's and Task 9's. The open items carried out of Phase 1 are:
 `NOT_FOUND` missing from the error taxonomy; no server-side duplicate-dispatch suppression; no
 recovery for runs orphaned by a killed API process; no retention or orphan reconciliation; and
 database-level enforcement of immutability and append-only still deferred (ADR-014).

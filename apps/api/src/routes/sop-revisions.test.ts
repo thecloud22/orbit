@@ -64,6 +64,7 @@ function review(overrides: Partial<RevisionReview> = {}): RevisionReview {
     publication: {
       candidateId: null,
       candidateState: null,
+      compiledFromRevisionId: null,
       sandboxState: null,
       agentVersionId: null,
       agentVersion: null,
@@ -274,6 +275,107 @@ describe('PATCH /v1/sop-revisions/:revisionId/steps/:stepId', () => {
       method: 'PATCH',
       url: `/v1/sop-revisions/${REVISION_ID}/steps/open_portal`,
       payload: { step: { id: 'open_portal', kind: 'teleport' } },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+});
+
+describe('POST /v1/sop-documents/:documentId/revisions', () => {
+  /** The revision a fork produces: the next number, editable, and a draft. */
+  function forked(): SopGraphRevisionRecord {
+    return {
+      ...review().revision,
+      id: newSopRevisionId(),
+      revisionNumber: 3,
+      state: 'draft',
+      provenance: { kind: 'edited' },
+      parentRevisionId: REVISION_ID,
+    };
+  }
+
+  it('creates the next revision and names it in the response', async () => {
+    const revision = forked();
+    const app = server({ reviseDocument: () => Promise.resolve({ ok: true, revision }) });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/sop-documents/${DOCUMENT_ID}/revisions`,
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().data).toEqual({
+      revisionId: revision.id,
+      revisionNumber: 3,
+      state: 'draft',
+    });
+
+    await app.close();
+  });
+
+  it('passes a note through to the service', async () => {
+    let seen: { note?: string } | null = null;
+    const app = server({
+      reviseDocument: (input) => {
+        seen = input;
+        return Promise.resolve({ ok: true, revision: forked() });
+      },
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: `/v1/sop-documents/${DOCUMENT_ID}/revisions`,
+      payload: { note: 'The portal moved the search box.' },
+    });
+
+    expect(seen).toEqual({ documentId: DOCUMENT_ID, note: 'The portal moved the search box.' });
+    await app.close();
+  });
+
+  it('reports a workflow that is already editable as a conflict, not a failure', async () => {
+    // Nothing went wrong: there is simply nothing to fork, and the person
+    // should edit what is already in front of them.
+    const app = server({
+      reviseDocument: () =>
+        Promise.resolve({ ok: false, reason: 'already_editable', state: 'draft' }),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/sop-documents/${DOCUMENT_ID}/revisions`,
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error.message).toContain('nothing to revise');
+
+    await app.close();
+  });
+
+  it('is a 404 for a document that does not exist', async () => {
+    const app = server({
+      reviseDocument: () => Promise.resolve({ ok: false, reason: 'not_found' }),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/sop-documents/${DOCUMENT_ID}/revisions`,
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('refuses a body carrying anything but a note', async () => {
+    const app = server({ reviseDocument: () => Promise.resolve({ ok: true, revision: forked() }) });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/sop-documents/${DOCUMENT_ID}/revisions`,
+      payload: { graph: { steps: [] } },
     });
 
     expect(response.statusCode).toBe(400);

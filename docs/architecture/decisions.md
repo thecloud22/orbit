@@ -1723,3 +1723,68 @@ The table's name is now narrower than what it holds, and that is a deliberate tr
 | Let a walkthrough bind a decision from the path it took | A decision bound for one branch compiles to an `expect_one_of` that cannot name the state the agent reaches down the other (ADR-029) |
 | Keep the walkthrough session id out of the URL | A reload would orphan a real Chromium, which is the hazard `bindingSessionId` is in the URL to avoid |
 | A bulk accept endpoint | Each acceptance is independently refusable; a server loop has the same semantics with one more route to keep honest |
+
+## ADR-036: Revising a published workflow forks a new draft, and binding stays available without it
+
+**Status:** Accepted
+
+**Phase:** 2
+
+### Context
+
+A person with a published workflow asked how to make a new version of it. There was no answer.
+
+`SOP_REVISION_TRANSITIONS` has always had `approved: ['superseded']`, and `request_clarification` — the one transition that moves a revision backwards — is legal only from `in_review`. So an approved revision has never had a route back to an editable state. That was survivable while a person walked the lifecycle by hand: they passed through `in_review`, could see the workflow was wrong, and could send it back before approving.
+
+ADR-028's one-click publish removed that pause. Publishing now drives `draft → in_review → approved → published` in a single action, so the last state a person could have turned back from goes by without them ever seeing it. The wall was always there; what changed is that everybody now walks into it at full speed, on their first publish, with no warning.
+
+The same person reported the review page as confusing once a workflow was approved. It was: every section decided independently whether to render, so a finished workflow showed a publish panel, a "bind every step in one walkthrough" offer, and the per-step binding panel all at once — three surfaces each presenting itself as the next thing to do, on a document where the answer was *nothing*.
+
+### Decision
+
+**Revising forks. It does not reopen.**
+
+`reviseDocument` copies the current revision's graph into revision N+1 as a `draft`, with provenance kind `edited`, and supersedes the parent in the same transaction — through `sopGraphRevisions.create({ ..., parentRevisionId })`, the one path every edit, insert and reorder already takes. No new superseding mechanism exists, and `approved: ['superseded']` is unchanged.
+
+Reopening was the obvious alternative and it is wrong on the merits. An approved revision is what a published Agent Version was compiled from, and that version is immutable by ADR-005 and ADR-014. Mutating the revision it came from would leave a live agent whose stated source no longer says what it said when somebody approved it — traceability that quietly stops being true is worse than none, because it is still believed.
+
+**Forking is cheap, and that is load-bearing rather than incidental.** Binding staleness is `binding.stepSha256 !== stepChecksum(step)` — a per-step content checksum — and a binding row is keyed by `(document, step)`. Neither knows what a revision is. So a fork whose steps are byte-identical leaves every binding `approved` and fresh, and only a step somebody actually edits afterwards goes stale. This is what makes revising a small act rather than a decision to redo the demonstration work. It is asserted directly — checksum equality across the fork, and a real persisted approved binding still passing `isBindingUsable` afterwards — because the feature is worth nothing if it ever stops holding.
+
+**Revising a workflow that is already editable is refused, not silently satisfied.** `already_editable` is a typed result, following the convention every other write in this service uses; the route reports it as 409. There is nothing to fork, and quietly spending a revision number on a copy of a draft would leave two revisions where a person expected one.
+
+**It asks before it does it.** Three things are reasonable to fear here and all three are false: that the published version will change, that the mappings will have to be redone, and that the approved revision will be rewritten. None of them is visible from a button, so the confirmation states each one before the click rather than leaving it to be discovered afterwards.
+
+**Publish comes back for a revised document, and that is why `PublicationStatus` gained `compiledFromRevisionId`.** The publish action was gated on `stage.kind !== 'published'`, which was a complete answer only while published meant finished. A revised document is published *and* has an unpublished revision, and withholding the button there would make revising a dead end. The distinguishing fact — which revision the current candidate was compiled from — was already on the candidate row; nothing new is persisted, and the view field is derived on read.
+
+**The review page is laid out from one derived phase.** `reviewPhase(review, bindings)` returns `drafting`, `ready` or `published`, and the page leads with what that phase makes relevant: what is still unmapped, or Publish, or what is running. It is a pure function with its own tests, so "what should this page show for a workflow in this state?" is a question something can answer rather than an emergent property of six independent conditions. Published wins over everything, because a running version is the most important true thing about a document — including a revised one, which is published *and* editable *and* fully bound simultaneously.
+
+**On a published document the binding surfaces stay available, collapsed, not hidden behind Revise.** Binding is legal on an approved revision and always has been, and it is how a drifted mapping is repaired and republished *without changing any step* (ADR-033). Forcing a new revision for a pure re-bind would demand an edit nobody wants to make in order to fix something that is not an edit. So they are quieter and folded away by default, under a disclosure that says what they are for; they are not gated.
+
+**The walkthrough offer moved inside the binding panel.** A walkthrough *is* a binding action — the fast route to what "What each step does on the page" is about. As a sibling section it read as a fourth, separate piece of work competing with the panel next to it, and that adjacency was most of the reported confusion. ADR-028's rule that the offer disappears once `isFullyBoundForPublish` holds is unchanged: the server refuses a walkthrough with nothing to bind, and the UI withholds the offer on the same fact.
+
+**The two live workspaces — a binding sitting and an open walkthrough — stay outside anything that collapses.** Each holds a real Chromium open on the machine running the API, and a window a person cannot see is a window they cannot close.
+
+### Consequences
+
+**A published workflow has a next version.** Revise, edit or re-bind, publish; the new version is allocated under the same agent by ADR-023's `nextVersionAfter` and ADR-024's `agentIdForDocument`, and the version that was running is untouched throughout. Proven end to end: publish, revise, every binding still approved, publish again, two versions under one agent.
+
+**A revised recorded workflow publishes through the bound path, not the recorded one.** Its new revision's provenance is `edited`, so `publish-recording-service.ts` refuses it as `not_recorded` and `publish-bound-document-service.ts` takes it — which is correct rather than incidental. The recorded fast path exists because a person demonstrated every action personally (ADR-025); once somebody has edited the graph afterwards, that is no longer true of the thing being published, and the bound path's requirement that every step carries an approved, non-stale mapping is the check that still is.
+
+**Republishing an unchanged fork is possible and mints a version.** A person can revise and immediately publish, producing `0.1.1` byte-identical in behaviour to `0.1.0`. Harmless — versions are cheap and immutable — but it is not prevented, and nothing detects it.
+
+**`open-published-agent` moved out of the publish panel into the published lead.** Rendered in both it would have been two controls with one name; left only in the panel it would have been buried inside the section a finished workflow collapses.
+
+**The drift-recovery model is untouched.** A drifted run still fails and stays failed; recovery still proposes only from the approved binding's own fallback chain, still scans for no lookalikes, still writes a separate proposal record, and acceptance still does not publish. Revising is not a recovery mechanism and no copy anywhere suggests it is.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Add `approved -> needs_clarification` and reopen the revision in place | The revision a live, immutable Agent Version was compiled from would start saying something it did not say when it was approved. Traceability that silently stops being true is worse than none |
+| Copy the whole document instead of forking a revision | A second document means a second agent (ADR-024 derives the agent from the document), so the new version would not be a version of anything — and every binding, keyed by document, would have to be redone |
+| Fork automatically on the first edit of an approved revision | The fork is a decision with consequences worth naming — a new revision number, a supersession, and a workflow that now differs from what is running. Doing it as a side effect of typing hides all three |
+| Skip the confirmation | The three things a person fears here are all false and none is visible from the button. This is exactly the case a confirmation is for |
+| Hide the binding surfaces behind Revise on a published document | Binding is legal on an approved revision and is how a drifted mapping is fixed without changing a step. Forcing a revision for a pure re-bind would require an edit to fix something that is not an edit |
+| Leave the walkthrough offer as its own section | The adjacency was the defect: the fast route and the slow route to one outcome, side by side, reading as two separate pieces of work |
+| Derive "has unpublished changes" by comparing graph checksums | The candidate row already records the revision it was compiled from. Re-deriving the same fact from bytes would be a second answer to a question that already has one |
+| Block republishing a fork nobody changed | Detecting it means defining "changed" across a graph and its bindings, to prevent something harmless. Versions are cheap and immutable |

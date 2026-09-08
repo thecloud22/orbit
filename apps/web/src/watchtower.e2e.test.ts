@@ -1313,6 +1313,32 @@ describe('Watchtower end to end', () => {
     });
   });
 
+  /** The document's publication state, straight from the API. */
+  async function publicationOf(
+    documentId: string,
+  ): Promise<{ agentVersionId: string | null; agentVersion: string | null }> {
+    const detail = (await (
+      await fetch(`${E2E_API_URL}/v1/sop-documents/${documentId}`)
+    ).json()) as {
+      data: { publication: { agentVersionId: string | null; agentVersion: string | null } };
+    };
+
+    return detail.data.publication;
+  }
+
+  /** Every step whose current binding is approved and not stale, in order. */
+  async function approvedStepIds(documentId: string): Promise<readonly string[]> {
+    const view = (await (
+      await fetch(`${E2E_API_URL}/v1/sop-documents/${documentId}/bindings`)
+    ).json()) as {
+      data: { steps: { stepId: string; status: string | null; stale: boolean }[] };
+    };
+
+    return view.data.steps
+      .filter((step) => step.status === 'approved' && !step.stale)
+      .map((step) => step.stepId);
+  }
+
   describe('publishing', () => {
     it('shows the publication state without ever claiming the document is executable', async () => {
       // The rule ADR-016 fixes and 2.6 must not erode: publishing produces a
@@ -1413,11 +1439,15 @@ describe('Watchtower end to end', () => {
 
       // Publishing mints a version; it does not lock this document into a
       // read-only state. Both are true of it now, and each has to say so
-      // rather than leave the other implied.
-      const publishedNote =
-        (await page.getByTestId('sop-already-published-note').textContent()) ?? '';
-      expect(publishedNote).toContain('Already published as version');
-      expect(publishedNote).toContain('does not change what is currently running');
+      // rather than leave the other implied. Since ADR-036 the page leads with
+      // exactly that pair rather than appending it as a note between panels.
+      expect((await page.getByTestId('sop-review-lead-title').textContent()) ?? '').toContain(
+        'Running as version',
+      );
+      expect((await page.getByTestId('sop-review-lead-body').textContent()) ?? '').toContain(
+        'none of it changes what is running now',
+      );
+      expect(await page.getByTestId('sop-revise-start').count()).toBe(1);
 
       // Recording auto-approves every binding, so nothing is left to
       // demonstrate — the offer disappears rather than opening a browser that
@@ -1471,6 +1501,122 @@ describe('Watchtower end to end', () => {
       await page.getByTestId('run-page').waitFor({ state: 'visible', timeout: 30_000 });
       await page.getByTestId('run-status-panel').waitFor({ state: 'visible', timeout: 30_000 });
       expect(await page.getByTestId('run-request-error').count()).toBe(0);
+
+      await page.close();
+    });
+
+    it('revises a published workflow, keeps every binding, and publishes a second version', async () => {
+      // The loop ADR-036 exists to close. Before it, `approved` had no
+      // transition back to an editable state and one-click publish drove a
+      // workflow straight past the last state it could have turned back from —
+      // so a published workflow was finished, permanently, whatever anybody
+      // learned about it afterwards.
+      const page = await open('/');
+
+      await expect
+        .poll(() => page.getByTestId('record-workflow-form').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      await page.getByTestId('recording-title').fill('Find a service request, then revise it');
+      await page.getByTestId('recording-url').fill('http://localhost:3001/requests');
+      await page.getByTestId('start-recording-button').click();
+
+      await expect
+        .poll(() => page.getByTestId('recording-action').count(), { timeout: 30_000 })
+        .toBe(3);
+      await page.getByTestId('finish-recording-button').click();
+
+      await expect.poll(() => page.getByTestId('sop-review').count(), { timeout: 30_000 }).toBe(1);
+
+      await page
+        .getByTestId('publish-recording-button')
+        .waitFor({ state: 'visible', timeout: 20_000 });
+      await page.getByTestId('publish-recording-button').click();
+
+      await expect
+        .poll(() => page.getByTestId('sop-revise-start').count(), { timeout: 20_000 })
+        .toBe(1);
+
+      const documentId = new URL(page.url()).searchParams.get('documentId');
+      const first = await publicationOf(documentId!);
+      expect(first.agentVersion).toBe('0.1.0');
+
+      // Published leads with what is running, and the authoring surfaces are
+      // collapsed behind one labelled disclosure rather than three sections
+      // competing to be the next thing to do.
+      expect(await page.getByTestId('sop-review-lead-published').count()).toBe(1);
+      expect((await page.getByTestId('sop-review-lead-title').textContent()) ?? '').toContain(
+        'Running as version 0.1.0',
+      );
+      expect(await page.getByTestId('sop-authoring-surfaces').count()).toBe(1);
+      expect(
+        await page
+          .getByTestId('sop-authoring-surfaces')
+          .evaluate((node) => node.hasAttribute('open')),
+      ).toBe(false);
+
+      // Binding stays reachable on a published document without revising: a
+      // drifted mapping is fixed and republished without changing any step.
+      await page.getByTestId('sop-authoring-surfaces-summary').click();
+      await page.getByTestId('sop-bindings').waitFor({ state: 'visible', timeout: 20_000 });
+
+      const boundBefore = await approvedStepIds(documentId!);
+      expect(boundBefore.length).toBeGreaterThan(0);
+
+      // Revising asks first, and says the three things a person is right to
+      // fear are false before they commit to it.
+      await page.getByTestId('sop-revise-start').click();
+      const confirmation =
+        (await page.getByTestId('sop-revise-confirm-points').textContent()) ?? '';
+      expect(confirmation).toContain('Every mapping already recorded is kept');
+      expect(confirmation).toContain('Version 0.1.0 keeps running');
+
+      await page.getByTestId('sop-revise-confirm-button').click();
+
+      // Revision N+1, editable, and the published version untouched.
+      await expect
+        .poll(async () => (await page.getByTestId('sop-review-state').textContent()) ?? '', {
+          timeout: 20_000,
+        })
+        .toBe('Revision 2 · Draft');
+
+      expect((await page.getByTestId('sop-review-lead-body').textContent()) ?? '').toContain(
+        'Revision 2 has not been published',
+      );
+
+      const afterRevise = await publicationOf(documentId!);
+      expect(afterRevise.agentVersionId).toBe(first.agentVersionId);
+      expect(afterRevise.agentVersion).toBe('0.1.0');
+
+      // The whole reason forking is cheap: a binding is keyed by step and step
+      // content, never by revision, so a byte-identical fork stales nothing.
+      expect(await approvedStepIds(documentId!)).toEqual(boundBefore);
+
+      // And publishing again mints the next version under the same agent
+      // rather than colliding with, or replacing, the one that is running.
+      await page
+        .getByTestId('publish-recording-button')
+        .waitFor({ state: 'visible', timeout: 20_000 });
+      await page.getByTestId('publish-recording-button').click();
+
+      await expect
+        .poll(async () => (await publicationOf(documentId!)).agentVersion, { timeout: 30_000 })
+        .toBe('0.1.1');
+
+      const republished = await publicationOf(documentId!);
+      expect(republished.agentVersionId).not.toBe(first.agentVersionId);
+
+      const versions = (await (await fetch(`${E2E_API_URL}/v1/agent-versions`)).json()) as {
+        data: { id: string; agentId: string; version: string }[];
+      };
+
+      const before = versions.data.find((version) => version.id === first.agentVersionId);
+      const after = versions.data.find((version) => version.id === republished.agentVersionId);
+
+      expect(before).toBeDefined();
+      expect(after).toBeDefined();
+      expect(after!.agentId).toBe(before!.agentId);
+      expect([before!.version, after!.version]).toEqual(['0.1.0', '0.1.1']);
 
       await page.close();
     });

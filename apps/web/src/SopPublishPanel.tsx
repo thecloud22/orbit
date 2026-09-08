@@ -9,6 +9,14 @@ import {
 } from './publication-view-model';
 
 /**
+ * Note what this panel no longer holds: the link to the published agent. A
+ * published document leads with what is running (ADR-036), and the link belongs
+ * in that lead — rendered twice it would be two controls with one name, and
+ * rendered here alone it would be buried in the section a finished workflow
+ * collapses.
+ */
+
+/**
  * Turning a workflow into a runnable agent, on the review page.
  *
  * A recorded workflow gets one action: publish. There is no longer a question
@@ -34,6 +42,8 @@ import {
  */
 export function SopPublishPanel(props: {
   readonly publication: SopPublicationView;
+  /** The revision on screen, which decides whether a published document has moved on. */
+  readonly revisionId: string;
   readonly provenanceKind: string;
   /** Every step the compiler needs a binding for has an approved, fresh one. */
   readonly fullyBound: boolean;
@@ -41,9 +51,8 @@ export function SopPublishPanel(props: {
   readonly isPublishing: boolean;
   readonly publishFailure: CompileFailure | null;
   readonly onPublish: () => void;
-  readonly onOpenAgent: (agentVersionId: string) => void;
 }): React.JSX.Element {
-  const stage = publicationStage(props.publication);
+  const stage = publicationStage(props.publication, props.revisionId);
 
   const recorded = offersOneClickPublish({ provenanceKind: props.provenanceKind, stage });
   const bound = offersBoundPublish({
@@ -109,22 +118,13 @@ export function SopPublishPanel(props: {
             }}
             type="button"
           >
-            {props.isPublishing ? 'Publishing…' : 'Publish this workflow'}
+            {props.isPublishing
+              ? 'Publishing…'
+              : stage.kind === 'published'
+                ? 'Publish this as a new version'
+                : 'Publish this workflow'}
           </button>
         </div>
-      ) : null}
-
-      {stage.kind === 'published' ? (
-        <button
-          className="mt-3 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-900"
-          data-testid="open-published-agent"
-          onClick={() => {
-            props.onOpenAgent(stage.agentVersionId);
-          }}
-          type="button"
-        >
-          Open the published agent →
-        </button>
       ) : null}
 
       {props.publishFailure === null ? null : (

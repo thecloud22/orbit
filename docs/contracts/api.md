@@ -267,6 +267,10 @@ is split rather than left to read as if it still described the whole API.
 
 - SOP authoring: `POST /v1/sop-drafts`, and the revision step, reorder, answer
   and transition routes
+- Revising a finished workflow: `POST /v1/sop-documents/:documentId/revisions`
+  forks the current revision into a new editable one and supersedes it. It does
+  not reopen an approved revision, and it changes nothing about any published
+  Agent Version (ADR-036)
 - Publishing: `POST /v1/agent-ir-candidates/:candidateId/publish`,
   `POST /v1/sop-documents/:documentId/publish-bound`,
   `POST /v1/sop-documents/:documentId/publish-recording`

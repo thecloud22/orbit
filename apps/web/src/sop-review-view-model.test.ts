@@ -1,3 +1,4 @@
+import type { SopBindingsView, SopStepBindingView } from '@orbit/api/views';
 import type { SopReviewView } from '@orbit/api/views';
 import { describe, expect, it } from 'vitest';
 
@@ -8,6 +9,9 @@ import {
   fieldsForStepKind,
   pruneEmptyFields,
   publishBlockedReason,
+  reviewLead,
+  reviewPhase,
+  reviseConfirmation,
   stateLabel,
 } from './sop-review-view-model';
 
@@ -38,6 +42,7 @@ const REVIEW: SopReviewView = {
   publication: {
     candidateId: null,
     candidateState: null,
+    compiledFromRevisionId: null,
     sandboxState: null,
     agentVersionId: null,
     agentVersion: null,
@@ -184,5 +189,162 @@ describe('pruneEmptyFields', () => {
 
   it('keeps false, which is a real value', () => {
     expect(pruneEmptyFields({ id: 'a', sensitive: false })).toEqual({ id: 'a', sensitive: false });
+  });
+});
+
+/** One step's binding row, defaulting to a step nobody has demonstrated. */
+function bindingStep(overrides: Partial<SopStepBindingView> = {}): SopStepBindingView {
+  return {
+    stepId: 'search',
+    kind: 'click',
+    bindable: true,
+    status: null,
+    bindingId: null,
+    supersededCount: 0,
+    stale: false,
+    issues: [],
+    selectors: null,
+    fingerprint: null,
+    ...overrides,
+  };
+}
+
+function bindings(steps: readonly SopStepBindingView[]): SopBindingsView {
+  return {
+    documentId: 'sopdoc_1',
+    revisionId: 'soprev_1',
+    steps,
+    summary: {
+      bindable: steps.filter((step) => step.bindable).length,
+      bound: steps.filter((step) => step.status !== null).length,
+      approved: steps.filter((step) => step.status === 'approved').length,
+      stale: steps.filter((step) => step.stale).length,
+    },
+  };
+}
+
+const APPROVED = bindingStep({ status: 'approved' });
+
+const PUBLISHED_AT_THIS_REVISION: SopReviewView = {
+  ...REVIEW,
+  editable: false,
+  state: 'approved',
+  publication: {
+    candidateId: 'aircand_1',
+    candidateState: 'approved',
+    compiledFromRevisionId: REVIEW.revisionId,
+    sandboxState: 'ready',
+    agentVersionId: 'agentv_1',
+    agentVersion: '0.1.0',
+  },
+};
+
+describe('reviewPhase', () => {
+  it('is drafting while a step still has to be shown to Orbit', () => {
+    expect(reviewPhase(REVIEW, bindings([bindingStep()]))).toBe('drafting');
+  });
+
+  it('is drafting when the bindings could not be read at all', () => {
+    // Unknown is not ready. Offering Publish on a failed fetch would offer an
+    // action the server refuses.
+    expect(reviewPhase(REVIEW, null)).toBe('drafting');
+  });
+
+  it('is ready once every step that needs a mapping has an approved one', () => {
+    expect(reviewPhase(REVIEW, bindings([APPROVED]))).toBe('ready');
+  });
+
+  it('is not ready when an approved mapping has gone stale', () => {
+    expect(reviewPhase(REVIEW, bindings([bindingStep({ status: 'approved', stale: true })]))).toBe(
+      'drafting',
+    );
+  });
+
+  it('is published whenever a version exists, whatever the revision looks like', () => {
+    expect(reviewPhase(PUBLISHED_AT_THIS_REVISION, bindings([APPROVED]))).toBe('published');
+  });
+
+  it('stays published after the workflow has been revised', () => {
+    // The case that makes the ordering load-bearing: a revised document is
+    // published *and* editable *and* fully bound at the same time, and what a
+    // reader needs told first is that something is still running (ADR-036).
+    const revised: SopReviewView = {
+      ...PUBLISHED_AT_THIS_REVISION,
+      revisionId: 'soprev_2',
+      revisionNumber: 3,
+      editable: true,
+      state: 'draft',
+    };
+
+    expect(reviewPhase(revised, bindings([APPROVED]))).toBe('published');
+  });
+});
+
+describe('reviewLead', () => {
+  it('counts what is still unmapped, in the drafting phase', () => {
+    const lead = reviewLead(REVIEW, bindings([bindingStep(), bindingStep({ stepId: 'fill' })]));
+
+    expect(lead.phase).toBe('drafting');
+    expect(lead.body).toContain('2 steps');
+  });
+
+  it('says one step in the singular', () => {
+    expect(reviewLead(REVIEW, bindings([bindingStep()])).body).toContain('One step');
+  });
+
+  it('does not count a step the compiler needs no mapping for', () => {
+    const lead = reviewLead(
+      REVIEW,
+      bindings([APPROVED, bindingStep({ stepId: 'open', kind: 'navigate', bindable: true })]),
+    );
+
+    expect(lead.phase).toBe('ready');
+  });
+
+  it('admits it does not know when the bindings could not be read', () => {
+    expect(reviewLead(REVIEW, null).body).toContain('could not read');
+  });
+
+  it('leads a published workflow with what is running', () => {
+    const lead = reviewLead(PUBLISHED_AT_THIS_REVISION, bindings([APPROVED]));
+
+    expect(lead.title).toBe('Running as version 0.1.0');
+    expect(lead.body).toContain('none of it changes what is running now');
+  });
+
+  it('names the unpublished revision once a published workflow has been revised', () => {
+    const revised: SopReviewView = {
+      ...PUBLISHED_AT_THIS_REVISION,
+      revisionId: 'soprev_2',
+      revisionNumber: 3,
+      editable: true,
+    };
+
+    const lead = reviewLead(revised, bindings([APPROVED]));
+
+    expect(lead.title).toBe('Running as version 0.1.0');
+    expect(lead.body).toContain('Revision 3 has not been published');
+    expect(lead.body).toContain('keeps running');
+  });
+});
+
+describe('reviseConfirmation', () => {
+  it('answers the three things a person is right to fear before forking', () => {
+    const confirmation = reviseConfirmation(PUBLISHED_AT_THIS_REVISION);
+
+    // The approved revision is kept, the mappings are kept, and the running
+    // version is untouched. All three are stated before the click, because none
+    // of them is visible from the button (ADR-036).
+    expect(confirmation.points[0]).toContain('revision 3');
+    expect(confirmation.points[0]).toContain('Revision 2 is kept');
+    expect(confirmation.points[1]).toContain('Every mapping already recorded is kept');
+    expect(confirmation.points[2]).toContain('Version 0.1.0 keeps running');
+    expect(confirmation.points[2]).toContain('until you publish again');
+  });
+
+  it('says what is true when nothing has been published yet', () => {
+    expect(reviseConfirmation({ ...REVIEW, editable: false }).points[2]).toBe(
+      'Nothing that is running changes until you publish again.',
+    );
   });
 });

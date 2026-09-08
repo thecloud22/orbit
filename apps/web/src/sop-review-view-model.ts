@@ -1,6 +1,7 @@
-import type { SopReviewView } from '@orbit/api/views';
+import type { SopBindingsView, SopReviewView } from '@orbit/api/views';
 
 import type { ApiRequestError } from './api-client';
+import { isBindingRequired, isFullyBoundForPublish } from './sop-binding-view-model';
 
 /**
  * Every decision the review UI makes, as pure functions.
@@ -38,6 +39,126 @@ export function publishBlockedReason(review: SopReviewView): string | null {
   return unanswered === 1
     ? 'One clarification question still needs an answer before this workflow can be published.'
     : `${unanswered} clarification questions still need answers before this workflow can be published.`;
+}
+
+/**
+ * Where this workflow has got to, as one value the whole page is laid out from.
+ *
+ * Every section used to decide independently whether to render, so a finished
+ * workflow showed a publish panel, a walkthrough offer and a binding panel at
+ * once — three surfaces competing to be the next thing to do, on a document
+ * where the answer was "nothing". One derived phase makes that a single
+ * decision, taken once, in a function a test can ask questions of.
+ *
+ * The order of the checks is the meaning. Published wins over everything,
+ * because a running version is the most important true thing about a document
+ * regardless of what its current revision looks like — including a revised one,
+ * which is published *and* editable *and* fully bound simultaneously.
+ */
+export type ReviewPhase = 'drafting' | 'ready' | 'published';
+
+export function reviewPhase(review: SopReviewView, bindings: SopBindingsView | null): ReviewPhase {
+  if (review.publication.agentVersionId !== null) {
+    return 'published';
+  }
+
+  return isFullyBoundForPublish(bindings) ? 'ready' : 'drafting';
+}
+
+export interface ReviewLead {
+  readonly phase: ReviewPhase;
+  readonly title: string;
+  readonly body: string;
+}
+
+/**
+ * The one thing the page leads with, in the phase's own terms.
+ *
+ * Drafting leads with what is missing, because that is the only question its
+ * reader has. Ready leads with the action. Published leads with the fact that
+ * something is running — and says, without being asked, that working here
+ * cannot change it.
+ */
+export function reviewLead(review: SopReviewView, bindings: SopBindingsView | null): ReviewLead {
+  const phase = reviewPhase(review, bindings);
+
+  if (phase === 'published') {
+    const version = review.publication.agentVersion ?? 'unknown';
+    const unpublished = review.publication.compiledFromRevisionId !== review.revisionId;
+
+    return {
+      phase,
+      title: `Running as version ${version}`,
+      body: unpublished
+        ? `Revision ${String(review.revisionNumber)} has not been published. Version ${version} keeps running exactly as it is until you publish again.`
+        : 'This workflow is live. Everything below builds toward a new version; none of it changes what is running now.',
+    };
+  }
+
+  if (phase === 'ready') {
+    return {
+      phase,
+      title: 'Ready to publish',
+      body: 'Every step that needs one has an approved, up-to-date mapping to a real page. Publishing turns this workflow into a runnable agent.',
+    };
+  }
+
+  const remaining = unboundRequiredCount(bindings);
+
+  return {
+    phase,
+    title: 'Not ready to run yet',
+    body:
+      remaining === null
+        ? 'Orbit could not read how far this workflow has been mapped to a real page.'
+        : remaining === 0
+          ? 'No step of this workflow needs to be shown to Orbit in a browser yet.'
+          : remaining === 1
+            ? 'One step still has to be shown to Orbit in a real browser before this workflow can run.'
+            : `${String(remaining)} steps still have to be shown to Orbit in a real browser before this workflow can run.`,
+  };
+}
+
+/** Required steps with no approved, usable binding. Null when unknown. */
+function unboundRequiredCount(bindings: SopBindingsView | null): number | null {
+  if (bindings === null) {
+    return null;
+  }
+
+  return bindings.steps.filter(
+    (step) =>
+      isBindingRequired(step.kind) &&
+      !(step.status === 'approved' && !step.stale && step.issues.length === 0),
+  ).length;
+}
+
+export interface ReviseConfirmation {
+  readonly title: string;
+  readonly points: readonly string[];
+  readonly confirmLabel: string;
+}
+
+/**
+ * What revising actually does, said before it is done.
+ *
+ * Three facts, because three things are reasonable to fear here and each is
+ * false: that the published version will change, that the mappings will have to
+ * be redone, and that the approved revision will be rewritten. See ADR-036.
+ */
+export function reviseConfirmation(review: SopReviewView): ReviseConfirmation {
+  const version = review.publication.agentVersion;
+
+  return {
+    title: 'Make this workflow editable again?',
+    points: [
+      `This creates revision ${String(review.revisionNumber + 1)} as an editable copy. Revision ${String(review.revisionNumber)} is kept exactly as it was approved.`,
+      'Every mapping already recorded is kept. Only a step you actually change has to be shown to Orbit again.',
+      version === null
+        ? 'Nothing that is running changes until you publish again.'
+        : `Version ${version} keeps running, unchanged, until you publish again — and publishing then adds a new version rather than replacing it.`,
+    ],
+    confirmLabel: 'Create an editable revision',
+  };
 }
 
 export const REVIEW_STATE_LABELS: Readonly<Record<string, string>> = {

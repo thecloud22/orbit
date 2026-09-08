@@ -101,6 +101,16 @@ export interface PublicationStatus {
   /** The newest candidate for this document, if one has been compiled. */
   readonly candidateId: string | null;
   readonly candidateState: string | null;
+  /**
+   * The revision that candidate was compiled from.
+   *
+   * Read against the current revision id, this is how a caller tells "published,
+   * and this is what is running" from "published, and there are changes since"
+   * — the state a document lands in the moment somebody revises it (ADR-036).
+   * Derived from the candidate row, which has always recorded it; nothing new
+   * is persisted for this.
+   */
+  readonly compiledFromRevisionId: string | null;
   /** Whether that candidate could be checked; `cannot_validate` blocks approval. */
   readonly sandboxState: string | null;
   /** Set once the candidate has been published. */
@@ -176,6 +186,11 @@ export type ReorderResultOfRevision =
       readonly issues: readonly SopGraphIssue[];
     };
 
+export type ReviseDocumentResult =
+  | { readonly ok: true; readonly revision: SopGraphRevisionRecord }
+  | { readonly ok: false; readonly reason: 'not_found' }
+  | { readonly ok: false; readonly reason: 'already_editable'; readonly state: SopRevisionState };
+
 export type AnswerQuestionResult =
   | { readonly ok: true; readonly answer: SopClarificationAnswerRecord }
   | { readonly ok: false; readonly reason: 'not_found' }
@@ -227,6 +242,26 @@ export interface SopRevisionService {
     readonly move: ReorderMove;
     readonly note?: string;
   }): Promise<ReorderResultOfRevision>;
+  /**
+   * Makes a finished workflow editable again, by forking it.
+   *
+   * `approved` is terminal but for supersession, and deliberately so: what
+   * somebody approved has to keep meaning what it meant, and every published
+   * Agent Version compiled from it is immutable (ADR-005, ADR-014). So this
+   * does not reopen the revision on screen — it copies that revision's graph
+   * into the *next* one, as a `draft`, and supersedes the parent in the same
+   * transaction through the one `create` path every other edit already uses.
+   *
+   * The graph is copied byte for byte, which is what makes this cheap: a
+   * binding is keyed by `(document, step)` and its staleness is a per-step
+   * checksum (`stepChecksum`), never revision identity, so every existing
+   * binding stays approved and fresh across the fork. Only a step somebody then
+   * actually edits goes stale. See ADR-036.
+   */
+  reviseDocument(input: {
+    readonly documentId: SopDocumentId;
+    readonly note?: string;
+  }): Promise<ReviseDocumentResult>;
   answerQuestion(input: {
     readonly revisionId: SopRevisionId;
     readonly questionId: string;
@@ -272,6 +307,7 @@ async function publicationStatusFor(
     return {
       candidateId: null,
       candidateState: null,
+      compiledFromRevisionId: null,
       sandboxState: null,
       agentVersionId: null,
       agentVersion: null,
@@ -285,6 +321,7 @@ async function publicationStatusFor(
   return {
     candidateId: candidate.id,
     candidateState: candidate.state,
+    compiledFromRevisionId: candidate.revisionId,
     sandboxState: candidate.sandboxState,
     agentVersionId: published?.id ?? null,
     agentVersion: published?.version ?? null,
@@ -543,6 +580,39 @@ export function createSopRevisionService(options: SopRevisionServiceOptions): So
         return {
           ok: true,
           revision: await supersedeWith(repositories, revision, result.graph, input.note),
+        };
+      });
+    },
+
+    async reviseDocument(input) {
+      return withTransaction(database, async (repositories) => {
+        const document = await repositories.sopDocuments.findById(input.documentId);
+
+        if (document === null) {
+          return { ok: false, reason: 'not_found' };
+        }
+
+        const revision = await repositories.sopGraphRevisions.findCurrent(input.documentId);
+
+        if (revision === null) {
+          return { ok: false, reason: 'not_found' };
+        }
+
+        // Refused rather than silently forked. A revision that is already
+        // `draft` or `needs_clarification` can just be edited, and forking it
+        // would spend a revision number on a copy of itself and leave the
+        // person wondering which of the two they are looking at.
+        if (isEditableState(revision.state)) {
+          return { ok: false, reason: 'already_editable', state: revision.state };
+        }
+
+        // The same graph, unchanged. Not a normalisation pass and not a
+        // migration: `create` re-validates it, and any difference it introduced
+        // would change a step's checksum and so stale a binding that had
+        // nothing wrong with it.
+        return {
+          ok: true,
+          revision: await supersedeWith(repositories, revision, revision.graph, input.note),
         };
       });
     },

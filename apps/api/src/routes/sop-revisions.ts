@@ -38,6 +38,14 @@ const insertStepBodySchema = z.strictObject({
   note: z.string().trim().min(1).max(500).optional(),
 });
 
+/**
+ * Revising a published workflow. Nothing but an optional note: what the new
+ * revision contains is the current one's graph, copied (ADR-036).
+ */
+const reviseBodySchema = z.strictObject({
+  note: z.string().trim().min(1).max(500).optional(),
+});
+
 const reorderBodySchema = z.strictObject({
   move: z.union([
     z.strictObject({ stepId: z.string().min(1), direction: z.enum(['up', 'down']) }),
@@ -140,6 +148,57 @@ export function registerSopRevisionRoutes(app: FastifyInstance, context: ApiCont
     const payload: DataEnvelope<SopReviewView> = { data: toSopReviewView(result.review) };
     return payload;
   });
+
+  /**
+   * A new editable revision of a workflow that has stopped being editable.
+   *
+   * Under the document rather than under the revision, because the caller is
+   * asking for the *next* revision of this workflow and does not need to know —
+   * or race against — which one is current. Publishing again afterwards mints
+   * the next version under the same agent (ADR-023/ADR-024); nothing here
+   * touches the version that is running.
+   */
+  app.post<{ Params: { documentId: string } }>(
+    '/v1/sop-documents/:documentId/revisions',
+    async (request, reply) => {
+      const { documentId } = parseParams(
+        z.object({ documentId: sopDocumentIdSchema }),
+        request.params,
+        'document id',
+      );
+      const body = parseBody(reviseBodySchema, request.body, 'revision request');
+
+      const result = await context.sopRevisionService.reviseDocument({
+        documentId,
+        ...(body.note === undefined ? {} : { note: body.note }),
+      });
+
+      if (!result.ok) {
+        switch (result.reason) {
+          case 'not_found':
+            throw notFound(`SOP document "${documentId}" does not exist.`);
+          case 'already_editable':
+            throw conflict(
+              `This workflow is already "${result.state}" and can be edited as it stands, so there is nothing to revise.`,
+            );
+        }
+      }
+
+      const payload: DataEnvelope<{
+        revisionId: string;
+        revisionNumber: number;
+        state: string;
+      }> = {
+        data: {
+          revisionId: result.revision.id,
+          revisionNumber: result.revision.revisionNumber,
+          state: result.revision.state,
+        },
+      };
+
+      return reply.code(201).send(payload);
+    },
+  );
 
   app.get<{ Params: { revisionId: string } }>('/v1/sop-revisions/:revisionId', async (request) => {
     const { revisionId } = parseParams(

@@ -242,6 +242,23 @@ export async function insertSopStep(
   });
 }
 
+/**
+ * Makes a published workflow editable again, as the next revision.
+ *
+ * The revision that was published is superseded, not reopened, and every
+ * binding it had is kept — a binding is keyed by step and step content, never
+ * by revision (ADR-036). What is running is untouched until this is published
+ * again.
+ */
+export async function reviseSopDocument(
+  documentId: string,
+  note?: string,
+): Promise<{ revisionId: string; revisionNumber: number; state: string }> {
+  return send(`/v1/sop-documents/${documentId}/revisions`, 'POST', {
+    ...(note === undefined ? {} : { note }),
+  });
+}
+
 export async function reorderSopStep(
   revisionId: string,
   stepId: string,

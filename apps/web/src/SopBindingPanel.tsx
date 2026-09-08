@@ -45,6 +45,20 @@ export interface SopBindingPanelProps {
   readonly onAcceptProposal: (proposalId: string) => void;
   readonly onDismissProposal: (proposalId: string) => void;
   readonly resolvingProposalId: string | null;
+  /**
+   * The offer to demonstrate every step in one pass (ADR-035).
+   *
+   * Rendered inside this panel rather than above it, because a walkthrough *is*
+   * a way of doing what this panel is about. As a top-level section it competed
+   * with "What each step does on the page" for the same job, and a person had
+   * to work out that the two were the fast and the slow route to one outcome
+   * rather than two separate pieces of work.
+   *
+   * Passed as a node rather than as five props, so the decision this panel does
+   * not own — whether there is anything left worth demonstrating, and where a
+   * browser would open — stays with the page that already knows about sessions.
+   */
+  readonly walkthrough?: React.ReactNode;
 }
 
 const TONE_CLASSES: Readonly<Record<BindingTone, string>> = {
@@ -82,11 +96,15 @@ export function SopBindingPanel({
   onAcceptProposal,
   onDismissProposal,
   resolvingProposalId,
+  walkthrough,
 }: SopBindingPanelProps) {
   const rows = bindingRows(steps, bindings);
 
+  // With no rows there is no panel to draw, but the offer must not disappear
+  // with it: rows are empty exactly when the bindings could not be fetched,
+  // which is when a person is most likely to want to demonstrate the workflow.
   if (rows.length === 0) {
-    return null;
+    return walkthrough === undefined ? null : <>{walkthrough}</>;
   }
 
   const summary = summarizeBindings(bindings);
@@ -125,6 +143,8 @@ export function SopBindingPanel({
         <span className="font-mono">pnpm record:binding</span>. Either way a person does it once,
         for real. Approving or turning down what someone else recorded is not done from here.
       </p>
+
+      {walkthrough}
 
       {startUrl !== null &&
         (() => {

@@ -292,6 +292,14 @@ export interface SopClarificationView {
 export interface SopPublicationView {
   readonly candidateId: string | null;
   readonly candidateState: string | null;
+  /**
+   * The revision the current candidate was compiled from.
+   *
+   * Compared against `SopReviewView.revisionId`, this separates "published, and
+   * this is what runs" from "published, and this revision has not been" —
+   * which is the state revising a workflow produces (ADR-036).
+   */
+  readonly compiledFromRevisionId: string | null;
   readonly sandboxState: string | null;
   readonly agentVersionId: string | null;
   readonly agentVersion: string | null;
