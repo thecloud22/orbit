@@ -164,3 +164,25 @@ export const EVIDENCE_TO_BROWSER_ACTION = {
 
 /** Only these URL protocols are permitted; file:, data:, and javascript: are rejected. */
 export const ALLOWED_URL_PROTOCOLS = ['http:', 'https:'] as const;
+
+/**
+ * The surfaces a workflow's steps actually run on.
+ *
+ * Derived from the steps rather than from `permissions`, because a declaration
+ * is what an agent is *allowed* to touch and this is what it *will* touch. The
+ * runtime opens an executor per surface in this set, so an agent that contains
+ * no step for a surface never opens a session on it.
+ *
+ * Takes step types rather than steps so this module stays free of a dependency
+ * on the step union, which imports it.
+ */
+export function surfacesUsedBy(stepTypes: Iterable<string>): ReadonlySet<ExecutionSurface> {
+  const surfaces = new Set<ExecutionSurface>();
+  for (const stepType of stepTypes) {
+    const permission = stepPermissionFor(stepType);
+    if (permission !== undefined) {
+      surfaces.add(permission.surface);
+    }
+  }
+  return surfaces;
+}

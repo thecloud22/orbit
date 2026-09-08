@@ -82,10 +82,12 @@ describe('Find Service Request against the real demo portal', () => {
       inputs: { requestNumber: options.requestNumber },
       trigger: TEST_TRIGGER,
       store: createDatabaseRunStore({ database: getDatabase().db, storage }),
-      browser: {
-        async open() {
-          opened = await factory.open();
-          return opened;
+      executors: {
+        browser: {
+          async open() {
+            opened = await factory.open();
+            return opened;
+          },
         },
       },
     });

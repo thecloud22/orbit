@@ -257,12 +257,18 @@ export function createFakeBrowser(options: FakeBrowserOptions = {}): FakeBrowser
       return `<html data-visible="${[...visible].sort().join(',')}"></html>`;
     },
 
-    async finishTrace() {
-      calls.push('finishTrace');
+    async finishEvidence() {
+      calls.push('finishEvidence');
       if (options.failTrace === true) {
         throw new Error('trace unavailable');
       }
-      return new TextEncoder().encode('fake-trace-bytes');
+      return [
+        {
+          kind: 'browser_trace' as const,
+          role: 'browser_trace' as const,
+          bytes: new TextEncoder().encode('fake-trace-bytes'),
+        },
+      ];
     },
 
     async close() {

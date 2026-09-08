@@ -106,7 +106,7 @@ async function runWithDriftedClick(options: {
     inputs: { requestNumber: 'SR-1001' },
     trigger: TRIGGER,
     store,
-    browser: createFakeBrowserFactory(browser),
+    executors: { browser: createFakeBrowserFactory(browser) },
     bindings: resolver({ [CLICK_STEP]: clickBinding() }),
     ...(options.recovery === undefined ? {} : { recovery: options.recovery }),
   });

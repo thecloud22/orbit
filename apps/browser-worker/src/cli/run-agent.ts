@@ -187,9 +187,11 @@ try {
     inputs: prepared.inputs,
     trigger,
     store: createDatabaseRunStore({ database: handle.db, storage }),
-    browser: createPlaywrightExecutorFactory({
-      headless: !(values.headed === true || process.env['ORBIT_BROWSER_HEADED'] === 'true'),
-    }),
+    executors: {
+      browser: createPlaywrightExecutorFactory({
+        headless: !(values.headed === true || process.env['ORBIT_BROWSER_HEADED'] === 'true'),
+      }),
+    },
     logger,
     ...(judge === undefined ? {} : { judge }),
     ...(bindings === undefined ? {} : { bindings }),
@@ -205,7 +207,7 @@ try {
     );
   }
 
-  if (result.traceMissing) {
+  if (result.runEvidenceMissing) {
     process.stderr.write(`Run ${result.runId} failed and its trace could not be persisted.\n`);
   }
 

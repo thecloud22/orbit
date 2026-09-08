@@ -392,7 +392,7 @@ async function runScenario(scenario: SmokeScenario): Promise<boolean> {
       inputs: prepared.inputs,
       trigger,
       store: createDatabaseRunStore({ database: handle.db, storage }),
-      browser: trackedBrowsers,
+      executors: { browser: trackedBrowsers },
       logger,
       ...(bindings === undefined ? {} : { bindings }),
       recovery,

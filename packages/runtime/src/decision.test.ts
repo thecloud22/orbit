@@ -131,7 +131,7 @@ async function run(options: RunOptions = {}) {
     inputs: { requestNumber: 'SR-1001' },
     trigger: TRIGGER,
     store,
-    browser: createFakeBrowserFactory(browser),
+    executors: { browser: createFakeBrowserFactory(browser) },
     ...(judge === undefined ? {} : { judge }),
     ...(options.decisions === undefined ? {} : { decisions: options.decisions }),
   });
@@ -397,7 +397,7 @@ describe('a runtime with no judge wired', () => {
       inputs: { requestNumber: 'SR-1001' },
       trigger: TRIGGER,
       store,
-      browser: createFakeBrowserFactory(createFakeBrowser()),
+      executors: { browser: createFakeBrowserFactory(createFakeBrowser()) },
     });
 
     expect(result.status).toBe('succeeded');
@@ -445,7 +445,7 @@ describe('the per-run call ceiling the Agent Version declares', () => {
       inputs: { requestNumber: 'SR-1001' },
       trigger: TRIGGER,
       store,
-      browser: createFakeBrowserFactory(createFakeBrowser()),
+      executors: { browser: createFakeBrowserFactory(createFakeBrowser()) },
       judge,
     });
 
@@ -476,7 +476,7 @@ describe('the per-run call ceiling the Agent Version declares', () => {
       inputs: { requestNumber: 'SR-1001' },
       trigger: TRIGGER,
       store,
-      browser: createFakeBrowserFactory(createFakeBrowser()),
+      executors: { browser: createFakeBrowserFactory(createFakeBrowser()) },
       judge: createFakeJudge({ choose: 'in_progress' }),
     });
 
@@ -494,7 +494,7 @@ describe('the per-run call ceiling the Agent Version declares', () => {
       inputs: { requestNumber: 'SR-1001' },
       trigger: TRIGGER,
       store,
-      browser: createFakeBrowserFactory(createFakeBrowser()),
+      executors: { browser: createFakeBrowserFactory(createFakeBrowser()) },
       judge,
     });
 
@@ -512,7 +512,7 @@ describe('the per-run call ceiling the Agent Version declares', () => {
       inputs: { requestNumber: 'SR-1001' },
       trigger: TRIGGER,
       store: createRecordingStore(),
-      browser: createFakeBrowserFactory(createFakeBrowser()),
+      executors: { browser: createFakeBrowserFactory(createFakeBrowser()) },
       judge,
     });
 

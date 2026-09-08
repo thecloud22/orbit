@@ -120,7 +120,7 @@ export function createInProcessRunDispatcher(deps: InProcessDispatcherDependenci
         inputs: request.inputs,
         trigger: request.trigger,
         store: observing,
-        browser,
+        executors: { browser },
         logger: deps.logger,
         ...(bindings === undefined ? {} : { bindings }),
         recovery,

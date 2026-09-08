@@ -47,7 +47,7 @@ async function run(options: {
     inputs: { requestNumber: 'SR-1001' },
     trigger: TRIGGER,
     store,
-    browser: createFakeBrowserFactory(browser),
+    executors: { browser: createFakeBrowserFactory(browser) },
     ...(options.bindings === undefined ? {} : { bindings: options.bindings }),
   });
 

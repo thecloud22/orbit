@@ -50,7 +50,7 @@ describe('executeAgentVersion over real persistence', () => {
       inputs: { requestNumber: options.requestNumber },
       trigger: TEST_TRIGGER,
       store: createDatabaseRunStore({ database: getDatabase().db, storage }),
-      browser: createFakeBrowserFactory(browser),
+      executors: { browser: createFakeBrowserFactory(browser) },
     });
 
     return { result, browser, repositories: createRepositories(getDatabase().db) };

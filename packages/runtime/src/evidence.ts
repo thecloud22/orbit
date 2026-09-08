@@ -89,7 +89,14 @@ export function failureEvidence(agentIr: AgentIr): readonly EvidenceEntry[] {
 }
 
 export interface CaptureEvidenceOptions {
-  readonly executor: BrowserExecutor;
+  /**
+   * The browser session, when one was opened for this run.
+   *
+   * Absent means there is nothing to capture from: every evidence entry defined
+   * today is a browser capture. It is not an error -- a workflow can legitimately
+   * open no browser (ADR-037).
+   */
+  readonly executor: BrowserExecutor | undefined;
   readonly recorder: RunRecorder;
   readonly entries: readonly EvidenceEntry[];
   readonly agentStepId: string;
@@ -111,13 +118,21 @@ export async function captureEvidence(
   options: CaptureEvidenceOptions,
 ): Promise<readonly RecordedArtifact[]> {
   const recorded: RecordedArtifact[] = [];
+  const executor = options.executor;
+
+  // Nothing to capture from. Every entry defined today is a browser capture, so
+  // a run that opened no browser has no evidence to take rather than a failure
+  // to report.
+  if (executor === undefined) {
+    return recorded;
+  }
 
   for (const entry of options.entries) {
     try {
       const bytes =
         entry.capture === 'screenshot'
-          ? await options.executor.captureScreenshot()
-          : new TextEncoder().encode(await options.executor.captureDom());
+          ? await executor.captureScreenshot()
+          : new TextEncoder().encode(await executor.captureDom());
 
       recorded.push(
         await options.recorder.recordArtifact({

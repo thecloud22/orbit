@@ -1,4 +1,4 @@
-import type { Locator } from '@orbit/agent-ir';
+import type { ExecutionSurface, Locator } from '@orbit/agent-ir';
 import type {
   ComparisonMode,
   ElementFingerprint,
@@ -23,10 +23,72 @@ import type {
 /**
  * The two seams the runtime is built on.
  *
- * `BrowserExecutor` is the executor interface required by ADR-008: the runtime
+ * `SurfaceExecutor` is the executor interface required by ADR-008: the runtime
  * depends on it, never on Playwright. `RunStore` is the persistence seam, so the
  * interpreter can be exercised in full without a database.
  */
+
+/**
+ * Run-scoped evidence a surface produces once, when its session ends.
+ *
+ * The browser's is a Playwright trace. A surface names its own kind and role
+ * from the @orbit/contracts vocabularies, so the interpreter no longer has to
+ * know that a trace is the thing a run collects at the end — it asks each
+ * executor what it has and records whatever comes back (ADR-037).
+ */
+export interface SurfaceEvidence {
+  readonly kind: ArtifactKind;
+  readonly role: ArtifactLinkRole;
+  readonly bytes: Uint8Array;
+}
+
+/**
+ * What every executor provides, whatever surface it drives.
+ *
+ * Deliberately two methods. Everything else an executor can do is specific to
+ * its surface and belongs on that surface's interface, because a capability
+ * shared by widening this one would be a capability nobody reviewed.
+ */
+export interface SurfaceExecutor {
+  /** Run-scoped evidence, collected once per executor at the end of the run. */
+  finishEvidence(): Promise<readonly SurfaceEvidence[]>;
+  close(): Promise<void>;
+}
+
+/**
+ * The executor type each surface is driven by.
+ *
+ * One entry today. A surface joins by adding its interface here, which is what
+ * makes `ExecutorFactories` typed rather than a bag of unknowns: asking the set
+ * for the browser gives back something that can click.
+ */
+export interface SurfaceExecutors {
+  readonly browser: BrowserExecutor;
+}
+
+export type ExecutorFor<S extends ExecutionSurface> = SurfaceExecutors[S];
+
+/**
+ * Opens one isolated session per run, for one surface.
+ *
+ * The factory rather than a ready executor is what lets the interpreter own the
+ * whole lifecycle: the run row exists before anything is launched, so a launch
+ * failure is recorded against a real run instead of vanishing.
+ */
+export interface SurfaceExecutorFactory<S extends ExecutionSurface> {
+  open(): Promise<ExecutorFor<S>>;
+}
+
+/**
+ * The executors a deployment has wired, by surface.
+ *
+ * Every entry is optional, and a workflow whose steps need a surface this does
+ * not carry fails with `WORKER_FAILURE` naming the surface rather than
+ * proceeding without it.
+ */
+export type ExecutorFactories = {
+  readonly [S in ExecutionSurface]?: SurfaceExecutorFactory<S>;
+};
 
 /**
  * A narrow browser capability interface.
@@ -39,7 +101,7 @@ import type {
  * action" method: the set of things Orbit can do to a browser is this list and
  * nothing else, and widening it is an interface change that shows up in review.
  */
-export interface BrowserExecutor {
+export interface BrowserExecutor extends SurfaceExecutor {
   navigate(request: NavigateRequest): Promise<NavigateResult>;
   fill(request: FillRequest): Promise<void>;
   click(request: ClickRequest): Promise<void>;
@@ -62,9 +124,6 @@ export interface BrowserExecutor {
   captureScreenshot(): Promise<Uint8Array>;
   /** The serialized DOM of the current page. */
   captureDom(): Promise<string>;
-  /** Stops tracing and returns the trace bytes. Callable once per executor. */
-  finishTrace(): Promise<Uint8Array>;
-  close(): Promise<void>;
 }
 
 export interface NavigateRequest {
@@ -118,16 +177,8 @@ export interface WaitForTextResult {
   readonly observed: string | null;
 }
 
-/**
- * Opens one isolated browser session per run.
- *
- * The factory rather than a ready executor is what lets the interpreter own the
- * whole lifecycle: the run row exists before the browser is launched, so a
- * launch failure is recorded against a real run instead of vanishing.
- */
-export interface BrowserExecutorFactory {
-  open(): Promise<BrowserExecutor>;
-}
+/** Opens one isolated browser session per run. */
+export type BrowserExecutorFactory = SurfaceExecutorFactory<'browser'>;
 
 /** Creates the run and returns the recorder bound to it. */
 export interface RunStore {

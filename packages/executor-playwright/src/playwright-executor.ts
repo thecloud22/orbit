@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { RuntimeError } from '@orbit/runtime';
 import type {
+  SurfaceEvidence,
   BrowserExecutor,
   BrowserExecutorFactory,
   ClickRequest,
@@ -249,7 +250,14 @@ function createExecutor(browser: Browser, context: BrowserContext, page: Page): 
       return page.content();
     },
 
-    async finishTrace(): Promise<Uint8Array> {
+    /**
+     * The browser surface's run-scoped evidence: its Playwright trace.
+     *
+     * Returned as a named artifact kind and role rather than as bare bytes, so
+     * the interpreter records what a surface hands it without knowing that this
+     * particular surface produces a trace (ADR-037).
+     */
+    async finishEvidence(): Promise<readonly SurfaceEvidence[]> {
       if (traceFinished) {
         throw new RuntimeError({
           code: 'INTERNAL_ERROR',
@@ -263,7 +271,7 @@ function createExecutor(browser: Browser, context: BrowserContext, page: Page): 
 
       try {
         await context.tracing.stop({ path });
-        return await readFile(path);
+        return [{ kind: 'browser_trace', role: 'browser_trace', bytes: await readFile(path) }];
       } finally {
         await rm(directory, { recursive: true, force: true }).catch(() => undefined);
       }

@@ -35,6 +35,18 @@ const FORBIDDEN_SUBSTRINGS = [
   '@orbit/runtime',
   '@orbit/db',
   '@orbit/executor-playwright',
+
+  // ADR-016 warned this denylist "will need extending if a new execution surface
+  // appears", and ADR-037 is where they start appearing. `node:net` and
+  // `child_process` above already cover a terminal surface's mechanism; these
+  // name the rest of the vocabulary a non-browser executor would need. An entry
+  // for a package that does not exist yet is inert, which is the point -- it
+  // fails the moment someone adds one, rather than being remembered then.
+  'node:tls',
+  'undici',
+  '3270',
+  '@orbit/executor-x3270',
+  '@orbit/executor-http',
 ] as const;
 
 function listNonTestTsFiles(dir: string): readonly string[] {

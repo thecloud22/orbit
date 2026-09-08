@@ -157,7 +157,7 @@ describe('a judged decision against the real library portal', () => {
       inputs: { bookIsbn, memberId: MEMBER_ID },
       trigger: TEST_TRIGGER,
       store: createDatabaseRunStore({ database: getDatabase().db, storage }),
-      browser: { open: () => factory.open() },
+      executors: { browser: { open: () => factory.open() } },
       judge,
     });
 
@@ -281,7 +281,7 @@ describe('a judged decision against the real library portal', () => {
       inputs: { bookIsbn: AVAILABLE_ISBN, memberId: MEMBER_ID },
       trigger: TEST_TRIGGER,
       store: createDatabaseRunStore({ database: getDatabase().db, storage }),
-      browser: { open: () => factory.open() },
+      executors: { browser: { open: () => factory.open() } },
       // No judge.
     });
 

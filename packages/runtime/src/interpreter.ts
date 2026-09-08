@@ -1,8 +1,10 @@
 import {
   buildStepGraph,
   successorsOf,
+  surfacesUsedBy,
   type AgentIr,
   type AgentIrStep,
+  type ExecutionSurface,
   type Assertion,
   type Locator,
 } from '@orbit/agent-ir';
@@ -27,7 +29,8 @@ import { resolveValue, type ResolutionScope } from './interpolate';
 import { silentLogger, type RuntimeLogger } from './logger';
 import type {
   BrowserExecutor,
-  BrowserExecutorFactory,
+  ExecutorFactories,
+  SurfaceExecutor,
   DecisionJudge,
   RecordedArtifact,
   RecoveryProposer,
@@ -58,7 +61,13 @@ export interface ExecuteAgentVersionInput {
   readonly inputs: RunInputs;
   readonly trigger: RunTrigger;
   readonly store: RunStore;
-  readonly browser: BrowserExecutorFactory;
+  /**
+   * The executors this deployment has wired, by surface.
+   *
+   * A workflow whose steps need a surface absent from here fails with
+   * `WORKER_FAILURE` naming the surface, rather than running partially.
+   */
+  readonly executors: ExecutorFactories;
   readonly logger?: RuntimeLogger;
   /**
    * Approved Execution Bindings, when the agent has any.
@@ -105,8 +114,11 @@ export interface ExecutionResult {
   readonly artifacts: readonly RecordedArtifact[];
   /** True when the run's own terminal row could not be written; the run is left non-terminal. */
   readonly terminalPersistenceFailed: boolean;
-  /** True when the trace could not be persisted after an already-failing run. */
-  readonly traceMissing: boolean;
+  /**
+   * True when run-scoped evidence could not be persisted after an already-failing
+   * run. The browser's is its Playwright trace; each surface contributes its own.
+   */
+  readonly runEvidenceMissing: boolean;
 }
 
 type Outcome =
@@ -135,6 +147,73 @@ function describeLocator(locator: Locator): string {
     : `${locator.strategy}=${locator.value} "${locator.name}"`;
 }
 
+/**
+ * The executors opened for one run.
+ *
+ * A record rather than a `Map<ExecutionSurface, SurfaceExecutor>` so each field
+ * keeps its own type: asking for the browser gives back something that can
+ * click, with no cast. A surface joins by adding a field, and the exhaustive
+ * switch in `openExecutorsFor` then fails to compile until it is opened.
+ */
+interface OpenedExecutors {
+  browser?: BrowserExecutor;
+}
+
+/** Every executor actually opened, with the surface it drives, in open order. */
+function openedExecutors(
+  opened: OpenedExecutors,
+): readonly { readonly surface: ExecutionSurface; readonly executor: SurfaceExecutor }[] {
+  const all: { readonly surface: ExecutionSurface; readonly executor: SurfaceExecutor }[] = [];
+  if (opened.browser !== undefined) {
+    all.push({ surface: 'browser', executor: opened.browser });
+  }
+  return all;
+}
+
+/**
+ * Opens one executor per surface the workflow's steps actually use.
+ *
+ * Driven by the steps rather than by `permissions`, so an agent that declares a
+ * surface but contains no step for it opens no session on it.
+ *
+ * This happens before `run.started` rather than at first use, deliberately. A
+ * session that cannot be opened is a failure of the run as a whole, and opening
+ * eagerly keeps it recorded where it has always been recorded — against a run
+ * that is still starting — rather than moving it into the middle of the step
+ * loop, where it would read as a step failure.
+ */
+async function openExecutorsFor(
+  agentIr: AgentIr,
+  factories: ExecutorFactories,
+  opened: OpenedExecutors,
+): Promise<void> {
+  for (const surface of surfacesUsedBy(agentIr.steps.map((step) => step.type))) {
+    switch (surface) {
+      case 'browser': {
+        const factory = factories.browser;
+
+        if (factory === undefined) {
+          throw new RuntimeError({
+            code: 'WORKER_FAILURE',
+            message: 'This workflow has browser steps, but no browser executor is configured.',
+          });
+        }
+
+        try {
+          opened.browser = await factory.open();
+        } catch (error) {
+          throw new RuntimeError({
+            code: 'WORKER_FAILURE',
+            message: 'The browser could not be started for this run.',
+            cause: error,
+          });
+        }
+        break;
+      }
+    }
+  }
+}
+
 export async function executeAgentVersion(
   input: ExecuteAgentVersionInput,
 ): Promise<ExecutionResult> {
@@ -153,21 +232,13 @@ export async function executeAgentVersion(
 
   const artifacts: RecordedArtifact[] = [];
   const steps: ExecutedStepSummary[] = [];
-  let executor: BrowserExecutor | undefined;
+  const executors: OpenedExecutors = {};
   let outcome: Outcome;
-  let traceMissing = false;
+  let runEvidenceMissing = false;
 
   try {
     try {
-      try {
-        executor = await input.browser.open();
-      } catch (error) {
-        throw new RuntimeError({
-          code: 'WORKER_FAILURE',
-          message: 'The browser could not be started for this run.',
-          cause: error,
-        });
-      }
+      await openExecutorsFor(agentIr, input.executors, executors);
 
       await recorder.markRunning();
       await recorder.appendEvent({
@@ -183,7 +254,7 @@ export async function executeAgentVersion(
         agentIr,
         agentVersionId: input.agentVersionId,
         inputs: input.inputs,
-        executor,
+        executors,
         recorder,
         logger,
         bindings: input.bindings,
@@ -197,55 +268,62 @@ export async function executeAgentVersion(
       outcome = { kind: 'failed', error: asRuntimeError(error, {}) };
     }
 
-    // The trace is persisted before the terminal run row is written, so a run is
-    // never reported as succeeded without the evidence that proves it.
-    if (executor !== undefined) {
+    // Run-scoped evidence is persisted before the terminal run row is written, so
+    // a run is never reported as succeeded without the evidence that proves it.
+    // Each surface names its own artifact kind and role; the interpreter records
+    // whatever it is handed rather than knowing what a trace is (ADR-037).
+    for (const { surface, executor } of openedExecutors(executors)) {
       try {
-        const bytes = await executor.finishTrace();
-        artifacts.push(
-          await recorder.recordArtifact({ kind: 'browser_trace', role: 'browser_trace', bytes }),
-        );
+        for (const evidence of await executor.finishEvidence()) {
+          artifacts.push(
+            await recorder.recordArtifact({
+              kind: evidence.kind,
+              role: evidence.role,
+              bytes: evidence.bytes,
+            }),
+          );
+        }
       } catch (error) {
         if (outcome.kind === 'completed') {
           outcome = {
             kind: 'failed',
             error: new RuntimeError({
               code: 'ARTIFACT_STORAGE_ERROR',
-              message: 'The run finished but its Playwright trace could not be persisted.',
+              message: `The run finished but its ${surface} evidence could not be persisted.`,
               cause: error,
             }),
           };
         } else {
           // An evidence failure never replaces the failure already being recorded.
-          traceMissing = true;
+          runEvidenceMissing = true;
           logger.warn(
-            { runId: recorder.runId, cause: describeCause(error) },
-            'The trace could not be persisted; the original failure is unchanged.',
+            { runId: recorder.runId, surface, cause: describeCause(error) },
+            'Run-scoped evidence could not be persisted; the original failure is unchanged.',
           );
         }
       }
     }
   } finally {
-    if (executor !== undefined) {
+    for (const { surface, executor } of openedExecutors(executors)) {
       try {
         await executor.close();
       } catch (error) {
         logger.warn(
-          { runId: recorder.runId, cause: describeCause(error) },
-          'Browser cleanup failed.',
+          { runId: recorder.runId, surface, cause: describeCause(error) },
+          'Executor cleanup failed.',
         );
       }
     }
   }
 
-  return persistTerminalState({ recorder, outcome, artifacts, steps, logger, traceMissing });
+  return persistTerminalState({ recorder, outcome, artifacts, steps, logger, runEvidenceMissing });
 }
 
 interface InterpretInput {
   readonly agentIr: AgentIr;
   readonly agentVersionId: AgentVersionId;
   readonly inputs: RunInputs;
-  readonly executor: BrowserExecutor;
+  readonly executors: OpenedExecutors;
   readonly recorder: RunRecorder;
   readonly logger: RuntimeLogger;
   readonly artifacts: RecordedArtifact[];
@@ -257,7 +335,13 @@ interface InterpretInput {
 }
 
 async function interpretSteps(context: InterpretInput): Promise<Outcome> {
-  const { agentIr, recorder, executor, logger, artifacts, steps } = context;
+  const { agentIr, recorder, logger, artifacts, steps } = context;
+
+  // Evidence is still browser-shaped: screenshots and DOM snapshots are the only
+  // captures defined. A run that opened no browser therefore captures none, which
+  // is correct rather than a gap -- the surfaces that bring their own evidence
+  // sets bring the code that captures them (ADR-037).
+  const browser = context.executors.browser;
   const graph = buildStepGraph(agentIr);
   const variables: Record<string, string> = {};
   const indexById = new Map(agentIr.steps.map((step, index) => [step.id, index]));
@@ -301,7 +385,7 @@ async function interpretSteps(context: InterpretInput): Promise<Outcome> {
     // a DOM snapshot are most worth having.
     try {
       const captured = await captureEvidence({
-        executor,
+        executor: browser,
         recorder,
         entries: failure === undefined ? successEvidence(step, agentIr) : failureEvidence(agentIr),
         agentStepId: step.id,
@@ -397,14 +481,40 @@ interface PerformStepInput extends InterpretInput {
   readonly decisionCalls: { made: number };
 }
 
+/**
+ * The browser executor for a step that needs one.
+ *
+ * A step whose surface was never opened is a wiring failure rather than a step
+ * failure, and says so: the workflow declared a step the deployment cannot run.
+ * Resolved per step rather than once, because a workflow whose only step is
+ * `complete` touches no surface and must not require one.
+ */
+function browserFor(context: {
+  readonly executors: OpenedExecutors;
+  readonly step: AgentIrStep;
+}): BrowserExecutor {
+  const executor = context.executors.browser;
+
+  if (executor === undefined) {
+    throw new RuntimeError({
+      code: 'WORKER_FAILURE',
+      message: `Step "${context.step.id}" runs on the browser surface, which was not opened for this run.`,
+      agentStepId: context.step.id,
+    });
+  }
+
+  return executor;
+}
+
 async function performStep(context: PerformStepInput): Promise<StepResult> {
-  const { step, executor, recorder, agentIr, inputs, variables } = context;
+  const { step, recorder, agentIr, inputs, variables } = context;
   const scope: ResolutionScope = { inputs, variables };
   const timeoutMs = timeoutFor(step);
   const recovery = recoveryContextFor(context);
 
   switch (step.type) {
     case 'browser.navigate': {
+      const executor = browserFor(context);
       assertNavigable(step.url, agentIr.permissions.browser?.allowedDomains ?? [], step.id);
       const navigation = await executor.navigate({ url: step.url, timeoutMs });
 
@@ -428,6 +538,7 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
     }
 
     case 'browser.fill': {
+      const executor = browserFor(context);
       const value = resolveValue(step.value, 'value', scope, step.id);
 
       // Checked before the action, never after: the point is to not type into
@@ -464,6 +575,7 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
     }
 
     case 'browser.click': {
+      const executor = browserFor(context);
       await verifyBinding({
         executor,
         bindings: context.bindings,
@@ -509,6 +621,7 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
     }
 
     case 'model.decide': {
+      const executor = browserFor(context);
       // The call is counted before it is attempted, so a refusal partway
       // through still consumes the attempt it made.
       const resolved = await resolveDecision({
@@ -544,6 +657,7 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
     }
 
     case 'browser.extract': {
+      const executor = browserFor(context);
       const fields: Record<string, string> = {};
 
       for (const [name, field] of Object.entries(step.fields)) {
@@ -599,7 +713,8 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
  * classified technical failure, not a coin toss.
  */
 async function selectAlternative(context: PerformStepInput, timeoutMs: number): Promise<number> {
-  const { step, executor } = context;
+  const { step } = context;
+  const executor = browserFor(context);
 
   if (step.type !== 'browser.expect_one_of') {
     throw new RuntimeError({
@@ -672,7 +787,8 @@ async function evaluateAssertion(
   scope: ResolutionScope,
   timeoutMs: number,
 ): Promise<Record<string, unknown>> {
-  const { step, executor, recorder, runStepId } = context;
+  const { step, recorder, runStepId } = context;
+  const executor = browserFor(context);
   const locator = describeLocator(assertion.locator);
 
   if (assertion.type === 'locator_visible') {
@@ -748,7 +864,7 @@ interface PersistTerminalInput {
   readonly artifacts: readonly RecordedArtifact[];
   readonly steps: readonly ExecutedStepSummary[];
   readonly logger: RuntimeLogger;
-  readonly traceMissing: boolean;
+  readonly runEvidenceMissing: boolean;
 }
 
 /**
@@ -766,7 +882,7 @@ async function persistTerminalState(input: PersistTerminalInput): Promise<Execut
     runId: recorder.runId,
     steps: input.steps,
     artifacts: input.artifacts,
-    traceMissing: input.traceMissing,
+    runEvidenceMissing: input.runEvidenceMissing,
   };
 
   if (outcome.kind === 'completed') {
@@ -839,7 +955,7 @@ async function recordTerminalFailure(
     runId: input.recorder.runId,
     steps: input.steps,
     artifacts: input.artifacts,
-    traceMissing: input.traceMissing,
+    runEvidenceMissing: input.runEvidenceMissing,
     status: 'failed' as const,
     businessOutcome: 'none' as const,
     outputs: null,

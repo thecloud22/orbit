@@ -27,7 +27,7 @@ async function run(options: RunOptions = {}) {
     inputs: { requestNumber: options.requestNumber ?? 'SR-1001' },
     trigger: TRIGGER,
     store,
-    browser: createFakeBrowserFactory(browser),
+    executors: { browser: createFakeBrowserFactory(browser) },
   });
 
   return { result, store, browser };
@@ -269,7 +269,7 @@ describe('executeAgentVersion — failure behaviour', () => {
     const { result } = await run({ browser });
 
     expect(result.error?.code).toBe('LOCATOR_NOT_FOUND');
-    expect(result.traceMissing).toBe(true);
+    expect(result.runEvidenceMissing).toBe(true);
   });
 
   it('reports an ambiguous UI state rather than choosing one', async () => {
@@ -337,14 +337,77 @@ describe('executeAgentVersion — failure behaviour', () => {
       inputs: { requestNumber: 'SR-1001' },
       trigger: TRIGGER,
       store,
-      browser: {
-        open: () => Promise.reject(new Error('chromium is not installed')),
+      executors: {
+        browser: { open: () => Promise.reject(new Error('chromium is not installed')) },
       },
     });
 
     expect(result.status).toBe('failed');
     expect(result.error?.code).toBe('WORKER_FAILURE');
     expect(store.run().status).toBe('failed');
+    expect(store.events.map((event) => event.eventType)).toEqual(['run.queued', 'run.failed']);
+  });
+});
+
+describe('executeAgentVersion — surfaces', () => {
+  /** A workflow whose only step is a terminator. Valid IR, and it touches nothing. */
+  function terminatorOnlyIr() {
+    const agentIr = loadFixtureAgentIr();
+    return {
+      ...agentIr,
+      steps: [
+        {
+          id: 'done',
+          type: 'complete' as const,
+          sourceSopStepIds: ['sop_step_open_portal'],
+          outcome: 'request_found' as const,
+        },
+      ],
+      outputs: {},
+    };
+  }
+
+  it('opens no executor for a workflow whose steps touch no surface', async () => {
+    const store = createRecordingStore();
+    let opened = 0;
+
+    const result = await executeAgentVersion({
+      agentVersionId: SEEDED_AGENT_VERSION_ID,
+      agentIr: terminatorOnlyIr(),
+      inputs: { requestNumber: 'SR-1001' },
+      trigger: TRIGGER,
+      store,
+      executors: {
+        browser: {
+          open: () => {
+            opened += 1;
+            return Promise.resolve(createFakeBrowser());
+          },
+        },
+      },
+    });
+
+    // Executors are opened per surface the steps actually use, not per surface
+    // the deployment happens to have wired.
+    expect(opened).toBe(0);
+    expect(result.status).toBe('succeeded');
+  });
+
+  it('fails naming the surface when the workflow needs one that is not wired', async () => {
+    const store = createRecordingStore();
+
+    const result = await executeAgentVersion({
+      agentVersionId: SEEDED_AGENT_VERSION_ID,
+      agentIr: loadFixtureAgentIr(),
+      inputs: { requestNumber: 'SR-1001' },
+      trigger: TRIGGER,
+      store,
+      executors: {},
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.error?.code).toBe('WORKER_FAILURE');
+    // Recorded against a run that never started, exactly as a launch failure is.
     expect(store.events.map((event) => event.eventType)).toEqual(['run.queued', 'run.failed']);
   });
 });

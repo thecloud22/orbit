@@ -1,7 +1,8 @@
 # Orbit system design
 
-**Status:** Active. Describes the system as implemented — Phase 1 plus sub-phases
-2.1–2.14.
+**Status:** Active. Describes the system as implemented — Phase 1, sub-phases
+2.1–2.16, and Phase 3 sub-phases 3.1–3.2 (the surface seam; no second surface
+exists yet).
 
 For the original Phase 1 architecture as it was designed, see
 [`phase-1-system-design.md`](./phase-1-system-design.md), which is kept as a
@@ -339,10 +340,27 @@ Stated here rather than discovered:
 | S3 or MinIO | `ArtifactStorage` |
 | Real identity | The trigger actor contract and an authorization middleware boundary |
 | Multi-tenancy | Ownership fields, unpopulated |
-| Another executor | `BrowserExecutor`, distinct from the Playwright implementation |
+| Another **browser** executor | `BrowserExecutor`, distinct from the Playwright implementation |
+| Another **surface** | `SurfaceExecutor` + `ExecutorFactories`, keyed by surface (ADR-037) |
 | Another model family | `@orbit/model-provider`'s two axes |
 | Ranked drift recovery | `narrowDriftCandidates`, called in position and currently removing nothing |
 | Live updates | The event query endpoint's ordered sequence values |
 
 Each is an interface with one implementation, which is the honest description: a
 seam, not a feature.
+
+The last two are worth separating. `BrowserExecutor` is a *browser* seam — it
+takes the browser-only `Locator` type on every method that touches a page, so a
+second implementation of it would be another way to drive a browser, not another
+surface. The surface seam is `SurfaceExecutor`, which is deliberately two methods
+(`finishEvidence`, `close`): a run opens one executor per surface its steps
+actually use, and the interpreter records whatever run-scoped evidence each hands
+back without knowing that the browser's happens to be a Playwright trace.
+
+Two things are still browser-shaped and are named here rather than implied.
+Evidence capture defines only screenshots and DOM snapshots, so a run that opens
+no browser captures none — correct today, and the surfaces that bring their own
+evidence sets bring the code that captures them. And the error taxonomy keeps
+`BROWSER_TIMEOUT` and `LOCATOR_NOT_FOUND` as browser-flavoured names forever,
+because `errorCode` is embedded in published immutable Agent Versions (ADR-005,
+ADR-014); new surfaces get new codes rather than renaming those.

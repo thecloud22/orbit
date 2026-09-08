@@ -215,7 +215,7 @@ describe('recovering from a renamed test id on a real page', () => {
         inputs: { bookIsbn: AVAILABLE_ISBN, memberId: MEMBER_ID },
         trigger: TEST_TRIGGER,
         store: createDatabaseRunStore({ database: getDatabase().db, storage }),
-        browser: { open: () => factory.open() },
+        executors: { browser: { open: () => factory.open() } },
         bindings: bindings!,
         recovery: createDriftRecoveryProposer({
           store: createDatabaseRecoveryProposalStore({ database: getDatabase().db }),

@@ -509,7 +509,26 @@ sub-phase 2.9.
 
 **Gate B passed; ADR-037 is _Accepted_.** The approved shape is: optional per-surface permission
 sections, a `{ surface, action }` step mapping, absent means denied, and `Locator` is not widened.
-Sub-phase 3.2, the multi-surface runtime seam, is next.
+
+**Sub-phase 3.2 is complete**, and with it the Phase 3 foundation. See
+`docs/tasks/reports/TASK-P3-002-multi-surface-seam-report.md`. `BrowserExecutor` split into a
+surface-neutral `SurfaceExecutor` — two methods, `finishEvidence()` and `close()` — plus the browser
+capabilities. `finishTrace()` is gone: a surface now names its run-scoped evidence with an artifact
+kind and role, so the interpreter records what it is handed rather than knowing a run ends by
+collecting a Playwright trace. A run opens one executor per surface its steps actually use, so a
+workflow whose only step is `complete` opens nothing.
+
+`Locator` was not widened and no generic `perform(action)` was added; both were available and both
+are what ADR-018 and ADR-037 exist to prevent.
+
+Two limitations are deliberate and stated in the code rather than left implicit: evidence capture is
+still browser-shaped (screenshots and DOM snapshots are the only captures defined, so a run that
+opens no browser captures none), and no per-surface error codes, event types or artifact kinds were
+added, because vocabulary for a surface that does not exist would be dead contract in a field
+embedded in immutable published versions. Both arrive with the surfaces that need them.
+
+**Checkpoint C.** The foundation is done. The terminal track (3.5-3.8) and the API track (3.9-3.11)
+touch disjoint packages from here and can proceed independently.
 
 **ADR-037 is *Proposed*, not accepted** — the only ADR in that state. It describes the per-surface
 permission section, addressing vocabulary and evidence set that sub-phase 3.1 will freeze, and it is
