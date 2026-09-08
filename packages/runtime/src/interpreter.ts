@@ -1027,11 +1027,13 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
         // else. Never in the scope, never on the step's output, and the
         // executor redacts the header by name before it becomes evidence.
         const secret = await resolveCredential(context, step.auth.credentialRef, step.id);
-        headers[
+        // Basic expects `user:password` base64-encoded. The credential holds the
+        // pair as the service wants it and Orbit encodes it, rather than asking
+        // somebody to paste base64 into a form nobody can read back to check.
+        headers[step.auth.headerName ?? 'authorization'] =
           step.auth.scheme === 'bearer'
-            ? 'authorization'
-            : (step.auth.headerName ?? 'authorization')
-        ] = step.auth.scheme === 'bearer' ? `Bearer ${secret}` : secret;
+            ? `Bearer ${secret}`
+            : `Basic ${Buffer.from(secret, 'utf8').toString('base64')}`;
       }
 
       const response = await executor.send({

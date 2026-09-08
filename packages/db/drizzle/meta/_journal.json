@@ -99,6 +99,13 @@
       "when": 1788901729033,
       "tag": "0013_aromatic_vanisher",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788901729034,
+      "tag": "0014_artifact_kinds_for_new_surfaces",
+      "breakpoints": true
     }
   ]
 }

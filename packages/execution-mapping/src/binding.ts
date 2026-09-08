@@ -121,8 +121,15 @@ export type ArgumentSource = z.infer<typeof argumentSourceSchema>;
  * a claim the reviewer makes, not something inferred from the contract.
  */
 export const callAuthSchema = z.strictObject({
-  scheme: z.enum(['bearer', 'header']),
-  /** The header name for `header`; ignored for `bearer`, which is Authorization. */
+  /**
+   * Matches what Admin registers, deliberately.
+   *
+   * These were two vocabularies for one concept for exactly as long as it took
+   * the type system to notice: the registry offered `basic` while this offered
+   * `header`, so a system registered one way could not be bound the other.
+   */
+  scheme: z.enum(['bearer', 'basic']),
+  /** Overrides Authorization when a service wants the credential elsewhere. */
   headerName: z.string().min(1).optional(),
   credentialRef: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/),
 });

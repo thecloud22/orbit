@@ -7,6 +7,7 @@ const CATALOG: ApiCatalog = {
   id: 'service-desk',
   title: 'Service Desk',
   hosts: ['api.example.gov'],
+  baseUrl: 'https://api.example.gov',
   operations: [
     {
       operationId: 'getRequest',

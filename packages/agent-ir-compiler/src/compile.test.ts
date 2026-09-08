@@ -437,6 +437,7 @@ describe('compiling a bound call step', () => {
     id: 'service-desk',
     title: 'Service Desk',
     hosts: ['api.example.gov'],
+    baseUrl: 'https://api.example.gov',
     operations: [
       {
         operationId: 'getRequest',

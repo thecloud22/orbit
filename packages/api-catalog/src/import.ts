@@ -42,6 +42,25 @@ interface RawDocument {
   readonly paths?: Record<string, Record<string, unknown>>;
 }
 
+/** The first declared server, which is what a request is built against. */
+function baseUrlOf(document: RawDocument): string | undefined {
+  for (const server of document.servers ?? []) {
+    if (server.url === undefined) {
+      continue;
+    }
+
+    try {
+      // Normalised through URL so a trailing slash cannot double up when a
+      // path is appended.
+      return new URL(server.url).toString().replace(/\/$/, '');
+    } catch {
+      continue;
+    }
+  }
+
+  return undefined;
+}
+
 function hostsOf(document: RawDocument): readonly string[] {
   const hosts: string[] = [];
 
@@ -145,6 +164,7 @@ export function importOpenApi(id: string, document: unknown): ImportResult {
   }
 
   const hosts = hostsOf(raw);
+  const baseUrl = baseUrlOf(raw);
 
   if (operations.length === 0) {
     return { ok: false, refusals, message: 'No operation in this document could be imported.' };
@@ -162,6 +182,7 @@ export function importOpenApi(id: string, document: unknown): ImportResult {
     id,
     title: raw.info?.title ?? id,
     hosts,
+    baseUrl,
     operations,
   });
 

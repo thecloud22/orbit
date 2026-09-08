@@ -37,17 +37,19 @@ export function buildRequestUrl(
     }
   }
 
-  const host = catalog.hosts[0];
-
-  if (host === undefined) {
+  if (catalog.baseUrl === undefined) {
     throw new RuntimeError({
       code: 'API_REQUEST_FAILED',
-      message: `Catalog "${catalog.id}" declares no host.`,
+      message: `Catalog "${catalog.id}" declares no server URL.`,
       agentStepId,
     });
   }
 
-  const url = new URL(`https://${host}${path.startsWith('/') ? path : `/${path}`}`);
+  // Built from the contract's declared server, scheme and port included. This
+  // used to assemble `https://${hosts[0]}`, which silently rewrote every call:
+  // a contract served from `http://localhost:3020` was requested over HTTPS on
+  // port 443, and the only symptom was a connection that did not complete.
+  const url = new URL(`${catalog.baseUrl}${path.startsWith('/') ? path : `/${path}`}`);
 
   for (const parameter of operation.parameters) {
     const value = args[parameter.name];

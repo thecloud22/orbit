@@ -352,8 +352,8 @@ export const apiRequestStepSchema = z.strictObject({
    */
   auth: z
     .strictObject({
-      scheme: z.enum(['bearer', 'header']),
-      /** Header name for `header`; `bearer` always uses Authorization. */
+      scheme: z.enum(['bearer', 'basic']),
+      /** Overrides Authorization when a service wants the credential elsewhere. */
       headerName: z.string().min(1).optional(),
       credentialRef: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/),
     })

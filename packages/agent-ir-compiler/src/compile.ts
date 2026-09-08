@@ -470,6 +470,14 @@ export function compileCandidate(input: CompileInput): CompileResult {
         continue;
       }
 
+      // Declared as well as assigned. An extract step does this for its fields;
+      // a call reading a response into a variable is the same obligation, and
+      // without it the workflow's own outcome step cannot reference what the
+      // call produced.
+      for (const variable of Object.keys(bound.reads)) {
+        variables[variable] = { type: 'string' };
+      }
+
       apiOperations.add(bound.operationId);
       for (const host of catalog.hosts) {
         apiHosts.add(host);
@@ -858,8 +866,15 @@ export function compileCandidate(input: CompileInput): CompileResult {
   // Evidence grants are consumed separately from the action itself, so what the
   // steps above asked to capture has to be granted here or the IR validator
   // rejects its own compiler's output.
-  actions.add('screenshot');
-  actions.add('dom_snapshot');
+  //
+  // Only when the workflow actually reaches a browser. Added unconditionally,
+  // these made `actions` non-empty for every workflow -- so an API-only agent
+  // emitted a browser section with an empty `allowedDomains`, which is both a
+  // grant nobody meant to give and invalid against the IR schema.
+  if (actions.size > 0) {
+    actions.add('screenshot');
+    actions.add('dom_snapshot');
+  }
 
   const candidate = {
     // A workflow that uses nothing new still declares 0.1, so republishing an

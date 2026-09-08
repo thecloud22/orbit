@@ -1,10 +1,12 @@
+import { importOpenApi, type ApiCatalog } from '@orbit/api-catalog';
+import { parse as parseYaml } from 'yaml';
 import { createEnvCredentialResolver } from '@orbit/credentials';
 import { createHttpExecutorFactory } from '@orbit/executor-http';
 import { createX3270ExecutorFactory } from '@orbit/executor-x3270';
 import type { AgentIr } from '@orbit/agent-ir';
 import type { ArtifactStorage } from '@orbit/artifacts';
 import type { AgentVersionId, RunId, RunInputs, RunTrigger } from '@orbit/contracts';
-import type { OrbitDatabase } from '@orbit/db';
+import { createRepositories, type OrbitDatabase } from '@orbit/db';
 import { createPlaywrightExecutorFactory } from '@orbit/executor-playwright';
 import {
   executeAgentVersion,
@@ -73,6 +75,38 @@ export interface InProcessDispatcherDependencies {
  * observing the moment the run row is created — the runtime is used exactly as
  * Task 6 defined it, with no change to its semantics and no second run row.
  */
+
+/**
+ * The registered API contracts, imported for a run.
+ *
+ * A system whose document no longer imports is skipped rather than throwing: one
+ * broken registration must not stop every other run, and a step that needed it
+ * fails by name anyway.
+ */
+async function loadRegisteredCatalogs(
+  database: OrbitDatabase,
+): Promise<Record<string, ApiCatalog>> {
+  const catalogs: Record<string, ApiCatalog> = {};
+
+  for (const system of await createRepositories(database).apiSystems.list()) {
+    let document: unknown;
+
+    try {
+      document = parseYaml(system.specText);
+    } catch {
+      continue;
+    }
+
+    const imported = importOpenApi(system.catalogId, document);
+
+    if (imported.ok) {
+      catalogs[system.catalogId] = imported.catalog;
+    }
+  }
+
+  return catalogs;
+}
+
 export function createInProcessRunDispatcher(deps: InProcessDispatcherDependencies): RunDispatcher {
   const browser =
     deps.browser ?? createPlaywrightExecutorFactory({ headless: deps.headless ?? true });
@@ -129,6 +163,10 @@ export function createInProcessRunDispatcher(deps: InProcessDispatcherDependenci
           api: createHttpExecutorFactory(),
         },
         credentials: createEnvCredentialResolver(),
+        // Read per run rather than at boot, for the reason the compiler reads
+        // them per compile: a system registered in Admin has to work without
+        // restarting the API.
+        catalogs: await loadRegisteredCatalogs(deps.database),
         logger: deps.logger,
         ...(bindings === undefined ? {} : { bindings }),
         recovery,

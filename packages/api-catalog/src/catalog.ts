@@ -60,6 +60,17 @@ export const apiCatalogSchema = z.strictObject({
    * it derives `allowedDomains` from the hosts a recording visited (ADR-022).
    */
   hosts: z.array(z.string().min(1)).min(1),
+  /**
+   * The server base a request is actually built against, scheme and port
+   * included.
+   *
+   * Separate from `hosts` because the two answer different questions. `hosts` is
+   * a permission grant and is compared by hostname, so a port on it would make
+   * `localhost:3020` and `localhost:3021` different grants for the same system.
+   * This is where a request goes, and dropping the scheme and port from it
+   * silently sent every call to `https://<host>/`.
+   */
+  baseUrl: z.string().min(1),
   operations: z.array(catalogOperationSchema).min(1),
 });
 export type ApiCatalog = z.infer<typeof apiCatalogSchema>;

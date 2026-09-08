@@ -459,6 +459,20 @@ function checkReferences(context: Context): void {
         }
         break;
 
+      case 'api.request':
+        for (const variableName of Object.keys(step.assign ?? {})) {
+          if (agentIr.variables[variableName] === undefined) {
+            add(
+              context,
+              'UNDECLARED_ASSIGN_TARGET',
+              `"${variableName}" is not a declared variable.`,
+              ['steps', index, 'assign', variableName],
+              step.id,
+            );
+          }
+        }
+        break;
+
       case 'browser.extract':
         for (const [variableName, raw] of Object.entries(step.assign)) {
           if (agentIr.variables[variableName] === undefined) {
@@ -583,8 +597,16 @@ function checkDefiniteAssignment(context: Context): void {
     }
 
     const assigned = new Set(assignedBefore);
+
+    // Both kinds of step that produce a value: reading it off a page, and
+    // reading it out of a response. A step type that assigns and is missing
+    // here looks, to this analysis, like a variable nothing ever sets.
     if (step.type === 'browser.extract') {
       for (const variableName of Object.keys(step.assign)) {
+        assigned.add(variableName);
+      }
+    } else if (step.type === 'api.request') {
+      for (const variableName of Object.keys(step.assign ?? {})) {
         assigned.add(variableName);
       }
     }
