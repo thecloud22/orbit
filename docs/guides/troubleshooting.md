@@ -7,6 +7,17 @@ because that is where most first sessions end.
 
 ## Setup and the database
 
+Before working through these by hand, run the diagnostic — it is read-only and
+names the failing step:
+
+```bash
+pnpm bootstrap --check-only    # prerequisites, configuration, database, readiness
+pnpm db:check                  # just the database: reachable? schema current?
+```
+
+Neither writes anything, neither prints an environment value, and both are safe
+while the stack is running.
+
 **`psql: could not connect to server`**
 
 The local PostgreSQL server is not running. On a Homebrew install:

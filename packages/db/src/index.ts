@@ -14,6 +14,7 @@
  */
 export const PACKAGE_NAME = '@orbit/db' as const;
 
+export * from './check';
 export * from './checksum';
 export * from './client';
 export * from './config';

@@ -7,7 +7,14 @@ deliberately not configurable.
 inline. This page is the same ground organised for lookup, plus the port map.
 
 `cp .env.example .env` gives a working local deployment with nothing
-uncommented. `.env` is gitignored.
+uncommented — and `pnpm bootstrap` does the copy for you, **only** when no `.env`
+exists. It never overwrites one, because a `.env` can hold a real API key.
+`.env` is gitignored.
+
+Nothing in Orbit's tooling prints an environment value. `pnpm bootstrap` and
+`pnpm db:check` report variable names, database names and verdicts, and never
+the values behind them: a connection URL carries a password, and a setup script
+that echoed one would put it in a terminal and, from CI, in a log.
 
 ---
 
@@ -51,6 +58,11 @@ out of sync.
 |---|---|---|
 | `DATABASE_URL` | `postgresql://orbit_dev:orbit_local_dev@localhost:5432/orbit_dev` | Development and migrations |
 | `TEST_DATABASE_URL` | the same, against `orbit_test` | `pnpm test:db` only |
+
+`pnpm db:check` reports what these actually reach, read-only: the connected
+database name, the PostgreSQL version, and which committed migrations have been
+applied. `pnpm db:check --test` does the same for `TEST_DATABASE_URL`. Neither
+writes anything; `pnpm db:migrate` remains the only command that changes schema.
 
 `TEST_DATABASE_URL` is truncated between tests. The harness requires it, refuses
 to fall back to `DATABASE_URL`, and aborts unless the live connection answers

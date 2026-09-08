@@ -269,7 +269,16 @@ export default tseslint.config(
   {
     files: ['scripts/**/*.mjs'],
     languageOptions: {
-      globals: { process: 'readonly', console: 'readonly' },
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        // Web-platform globals Node provides. Listed one by one for the same
+        // reason as above: an explicit list is what makes a genuine typo in a
+        // maintenance script still fail the lint gate.
+        fetch: 'readonly',
+        AbortSignal: 'readonly',
+        URL: 'readonly',
+      },
     },
   },
 

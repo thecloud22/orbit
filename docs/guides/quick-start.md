@@ -8,11 +8,29 @@ server — are already present.
 
 ## Set up
 
+The role and the two databases are created once, by hand, as a superuser. No
+Orbit command creates or drops a database.
+
 ```bash
 psql -d postgres -c "CREATE ROLE orbit_dev LOGIN PASSWORD 'orbit_local_dev';"
 psql -d postgres -c "CREATE DATABASE orbit_dev OWNER orbit_dev;"
 psql -d postgres -c "CREATE DATABASE orbit_test OWNER orbit_dev;"
+```
 
+Everything else is one command:
+
+```bash
+pnpm bootstrap
+```
+
+It installs dependencies, creates `.env` **only if you do not already have one**,
+checks the configuration and the database, applies migrations, seeds the Phase 1
+agent, installs Chromium, and reports readiness. It is idempotent and it never
+starts anything. `pnpm bootstrap --check-only` reports without changing a thing.
+
+By hand, it is this:
+
+```bash
 pnpm install
 cp .env.example .env
 pnpm --filter @orbit/demo-portal exec playwright install chromium
@@ -109,6 +127,10 @@ pnpm check:teardown
 
 It probes ports 3000, 3001, 3002, 3010 and 3102 — not 3020 — and reports any
 Orbit service process still running.
+
+`pnpm bootstrap --check-only` answers the opposite question — what is *already*
+running, and whether the checkout is ready — without starting or stopping
+anything. It probes 3020 as well.
 
 ## Where to go next
 

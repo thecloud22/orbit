@@ -22,6 +22,7 @@
     "test:e2e:library": "pnpm --filter @orbit/library-portal test:e2e",
     "test:db": "vitest run --config vitest.db.config.ts",
     "db:migrate": "pnpm --filter @orbit/db migrate",
+    "db:check": "pnpm --filter @orbit/db check",
     "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm test:db",
     "db:generate": "pnpm --filter @orbit/db generate",
     "db:seed": "pnpm --filter @orbit/db seed",
@@ -32,6 +33,7 @@
     "record:workflow": "pnpm --filter @orbit/recorder record-workflow",
     "test:runtime": "vitest run --config vitest.runtime.config.ts",
     "test:e2e:watchtower": "vitest run --config vitest.e2e.config.ts",
+    "bootstrap": "node scripts/bootstrap.mjs",
     "check:teardown": "node scripts/check-teardown.mjs",
     "verify:phase1": "pnpm verify && pnpm test:runtime && pnpm test:e2e:watchtower && pnpm test:e2e && pnpm check:teardown"
   },

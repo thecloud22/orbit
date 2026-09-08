@@ -131,11 +131,27 @@ alternative to a local server, but no check depends on it.
 
 ## Local setup
 
-From a clean checkout:
+From a clean checkout, after creating the role and the two databases
+([Local database](#local-database)):
+
+```bash
+pnpm bootstrap           # prerequisites, install, .env, migrate, seed, Chromium, readiness
+pnpm dev                 # starts five processes; see the table below
+```
+
+`pnpm bootstrap` is the sequence below, executed and checked. It is idempotent,
+it **never overwrites an existing `.env`**, it never creates or drops a database,
+and it never starts `pnpm dev` — five long-lived foreground processes belong to
+the person running them. `pnpm bootstrap --check-only` reports readiness without
+changing anything, including while the stack is running. `pnpm bootstrap --help`
+lists every flag.
+
+By hand, it is this:
 
 ```bash
 pnpm install
 cp .env.example .env
+pnpm db:check            # read-only: reachable? schema current?
 pnpm db:migrate          # creates the Orbit schema in orbit_dev
 pnpm db:seed             # seeds Find Service Request 0.1.0 (idempotent)
 pnpm dev                 # starts five processes; see the table below
@@ -224,6 +240,7 @@ read, modify, or depend on any other database or on server configuration.
 
 ```bash
 pnpm db:generate   # regenerate migration SQL after changing packages/db/src/schema
+pnpm db:check      # read-only: connected database, server version, migration level
 pnpm db:migrate    # apply committed migrations to DATABASE_URL
 pnpm db:seed       # seed Find Service Request 0.1.0 from the fixture
 ```
