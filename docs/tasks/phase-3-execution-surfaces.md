@@ -60,6 +60,30 @@ re-litigated later. **No task is opened for any of these in Phase 3.**
   not executor work — run creation, idempotency keys, batch-row semantics. A
   different subsystem; estimate separately.
 
+### Out — named but unscheduled
+
+**Terminal hardening against a real system (3.x).** Named here so it does not fall into the gap
+between "the demo works" and "a customer has a mainframe." It cannot be written until someone has
+access to a real LPAR, and Phase 3 must not be described as integration-complete without it.
+
+Scope, from the 3.0 report's findings:
+
+- **Unsolicited screens** — broadcast messages, session timeouts, `PRESS ENTER TO CONTINUE` pauses
+  arriving between steps. This is where real 3270 automation spends most of its effort and none of
+  it is designed. The byte-emitter host never interrupts, so no test currently provokes it.
+- **Session lifecycle and LU pool etiquette** — LU pools are finite, and a worker that does not
+  release sessions can lock real people out of the system.
+- **Model pinning** — fingerprints are position-based, so a binding recorded against a 3278-2
+  (24x80) is silently wrong against a -4 (43x80). The emulator model must become part of the
+  binding rather than a connection flag.
+- **TN3270E proper** — LU binding, structured fields, SNA responses. Sub-phase 3.6 exercises base
+  TN3270 only.
+- **TLS to the LPAR** with a real certificate chain, and the host's actual EBCDIC code page.
+
+Note that **credentials, not the transport, gate the first real run**: a mainframe is entirely
+behind a TSO/CICS logon, and under ADR-021 a workflow needing a secret compiles but can never be
+approved. Sub-phase 3.3 is therefore the prerequisite for meeting a real system, not 3.6.
+
 ### Out — declined
 
 - **Desktop/RPA** (Windows UI Automation, SAP GUI scripting). The automation
