@@ -43,7 +43,7 @@ import {
   stateLabel,
   type ReviewFailure,
 } from './sop-review-view-model';
-import { DRAFT_NOT_EXECUTABLE_NOTICE } from './sop-draft-view-model';
+import { draftExecutabilityNotice } from './sop-draft-view-model';
 
 export interface SopReviewPageProps {
   readonly documentId: string;
@@ -357,7 +357,7 @@ export function SopReviewPage({
           className="rounded bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"
           data-testid="sop-review-not-executable"
         >
-          {DRAFT_NOT_EXECUTABLE_NOTICE}
+          {draftExecutabilityNotice(review.publication.agentVersion)}
         </p>
 
         <h2 className="mt-3 text-base font-semibold text-slate-900" data-testid="sop-review-title">

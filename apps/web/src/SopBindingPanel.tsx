@@ -134,13 +134,25 @@ export function SopBindingPanel({
           const isDirty = startUrl !== suggestedStartUrl(steps);
           const canSave = startUrlEditable && isDirty;
 
+          // The field itself never disables — overriding where a session
+          // opens is real and useful whether or not it can be saved, and a
+          // disabled input would remove that. What changes is everything
+          // *around* it: the label names what an edit actually does, so the
+          // temporary case does not read the same as the saved one at a
+          // glance, before anyone reaches the caption underneath.
           return (
             <div className="mt-3 flex flex-col gap-1 text-xs text-slate-700">
               <label className="flex flex-col gap-1" htmlFor="binding-start-url">
-                <span>Where the browser opens</span>
+                <span>
+                  {startUrlEditable ? 'Where the browser opens' : 'Where the next session opens'}
+                </span>
                 <div className="flex max-w-lg gap-2">
                   <input
-                    className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm"
+                    className={
+                      startUrlEditable
+                        ? 'w-full rounded-md border border-slate-300 px-2 py-1 text-sm'
+                        : 'w-full rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1 text-sm'
+                    }
                     data-testid="binding-start-url"
                     id="binding-start-url"
                     onChange={(event) => {
@@ -167,8 +179,8 @@ export function SopBindingPanel({
               )}
               {!startUrlEditable && (
                 <p className="text-slate-500" data-testid="binding-start-url-locked-note">
-                  This only changes where the next browser session opens. The workflow itself can no
-                  longer be edited to match — it has already been approved.
+                  This session only — it is not saved. The workflow&apos;s own first step can no
+                  longer be edited to match; it has already been approved.
                 </p>
               )}
             </div>

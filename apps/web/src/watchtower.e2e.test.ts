@@ -1401,8 +1401,15 @@ describe('Watchtower end to end', () => {
         .poll(() => page.getByTestId('open-published-agent').count(), { timeout: 20_000 })
         .toBe(1);
 
-      // The document's own claim about itself never moved, through any of this.
-      expect(await page.getByTestId('sop-review-not-executable').count()).toBe(1);
+      // The document's own claim about itself never moved -- it is still
+      // never executable, by construction -- but the banner making that claim
+      // has to stop implying nothing runs once something genuinely does.
+      const executabilityNotice =
+        (await page.getByTestId('sop-review-not-executable').textContent()) ?? '';
+      expect(executabilityNotice).toContain('never executable');
+      expect(executabilityNotice).toContain('was published from it');
+      expect(executabilityNotice).not.toContain('Draft only');
+      expect(executabilityNotice).not.toContain('cannot start browser automation');
 
       // Publishing mints a version; it does not lock this document into a
       // read-only state. Both are true of it now, and each has to say so

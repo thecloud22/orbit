@@ -74,6 +74,26 @@ export function describeSopDraftFailure(error: ApiRequestError): SopDraftFailure
 export const DRAFT_NOT_EXECUTABLE_NOTICE =
   'Draft only — this workflow is not executable and cannot start browser automation.';
 
+/**
+ * The review page's own variant, aware of whether something has published.
+ *
+ * `DRAFT_NOT_EXECUTABLE_NOTICE` is unconditional and says "Draft only" —
+ * right for a document that has never been anywhere, and false the moment
+ * one publishes: an Agent Version compiled from this graph is running, and
+ * saying "cannot start browser automation" beside a note that says "Already
+ * published as version 0.1.0" is one page contradicting itself. What stays
+ * true forever is narrower and worth keeping — the document on screen is
+ * never itself executable, by construction (ADR-016) — so once published
+ * this says that instead of implying nothing works yet.
+ */
+export function draftExecutabilityNotice(agentVersion: string | null): string {
+  return agentVersion === null
+    ? DRAFT_NOT_EXECUTABLE_NOTICE
+    : `This document itself is never executable — that stays true by design. ` +
+        `Version ${agentVersion} was published from it, and that separate, immutable version is ` +
+        `what actually runs.`;
+}
+
 export interface SopDraftSummary {
   readonly title: string;
   readonly revisionLabel: string;

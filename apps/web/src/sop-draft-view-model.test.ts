@@ -5,6 +5,7 @@ import { ApiRequestError } from './api-client';
 import {
   describeSopDraftFailure,
   DRAFT_NOT_EXECUTABLE_NOTICE,
+  draftExecutabilityNotice,
   numberedSteps,
   summarizeModelSpend,
   summarizeSopDraft,
@@ -107,6 +108,26 @@ describe('the draft notice', () => {
   it('says plainly that a draft cannot start browser automation', () => {
     expect(DRAFT_NOT_EXECUTABLE_NOTICE).toContain('not executable');
     expect(DRAFT_NOT_EXECUTABLE_NOTICE).toContain('cannot start browser automation');
+  });
+});
+
+describe('draftExecutabilityNotice', () => {
+  it('matches the unconditional notice before anything has published', () => {
+    expect(draftExecutabilityNotice(null)).toBe(DRAFT_NOT_EXECUTABLE_NOTICE);
+  });
+
+  it('names the published version instead of implying nothing runs', () => {
+    // The regression this pins: a document past publish still showed "Draft
+    // only... cannot start browser automation" beside a note saying a
+    // version had already published from it -- one page contradicting
+    // itself. The document's own claim ("never executable") is real and
+    // stays; "Draft only" and "cannot start browser automation" do not.
+    const notice = draftExecutabilityNotice('0.1.0');
+
+    expect(notice).toContain('never executable');
+    expect(notice).toContain('0.1.0');
+    expect(notice).not.toContain('Draft only');
+    expect(notice).not.toContain('cannot start browser automation');
   });
 });
 
