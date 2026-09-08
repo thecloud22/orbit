@@ -161,7 +161,7 @@ describe('a judged decision compiles to model.decide', () => {
     const result = compile();
     if (!result.ok) return;
 
-    expect(result.agentIr.permissions.browser.allowedActions).not.toContain('expect_one_of');
+    expect(result.agentIr.permissions.browser?.allowedActions).not.toContain('expect_one_of');
   });
 });
 

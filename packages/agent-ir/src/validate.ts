@@ -10,7 +10,8 @@ import { classifyInterpolation, type ReferenceNamespace } from './interpolation'
 import {
   ALLOWED_URL_PROTOCOLS,
   EVIDENCE_TO_BROWSER_ACTION,
-  STEP_TYPE_TO_BROWSER_ACTION,
+  grantsSurface,
+  stepPermissionFor,
   type BrowserAction,
 } from './permissions';
 import { isTerminalStep, type AgentIrStep } from './steps';
@@ -42,6 +43,7 @@ export const AGENT_IR_ISSUE_CODES = [
   'INVALID_URL',
   'UNSUPPORTED_URL_PROTOCOL',
   'DOMAIN_NOT_PERMITTED',
+  'SURFACE_NOT_PERMITTED',
   'ACTION_NOT_PERMITTED',
   'EVIDENCE_NOT_PERMITTED',
   'MODEL_NOT_PERMITTED',
@@ -269,20 +271,30 @@ function checkControlFlow(context: Context): void {
 }
 
 function checkPermissions(context: Context): void {
-  const { allowedActions, allowedDomains } = context.agentIr.permissions.browser;
-  const granted = new Set<BrowserAction>(allowedActions);
+  const browser = context.agentIr.permissions.browser;
+  const allowedDomains = browser?.allowedDomains ?? [];
+  const granted = new Set<BrowserAction>(browser?.allowedActions ?? []);
 
   context.agentIr.steps.forEach((step, index) => {
-    const requiredAction: BrowserAction | undefined =
-      step.type in STEP_TYPE_TO_BROWSER_ACTION
-        ? STEP_TYPE_TO_BROWSER_ACTION[step.type as keyof typeof STEP_TYPE_TO_BROWSER_ACTION]
-        : undefined;
+    const required = stepPermissionFor(step.type);
 
-    if (requiredAction !== undefined && !granted.has(requiredAction)) {
+    // Two distinct failures, kept distinct because they need different fixes.
+    // The surface section being absent means this agent was never granted the
+    // surface at all; the action being ungranted means it holds the surface but
+    // not this capability on it.
+    if (required !== undefined && !grantsSurface(context.agentIr.permissions, required.surface)) {
+      add(
+        context,
+        'SURFACE_NOT_PERMITTED',
+        `Step type "${step.type}" runs on the ${required.surface} surface, which this agent version does not declare. Add permissions.${required.surface}.`,
+        ['steps', index, 'type'],
+        step.id,
+      );
+    } else if (required !== undefined && !granted.has(required.action)) {
       add(
         context,
         'ACTION_NOT_PERMITTED',
-        `Step type "${step.type}" requires the browser action "${requiredAction}", which is not in permissions.browser.allowedActions.`,
+        `Step type "${step.type}" requires the browser action "${required.action}", which is not in permissions.browser.allowedActions.`,
         ['steps', index, 'type'],
         step.id,
       );

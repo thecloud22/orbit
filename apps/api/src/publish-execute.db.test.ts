@@ -144,7 +144,7 @@ describe('containment survives publication (ADR-022)', () => {
     const result = await createSopPublishService({ database }).publish(compiled.candidate.id);
     if (!result.ok) throw new Error('expected a version');
 
-    const allowed = result.agentVersion.agentIr.permissions.browser.allowedDomains;
+    const allowed = result.agentVersion.agentIr.permissions.browser?.allowedDomains ?? [];
 
     // Derived from what was recorded, not from a shared list.
     expect(allowed).toEqual(['www.plano.gov']);
@@ -165,7 +165,7 @@ describe('containment survives publication (ADR-022)', () => {
     const seeded = await seedFindServiceRequest(database);
 
     expect(seeded.agentVersion.publishedFromCandidateId).toBeNull();
-    expect(seeded.agentVersion.agentIr.permissions.browser.allowedDomains).toEqual(['localhost']);
+    expect(seeded.agentVersion.agentIr.permissions.browser?.allowedDomains).toEqual(['localhost']);
 
     // And it still reads back cleanly, so the new column did not disturb the
     // checksum over the immutable document (ADR-014).

@@ -76,7 +76,7 @@ describe('compiling a decision', () => {
     const result = compile();
     if (!result.ok) return;
 
-    expect(result.agentIr.permissions.browser.allowedActions).toContain('expect_one_of');
+    expect(result.agentIr.permissions.browser?.allowedActions).toContain('expect_one_of');
   });
 
   it('keeps the graph as the only source of where a branch goes', () => {

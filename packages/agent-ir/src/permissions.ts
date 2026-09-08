@@ -1,6 +1,23 @@
 import { z } from 'zod';
 
 /**
+ * The execution surfaces Orbit can drive.
+ *
+ * A surface is the unit of capability: each one brings its own permission
+ * section, its own closed addressing vocabulary, and its own evidence set, and
+ * a surface that cannot supply all three is not added (ADR-037).
+ *
+ * One member today. `terminal` and `api` join it when the sub-phases that give
+ * them an addressing vocabulary and an evidence set land — adding a surface and
+ * its optional permission section is additive, and an Agent Version published
+ * before it simply does not declare it. What is *not* additive is changing the
+ * shape of a section that already exists, because `permissions` is embedded in
+ * published, immutable Agent Versions (ADR-005, ADR-014).
+ */
+export const EXECUTION_SURFACES = ['browser'] as const;
+export type ExecutionSurface = (typeof EXECUTION_SURFACES)[number];
+
+/**
  * Browser capabilities an agent version is permitted to use.
  *
  * These declarations are enforced, not documentation: the semantic validator
@@ -70,29 +87,74 @@ export const recoveryPermissionsSchema = z.strictObject({
 });
 export type RecoveryPermissions = z.infer<typeof recoveryPermissionsSchema>;
 
+/**
+ * What an agent version is allowed to do, by surface.
+ *
+ * `browser` is optional rather than required, which is the change that lets an
+ * Agent Version exist that never opens a browser. Absence means the surface is
+ * not permitted — the rule `model` and `recovery` already follow — so an agent
+ * that contains a browser step and declares no browser section is refused by
+ * the validator rather than defaulting to anything.
+ *
+ * A required section nobody means is a section that stops being read, and it
+ * would also make "does this agent touch a browser?" unanswerable from the
+ * contract.
+ */
 export const permissionsSchema = z.strictObject({
-  browser: browserPermissionsSchema,
+  browser: browserPermissionsSchema.optional(),
   model: modelPermissionsSchema.optional(),
   recovery: recoveryPermissionsSchema.optional(),
 });
 export type Permissions = z.infer<typeof permissionsSchema>;
 
 /**
- * Maps each browser-prefixed step type to the permission it consumes.
+ * The permission one step type consumes: which surface, and which action on it.
+ *
+ * A union rather than `{ surface: string; action: string }` so each surface
+ * keeps its own action vocabulary and a typo cannot typecheck. A second member
+ * joins it per surface.
+ */
+export type StepPermission = { readonly surface: 'browser'; readonly action: BrowserAction };
+
+/**
+ * Maps each step type to the surface and action it consumes.
  *
  * `complete` and `fail` are absent by design: they are workflow terminators
- * that touch no browser capability, so they require no browser grant.
+ * that touch no surface, so they require no grant. `model.decide` is absent
+ * too — it consumes `permissions.model`, which is a capability rather than a
+ * surface, and is checked separately.
+ *
+ * `satisfies` rather than a plain annotation so the table keeps its literal
+ * types while still being checked: a step type mapped to an action its surface
+ * does not define fails to compile.
  */
-export const STEP_TYPE_TO_BROWSER_ACTION = {
-  'browser.navigate': 'navigate',
-  'browser.fill': 'fill',
-  'browser.click': 'click',
-  'browser.assert': 'assert',
-  'browser.expect_one_of': 'expect_one_of',
-  'browser.extract': 'extract',
-} as const satisfies Record<string, BrowserAction>;
+export const STEP_SURFACE_PERMISSION = {
+  'browser.navigate': { surface: 'browser', action: 'navigate' },
+  'browser.fill': { surface: 'browser', action: 'fill' },
+  'browser.click': { surface: 'browser', action: 'click' },
+  'browser.assert': { surface: 'browser', action: 'assert' },
+  'browser.expect_one_of': { surface: 'browser', action: 'expect_one_of' },
+  'browser.extract': { surface: 'browser', action: 'extract' },
+} as const satisfies Record<string, StepPermission>;
 
-export type PermissionedStepType = keyof typeof STEP_TYPE_TO_BROWSER_ACTION;
+export type PermissionedStepType = keyof typeof STEP_SURFACE_PERMISSION;
+
+/** The permission a step type consumes, or undefined if it consumes no surface. */
+export function stepPermissionFor(stepType: string): StepPermission | undefined {
+  return stepType in STEP_SURFACE_PERMISSION
+    ? STEP_SURFACE_PERMISSION[stepType as PermissionedStepType]
+    : undefined;
+}
+
+/**
+ * Whether a permissions declaration grants a surface at all.
+ *
+ * One place that answers it, so "absent means denied" is stated once rather
+ * than re-derived at each call site.
+ */
+export function grantsSurface(permissions: Permissions, surface: ExecutionSurface): boolean {
+  return permissions[surface] !== undefined;
+}
 
 /** Evidence capture consumes its own grants, separate from the step action. */
 export const EVIDENCE_TO_BROWSER_ACTION = {
@@ -100,5 +162,5 @@ export const EVIDENCE_TO_BROWSER_ACTION = {
   captureDomSnapshot: 'dom_snapshot',
 } as const satisfies Record<string, BrowserAction>;
 
-/** Phase 1 permits only these URL protocols; file:, data:, and javascript: are rejected. */
+/** Only these URL protocols are permitted; file:, data:, and javascript: are rejected. */
 export const ALLOWED_URL_PROTOCOLS = ['http:', 'https:'] as const;

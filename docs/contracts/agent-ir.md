@@ -290,6 +290,52 @@ Rules:
 - Assigned variables must be declared and type-compatible.
 - Runtime persists extracted values in safe step/run outputs.
 
+### `model.decide`
+
+Added in sub-phase 2.9 (**ADR-032**) and previously missing from this document.
+
+```yaml
+- id: classify_condition
+  type: model.decide
+  sourceSopStepIds: [sop_step_assess_condition]
+  question: What condition is this item recorded as?
+  readFrom:
+    - label: conditionNote
+      locator:
+        strategy: test_id
+        value: condition-note
+  alternatives:
+    - outcome: serviceable
+      description: The note describes an item that can be lent as-is.
+      next: mark_available
+    - outcome: needs_repair
+      description: The note describes damage that must be repaired first.
+      next: route_to_repair
+    - outcome: unclear
+      description: The note does not settle the question either way.
+      next: route_to_human
+      insufficientEvidence: true
+  confidenceThreshold: 0.8
+```
+
+Rules:
+
+- Requires `permissions.model.allowed`; otherwise `MODEL_NOT_PERMITTED`.
+- At least two alternatives, each with a distinct `outcome` identifier matching
+  `^[a-z][a-z0-9_]{0,63}$`.
+- **Exactly one** alternative must set `insufficientEvidence: true`, so the judge
+  has somewhere to go when the evidence does not settle the question. This is a
+  refusal rather than a warning: forcing a confident answer for a record that
+  carries no evidence either way makes "right" and "nothing else fit"
+  indistinguishable in the run's evidence.
+- The widest thing the model can return is an **index into this list**. `next`
+  comes from the step definition, never from the answer — so nothing the model
+  produces becomes a locator, a URL, an expression, or a step id.
+- `outcome` here is a classification label, not a terminal business outcome, and
+  is deliberately not checked against the agent's `complete` steps.
+- `confidenceThreshold` is optional; absent means the deployment's conservative
+  default applies, which the runtime owns rather than this contract.
+
 ### `complete`
 
 ```yaml
@@ -374,10 +420,27 @@ permissions:
 
 Runtime must enforce permissions. Agent IR permission declarations are not merely documentation.
 
+### Sections are keyed by surface, and absence means denied
+
+`permissions` holds one optional section per capability: `browser`, `model`
+(ADR-032), and `recovery` (ADR-033). **A section that is absent is a capability
+that is not granted**, never a default — so an agent that contains a step it has
+not been granted the surface for is refused rather than assumed.
+
+`browser` is optional like the others. This is what lets an Agent Version exist
+that never opens a browser, and it is the shape a second execution surface plugs
+into: a surface brings its own permission section, its own closed addressing
+vocabulary, and its own evidence set, or it is not added (**ADR-037**).
+
+Adding a surface later is additive and safe — an Agent Version published before
+it simply does not declare it. Changing the shape of a section that already
+exists is not, because `permissions` is embedded in published, immutable Agent
+Versions (ADR-005, ADR-014).
+
 ### Step type to permission mapping
 
-Each browser-prefixed step consumes exactly one action grant, and evidence
-capture consumes its own:
+Each step consumes at most one grant, named as a `{ surface, action }` pair, and
+evidence capture consumes its own:
 
 | Step type | Required `allowedActions` entry |
 |---|---|
@@ -391,11 +454,18 @@ capture consumes its own:
 | `evidence.captureDomSnapshot: true` | `dom_snapshot` |
 
 `complete` and `fail` are absent by design: they terminate the workflow and
-touch no browser capability, so they require no browser grant and must not be
-added to `allowedActions`.
+touch no surface, so they require no grant and must not be added to
+`allowedActions`. `model.decide` is absent too — it consumes
+`permissions.model.allowed`, which is a capability rather than a surface, and is
+rejected with `MODEL_NOT_PERMITTED` when ungranted.
 
-A step whose action is not granted is rejected with `ACTION_NOT_PERMITTED`;
-ungranted evidence capture is rejected with `EVIDENCE_NOT_PERMITTED`.
+Three refusals, kept distinct because they need different fixes:
+
+| Code | Means |
+|---|---|
+| `SURFACE_NOT_PERMITTED` | The agent never declared the surface this step runs on |
+| `ACTION_NOT_PERMITTED` | It holds the surface, but not this action on it |
+| `EVIDENCE_NOT_PERMITTED` | The step captures evidence it was not granted |
 
 ## Validation requirements
 

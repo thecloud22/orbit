@@ -495,7 +495,20 @@ capture must redact from the attribute. And the test suite never needs a mainfra
 and a byte-emitter host cover CI, with Hercules + TK5 reserved for an on-demand layer that
 regenerates the captures. MVS was **not** booted; that layer is designed, not proven.
 
-**Sub-phase 3.1 is next**, and it is the phase's one blocking review gate.
+**Sub-phase 3.1 is implemented and awaiting Gate B**, the phase's one blocking review. See
+`docs/tasks/reports/TASK-P3-001-surface-contract-freeze-report.md`. `permissions.browser` is now
+optional — absence means the surface is not permitted, the rule `model` and `recovery` already
+followed — and the step-to-permission map names a `{ surface, action }` pair rather than assuming a
+browser. A new `SURFACE_NOT_PERMITTED` refusal is kept distinct from `ACTION_NOT_PERMITTED`, because
+never having been granted a surface needs a different fix from holding it without one action.
+
+Behaviour is unchanged for every agent that exists: the three runtime call sites that read
+`permissions.browser` now fail closed on absence, and no existing test's expectations were edited.
+`docs/contracts/agent-ir.md` also gained the `model.decide` section it had been missing since
+sub-phase 2.9.
+
+**ADR-037 remains _Proposed_ on purpose.** Flipping it to _Accepted_ is the gate action. Sub-phase
+3.2, the multi-surface runtime seam, is blocked until then.
 
 **ADR-037 is *Proposed*, not accepted** — the only ADR in that state. It describes the per-surface
 permission section, addressing vocabulary and evidence set that sub-phase 3.1 will freeze, and it is

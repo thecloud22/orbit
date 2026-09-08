@@ -47,7 +47,10 @@ const DOM_ERROR_CONTEXT: EvidenceEntry = {
 };
 
 function grants(agentIr: AgentIr, capture: EvidenceCapture): boolean {
-  const granted = agentIr.permissions.browser.allowedActions;
+  // An agent that declares no browser section has been granted nothing on that
+  // surface, so it captures no browser evidence. Absent means denied, here as
+  // everywhere else in `permissions` (ADR-037).
+  const granted = agentIr.permissions.browser?.allowedActions ?? [];
   return capture === 'screenshot'
     ? granted.includes('screenshot')
     : granted.includes('dom_snapshot');

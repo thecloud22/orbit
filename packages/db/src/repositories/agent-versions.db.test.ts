@@ -203,7 +203,7 @@ describe('agent ir round trip through jsonb', () => {
 
     expect(ir.steps).toHaveLength(8);
     expect(ir.steps[0]?.id).toBe('open_request_portal');
-    expect(ir.permissions.browser.allowedDomains).toEqual(['localhost']);
+    expect(ir.permissions.browser?.allowedDomains).toEqual(['localhost']);
     expect(ir.source.sourceSopStepIds).toEqual([
       'sop_step_open_portal',
       'sop_step_search_and_verify',

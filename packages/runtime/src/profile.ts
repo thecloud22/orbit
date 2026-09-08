@@ -269,7 +269,7 @@ export function findUnsupportedConstructs(agentIr: AgentIr): readonly ErrorDetai
 
     if (step.type === 'browser.navigate') {
       try {
-        assertNavigable(step.url, agentIr.permissions.browser.allowedDomains, step.id);
+        assertNavigable(step.url, agentIr.permissions.browser?.allowedDomains ?? [], step.id);
       } catch (error) {
         details.push({
           field: `${at}.url`,

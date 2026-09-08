@@ -158,7 +158,7 @@ describe('compiling the Phase 1 workflow', () => {
     // Over-granting is the failure that matters here: an agent permitted to
     // click when it only reads is an agent whose declaration stops being a
     // limit on what it can do.
-    expect(result.agentIr.permissions.browser.allowedActions).toEqual([
+    expect(result.agentIr.permissions.browser?.allowedActions).toEqual([
       'click',
       'dom_snapshot',
       'extract',
@@ -166,7 +166,7 @@ describe('compiling the Phase 1 workflow', () => {
       'navigate',
       'screenshot',
     ]);
-    expect(result.agentIr.permissions.browser.allowedDomains).toEqual(['localhost']);
+    expect(result.agentIr.permissions.browser?.allowedDomains).toEqual(['localhost']);
   });
 
   it('resolves a declared input into an interpolation the runtime accepts', () => {
@@ -372,7 +372,7 @@ describe('refusals', () => {
     expect(refusalCodes(result)).toEqual([]);
     if (!result.ok) return;
 
-    expect(result.agentIr.permissions.browser.allowedDomains).toEqual(['www.plano.gov']);
+    expect(result.agentIr.permissions.browser?.allowedDomains).toEqual(['www.plano.gov']);
   });
 
   it('refuses an input type an agent cannot yet carry', () => {

@@ -15,7 +15,14 @@ Natural-language SOP
   -> Watchtower
 ```
 
-The current implementation is **Phase 1 only**. Do not build the long-term product all at once.
+The current implementation is **Phase 1, sub-phases 2.1-2.16, and Phase 3 in progress**. Do not
+build the long-term product all at once. `docs/tasks/ACTIVE_TASK.md` is the authoritative statement
+of what has shipped; this file states the scope rules that hold regardless.
+
+Phase 3 adds execution surfaces beyond the browser — a terminal (3270/5250) surface and an HTTP API
+surface — under **ADR-037**: a surface brings its own permission section, its own closed addressing
+vocabulary, and its own evidence set, or it is not added. See
+`docs/tasks/phase-3-execution-surfaces.md`.
 
 Phase 1 proves one complete loop:
 
@@ -90,7 +97,8 @@ If a document conflicts with this file, stop and clearly identify the conflict r
   sub-phase 2.5 — see **ADR-022** — but nothing behind a login is reachable, because Orbit still
   cannot supply a secret.)
 - State-changing business actions: refunds, payments, messages, account updates, deletions, permissions changes.
-- API/webhook/schedule/email/file/event-bus triggers.
+- Webhook/schedule/email/file/event-bus **triggers**. (An outbound `api.request` *step* is Phase 3
+  scope; inbound triggers are not, and remain excluded.)
 - Redis, BullMQ, Temporal, S3, MinIO, cloud deployment, Terraform, Kubernetes, microservices.
 - Full authentication, RBAC, multi-tenancy implementation, policy UI, or approvals.
 - Generic custom code steps, arbitrary JavaScript expressions, `eval`, `Function`, or arbitrary shell commands.

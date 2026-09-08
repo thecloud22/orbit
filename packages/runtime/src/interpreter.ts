@@ -405,7 +405,7 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
 
   switch (step.type) {
     case 'browser.navigate': {
-      assertNavigable(step.url, agentIr.permissions.browser.allowedDomains, step.id);
+      assertNavigable(step.url, agentIr.permissions.browser?.allowedDomains ?? [], step.id);
       const navigation = await executor.navigate({ url: step.url, timeoutMs });
 
       await recorder.appendEvent({

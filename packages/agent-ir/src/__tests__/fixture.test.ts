@@ -21,7 +21,7 @@ const fixtureYaml = readFileSync(FIXTURE_PATH, 'utf8');
 /** A mutable view of the fixture document, for building deliberately invalid variants. */
 type MutableDocument = Record<string, unknown> & {
   steps: Record<string, unknown>[];
-  permissions: { browser: { allowedActions: string[]; allowedDomains: string[] } };
+  permissions: { browser?: { allowedActions: string[]; allowedDomains: string[] } };
   variables: Record<string, unknown>;
   outputs: Record<string, unknown>;
   source: { sourceSopStepIds: string[] };
@@ -243,19 +243,31 @@ describe('invalid fixtures', () => {
     expect(codesFrom(doc)).toContain('INVALID_URL');
   });
 
+  it('rejects a browser step when the agent declares no browser surface at all', () => {
+    const doc = document();
+    delete doc.permissions.browser;
+
+    // Distinct from ACTION_NOT_PERMITTED on purpose: holding the surface but
+    // not the action needs a different fix from never having been granted the
+    // surface, and a reviewer has to be able to tell which happened (ADR-037).
+    const codes = codesFrom(doc);
+    expect(codes).toContain('SURFACE_NOT_PERMITTED');
+    expect(codes).not.toContain('ACTION_NOT_PERMITTED');
+  });
+
   it('rejects a step whose browser action is not granted', () => {
     const doc = document();
-    doc.permissions.browser.allowedActions = doc.permissions.browser.allowedActions.filter(
-      (action) => action !== 'expect_one_of',
-    );
+    const browser = doc.permissions.browser;
+    if (browser === undefined) throw new Error('the fixture must declare browser permissions');
+    browser.allowedActions = browser.allowedActions.filter((action) => action !== 'expect_one_of');
     expect(codesFrom(doc)).toContain('ACTION_NOT_PERMITTED');
   });
 
   it('rejects evidence capture that is not granted', () => {
     const doc = document();
-    doc.permissions.browser.allowedActions = doc.permissions.browser.allowedActions.filter(
-      (action) => action !== 'screenshot',
-    );
+    const browser = doc.permissions.browser;
+    if (browser === undefined) throw new Error('the fixture must declare browser permissions');
+    browser.allowedActions = browser.allowedActions.filter((action) => action !== 'screenshot');
     expect(codesFrom(doc)).toContain('EVIDENCE_NOT_PERMITTED');
   });
 
