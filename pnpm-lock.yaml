@@ -298,6 +298,9 @@ importers:
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@orbit/sop-graph':
+        specifier: workspace:*
+        version: link:../../packages/sop-graph
       react:
         specifier: ^19.0.0
         version: 19.2.8

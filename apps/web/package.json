@@ -12,6 +12,7 @@
   "dependencies": {
     "@orbit/api": "workspace:*",
     "@orbit/contracts": "workspace:*",
+    "@orbit/sop-graph": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

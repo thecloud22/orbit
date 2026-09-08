@@ -2,6 +2,8 @@ import type { SopBindingsView, SopStepBindingView } from '@orbit/api/views';
 import type { SopReviewView } from '@orbit/api/views';
 import { describe, expect, it } from 'vitest';
 
+import { SOP_STEP_KINDS } from '@orbit/sop-graph';
+
 import { ApiRequestError } from './api-client';
 import {
   describeReviewFailure,
@@ -131,16 +133,36 @@ describe('describeReviewFailure', () => {
 });
 
 describe('fieldsForStepKind', () => {
+  /**
+   * Kinds the SOP Graph defines that Studio deliberately does not offer, each
+   * with its reason.
+   *
+   * Naming them is the point. A kind missing because nobody noticed and a kind
+   * withheld on purpose look identical in the editor, and only one of them is
+   * correct.
+   */
+  const WITHHELD: Readonly<Record<string, string>> = {
+    call: 'Refuses to compile until binding a call to a catalog operation exists (sub-phase 3.11).',
+  };
+
   it('covers every step kind in the vocabulary', () => {
-    expect([...EDITABLE_STEP_KINDS].sort()).toEqual([
-      'click',
-      'decision',
-      'extract',
-      'fill',
-      'manual_review',
-      'navigate',
-      'outcome',
-    ]);
+    // Derived from @orbit/sop-graph rather than restated. This assertion used to
+    // compare against a hand-written list, so it claimed to cover the vocabulary
+    // while never reading it -- and adding `call` to the graph left Studio
+    // unable to author it with nothing failing.
+    const offered = new Set<string>(EDITABLE_STEP_KINDS);
+
+    expect(
+      SOP_STEP_KINDS.filter((kind) => !offered.has(kind) && WITHHELD[kind] === undefined),
+    ).toEqual([]);
+  });
+
+  it('offers nothing the SOP Graph does not define, and withholds nothing that has gone', () => {
+    const defined = new Set<string>(SOP_STEP_KINDS);
+
+    expect(EDITABLE_STEP_KINDS.filter((kind) => !defined.has(kind))).toEqual([]);
+    // A stale entry would silently excuse a kind that had been renamed.
+    expect(Object.keys(WITHHELD).filter((kind) => !defined.has(kind))).toEqual([]);
   });
 
   it('never offers a raw JSON field for any kind', () => {
