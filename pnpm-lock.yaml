@@ -38,6 +38,9 @@ importers:
       '@orbit/agent-ir-compiler':
         specifier: workspace:*
         version: link:../../packages/agent-ir-compiler
+      '@orbit/api-catalog':
+        specifier: workspace:*
+        version: link:../../packages/api-catalog
       '@orbit/artifact-service':
         specifier: workspace:*
         version: link:../../packages/artifact-service
@@ -95,6 +98,9 @@ importers:
       fastify:
         specifier: ^5.0.0
         version: 5.12.3
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
       zod:
         specifier: ^4.5.4
         version: 4.5.4
@@ -363,6 +369,9 @@ importers:
       '@orbit/agent-ir':
         specifier: workspace:*
         version: link:../agent-ir
+      '@orbit/api-catalog':
+        specifier: workspace:*
+        version: link:../api-catalog
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -752,6 +761,9 @@ importers:
       '@orbit/agent-ir-compiler':
         specifier: workspace:*
         version: link:../agent-ir-compiler
+      '@orbit/api-catalog':
+        specifier: workspace:*
+        version: link:../api-catalog
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../contracts

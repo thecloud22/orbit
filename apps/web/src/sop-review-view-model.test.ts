@@ -141,9 +141,7 @@ describe('fieldsForStepKind', () => {
    * withheld on purpose look identical in the editor, and only one of them is
    * correct.
    */
-  const WITHHELD: Readonly<Record<string, string>> = {
-    call: 'Refuses to compile until binding a call to a catalog operation exists (sub-phase 3.11).',
-  };
+  const WITHHELD: Readonly<Record<string, string>> = {};
 
   it('covers every step kind in the vocabulary', () => {
     // Derived from @orbit/sop-graph rather than restated. This assertion used to

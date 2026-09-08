@@ -1020,10 +1020,24 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
       const url = buildRequestUrl(catalog, operation, resolvedArguments, step.id);
       assertApiHost(url, agentIr.permissions.api?.allowedHosts ?? [], step.id);
 
+      const headers = headersFrom(operation, resolvedArguments);
+
+      if (step.auth !== undefined) {
+        // Resolved here, into the object that is about to be sent, and nowhere
+        // else. Never in the scope, never on the step's output, and the
+        // executor redacts the header by name before it becomes evidence.
+        const secret = await resolveCredential(context, step.auth.credentialRef, step.id);
+        headers[
+          step.auth.scheme === 'bearer'
+            ? 'authorization'
+            : (step.auth.headerName ?? 'authorization')
+        ] = step.auth.scheme === 'bearer' ? `Bearer ${secret}` : secret;
+      }
+
       const response = await executor.send({
         method: operation.method.toUpperCase(),
         url: url.toString(),
-        headers: headersFrom(operation, resolvedArguments),
+        headers,
         timeoutMs,
       });
 

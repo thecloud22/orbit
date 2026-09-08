@@ -343,6 +343,21 @@ export const apiRequestStepSchema = z.strictObject({
   arguments: z.record(z.string().min(1), z.string().min(1)).optional(),
   /** Declared variable to a JSON Pointer into the response body. */
   assign: z.record(identifierSchema, z.string().startsWith('/')).optional(),
+  /**
+   * How this call authenticates, when the operation needs it.
+   *
+   * Names a credential the version also grants in `permissions.credentials`; it
+   * never carries a value. The runtime resolves it at the moment the header is
+   * built and the value reaches no event, artifact or log (ADR-038).
+   */
+  auth: z
+    .strictObject({
+      scheme: z.enum(['bearer', 'header']),
+      /** Header name for `header`; `bearer` always uses Authorization. */
+      headerName: z.string().min(1).optional(),
+      credentialRef: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/),
+    })
+    .optional(),
   timeoutMs: timeoutMsSchema.optional(),
   evidence: evidenceSchema.optional(),
 });

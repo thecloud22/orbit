@@ -637,6 +637,31 @@ mapping service, and no Studio surface — so a `call` step refuses by design, a
 and terminal workflows must be hand-authored in Agent IR. Both need the same open decision: how a
 person authors against a surface that is not a web page.
 
+**API authoring works end to end.** A `call` step is now offered in Studio, bound to a catalog
+operation, compiled into `api.request`, and run. This closed the gap that made both new surfaces
+executable-but-unreachable — for the API half.
+
+Four things make it hold together. A **call binding has no element**: it is the first binding body
+that does not spread `bindingBase`, because it points at an operation in a contract rather than at
+something on a page. The type system then proved that seven places assumed otherwise, each written as
+`kind !== 'decision'` — correct while `decision` was the only body without a single target and
+silently wrong the moment `call` arrived; `hasSingleTarget` states the property once.
+
+**Permissions are derived from what compiled**, never from what the catalog offers: `allowedHosts`,
+`allowedOperations` and `allowedRefs` come from the steps that actually reached them, the pattern
+ADR-022 set for `allowedDomains`. **`permissions.browser` is now emitted only when a workflow reaches
+a browser**, so an API-only agent claims no browser grant.
+
+**Catalogs are deployment configuration**, loaded at boot from `ORBIT_API_CATALOG_DIR`. File reading
+lives in `apps/api`, not `@orbit/api-catalog`, which stays pure.
+
+**Auth resolves at the moment the header is built.** `api.request` takes an optional `auth` naming a
+credential ref the version also grants; the value never enters the scope, and the executor redacts
+the header by name before it becomes evidence.
+
+**Still not authorable: terminal.** A SOP step cannot say which surface it runs on, so a `fill` is
+ambiguous between browser and terminal. That, and terminal recording, are what remain.
+
 **Checkpoint C.** The foundation is done. The terminal track (3.5-3.8) and the API track (3.9-3.11)
 touch disjoint packages from here and can proceed independently.
 

@@ -400,8 +400,8 @@ describe('refusals', () => {
   });
 });
 
-describe('a call step', () => {
-  it('refuses by name rather than as a mapping failure of some other kind', () => {
+describe('an unbound call step', () => {
+  it('refuses as a missing mapping, not as a mapping failure of some other kind', () => {
     // Falling through to the extract branch would report that the step "reads a
     // value but its mapping does not" — true of an extract and meaningless
     // here. A refusal that describes the wrong problem sends the reader
@@ -423,7 +423,118 @@ describe('a call step', () => {
     });
 
     const codes = refusalCodes(result);
-    expect(codes).toContain('call_binding_unsupported');
+    // `missing_binding` rather than `call_binding_unsupported`: binding a call
+    // is supported now, and this one simply has none. `call_binding_unsupported`
+    // moved to the case it actually describes -- an operation this deployment
+    // does not hold.
+    expect(codes).toContain('missing_binding');
     expect(codes).not.toContain('extract_coverage_gap');
+  });
+});
+
+describe('compiling a bound call step', () => {
+  const CATALOG = {
+    id: 'service-desk',
+    title: 'Service Desk',
+    hosts: ['api.example.gov'],
+    operations: [
+      {
+        operationId: 'getRequest',
+        method: 'get' as const,
+        path: '/requests/{id}',
+        parameters: [
+          { name: 'id', location: 'path' as const, required: true, type: 'string' as const },
+        ],
+        idempotent: true,
+      },
+    ],
+  };
+
+  function graphWithCall() {
+    const graph = findServiceRequestGraph();
+    return {
+      ...graph,
+      entryStepId: 'lookup',
+      steps: [
+        {
+          id: 'lookup',
+          kind: 'call' as const,
+          purpose: 'Find the request before opening the portal',
+          requestHint: 'the service request record',
+          systemHint: 'Service Desk',
+        },
+        ...graph.steps,
+      ],
+    };
+  }
+
+  const callBinding = {
+    kind: 'call' as const,
+    catalogId: 'service-desk',
+    operationId: 'getRequest',
+    arguments: { id: { kind: 'input' as const, inputId: 'requestNumber' } },
+    reads: { requestStatus: '/status' },
+    auth: { scheme: 'bearer' as const, credentialRef: 'serviceDeskToken' },
+  };
+
+  function compileWithCall(
+    body: unknown = callBinding,
+    catalogs: unknown = { 'service-desk': CATALOG },
+  ) {
+    const graph = graphWithCall();
+    return compile({
+      graph,
+      bindings: [
+        ...bindingsFor(graph),
+        {
+          id: 'binding_call',
+          documentId: IDS.sopId,
+          stepId: 'lookup',
+          status: 'approved',
+          stepSha256: stepChecksum(graph.steps[0] as SopStep),
+          body,
+        } as unknown as ExecutionBinding,
+      ],
+      catalogs,
+    } as unknown as Partial<CompileInput>);
+  }
+
+  it('compiles to an api.request naming the operation, never a URL', () => {
+    const result = compileWithCall();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const step = result.agentIr.steps.find((one) => one.type === 'api.request');
+    expect(step).toMatchObject({
+      catalogId: 'service-desk',
+      operationId: 'getRequest',
+      // The argument became a reference, not a baked-in value.
+      arguments: { id: '${inputs.requestNumber}' },
+      assign: { requestStatus: '/status' },
+    });
+  });
+
+  it('grants only the operation and host this workflow actually reaches', () => {
+    const result = compileWithCall();
+    if (!result.ok) throw new Error('expected a candidate');
+
+    // Derived from what compiled, never from what the catalog offers — the
+    // pattern ADR-022 set for allowedDomains.
+    expect(result.agentIr.permissions.api).toEqual({
+      allowedHosts: ['api.example.gov'],
+      allowedOperations: ['getRequest'],
+      allowedActions: ['request'],
+    });
+    expect(result.agentIr.permissions.credentials).toEqual({ allowedRefs: ['serviceDeskToken'] });
+  });
+
+  it('refuses an operation this deployment does not hold, rather than compiling it', () => {
+    const result = compileWithCall(callBinding, {});
+    expect(refusalCodes(result)).toContain('call_binding_unsupported');
+  });
+
+  it('refuses a required parameter with nowhere to come from', () => {
+    const result = compileWithCall({ ...callBinding, arguments: {} });
+    expect(refusalCodes(result)).toContain('unusable_value_source');
   });
 });

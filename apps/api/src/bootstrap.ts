@@ -1,3 +1,4 @@
+import { CATALOG_DIRECTORY_ENV, loadApiCatalogs } from './api-catalogs';
 import { createLocalFilesystemArtifactStorage } from '@orbit/artifacts';
 import { createArtifactService } from '@orbit/artifact-service';
 import { createDatabase, createRepositories } from '@orbit/db';
@@ -90,6 +91,11 @@ export interface StartedApi {
 
 export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi> {
   const handle = createDatabase({ url: options.databaseUrl });
+
+  // Deployment configuration, read once at boot. An Orbit with no catalogs runs
+  // every browser workflow it has; a `call` step simply refuses to compile.
+  const apiCatalogs = loadApiCatalogs(process.env[CATALOG_DIRECTORY_ENV]);
+
   const storage = await createLocalFilesystemArtifactStorage({ root: options.artifactRoot });
 
   // Headed, because a person has to see and click the page they are recording.
@@ -133,7 +139,10 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
         ...(options.modelRates === undefined ? {} : { rates: options.modelRates }),
       }),
       sopRevisionService: createSopRevisionService({ database: handle.db }),
-      sopCandidateService: createSopCandidateService({ database: handle.db }),
+      sopCandidateService: createSopCandidateService({
+        database: handle.db,
+        apiCatalogs: apiCatalogs.catalogs,
+      }),
       sopPublishService: createSopPublishService({ database: handle.db }),
       publishRecordingService: createPublishRecordingService({ database: handle.db }),
       publishBoundDocumentService: createPublishBoundDocumentService({ database: handle.db }),

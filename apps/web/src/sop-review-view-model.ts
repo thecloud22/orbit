@@ -266,6 +266,16 @@ const PURPOSE: StepFieldSpec = {
 const OPTIONAL_PURPOSE: StepFieldSpec = { ...PURPOSE, required: false };
 
 const FIELDS_BY_KIND: Readonly<Record<string, readonly StepFieldSpec[]>> = {
+  call: [
+    {
+      kind: 'text',
+      name: 'requestHint',
+      label: 'What this asks for',
+      required: true,
+    },
+    { kind: 'text', name: 'systemHint', label: 'Which system', required: true },
+    { kind: 'text', name: 'purpose', label: 'Why this step exists', required: true },
+  ],
   navigate: [
     {
       kind: 'text',

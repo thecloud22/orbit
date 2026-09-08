@@ -7,6 +7,7 @@ import {
   type Locator,
 } from '@orbit/agent-ir';
 import { isDeclarableBusinessOutcome, NO_BUSINESS_OUTCOME } from '@orbit/contracts';
+import { operationById, type ApiCatalog } from '@orbit/api-catalog';
 import { stepChecksum } from '@orbit/db/checksum';
 import type { ExecutionBinding, SelectorChain } from '@orbit/execution-mapping';
 import {
@@ -53,6 +54,16 @@ export interface CompileInput {
    * the IR it produced before this existed.
    */
   readonly recoveryAllowed?: boolean;
+  /**
+   * The API contracts this deployment holds, by catalog id.
+   *
+   * Passed in rather than read from anywhere: the compiler is pure, and a
+   * catalog is a fact about a service the deployment happens to hold. What the
+   * *version* carries is the grant derived from it -- which operations and which
+   * hosts -- because that is what a reviewer approved and it must not change
+   * under a published agent (ADR-005).
+   */
+  readonly catalogs?: Readonly<Record<string, ApiCatalog>>;
 }
 
 export type CompileResult =
@@ -347,6 +358,13 @@ export function compileCandidate(input: CompileInput): CompileResult {
   const steps: AgentIrStep[] = [];
   const variables: Record<string, { type: 'string' }> = {};
   const actions = new Set<BrowserAction>();
+  // Derived from what actually compiled, never from what the catalog offers: a
+  // version grants the operations and hosts its own steps reach and nothing
+  // more, the way allowedDomains is derived from hosts a recording visited
+  // (ADR-022).
+  const apiOperations = new Set<string>();
+  const apiHosts = new Set<string>();
+  const credentialRefs = new Set<string>();
   // Whether this workflow needs the model capability at all. Declared only when
   // a judged decision actually compiled, so an agent that never asks for
   // judgement never carries the permission that allows it.
@@ -388,17 +406,99 @@ export function compileCandidate(input: CompileInput): CompileResult {
     }
 
     if (step.kind === 'call') {
-      // The intent kind exists and `api.request` executes, but nothing maps one
-      // to the other yet: binding a call to a catalog operation needs a review
-      // surface that has not been built. Refused by name so the gap is legible
-      // rather than appearing as a mapping failure of some other kind.
-      refusals.push(
-        refusal(
-          'call_binding_unsupported',
-          `Step "${step.id}" calls "${step.systemHint}", and mapping a call to an API operation is not built yet.`,
-          step.id,
-        ),
-      );
+      const binding = bindingsByStep.get(step.id);
+
+      if (binding === undefined || binding.body.kind !== 'call') {
+        refusals.push(
+          refusal(
+            'missing_binding',
+            `Step "${step.id}" calls "${step.systemHint}" and nothing says which operation answers it.`,
+            step.id,
+          ),
+        );
+        continue;
+      }
+
+      const bound = binding.body;
+      const catalog = input.catalogs?.[bound.catalogId];
+      const operation =
+        catalog === undefined ? undefined : operationById(catalog, bound.operationId);
+
+      if (catalog === undefined || operation === undefined) {
+        // Named rather than compiled optimistically. A step pointing at an
+        // operation this deployment cannot show the reviewer is exactly the
+        // thing ADR-021 says must refuse instead of passing through.
+        refusals.push(
+          refusal(
+            'call_binding_unsupported',
+            `Step "${step.id}" names operation "${bound.operationId}" in catalog "${bound.catalogId}", which this deployment does not hold.`,
+            step.id,
+          ),
+        );
+        continue;
+      }
+
+      const callArguments: Record<string, string> = {};
+      let argumentRefused = false;
+
+      for (const parameter of operation.parameters) {
+        const source = bound.arguments[parameter.name];
+
+        if (source === undefined) {
+          if (parameter.required) {
+            refusals.push(
+              refusal(
+                'unusable_value_source',
+                `Step "${step.id}" leaves required parameter "${parameter.name}" of "${bound.operationId}" with nowhere to come from.`,
+                step.id,
+              ),
+            );
+            argumentRefused = true;
+          }
+          continue;
+        }
+
+        callArguments[parameter.name] =
+          source.kind === 'literal'
+            ? source.value
+            : source.kind === 'input'
+              ? `\${inputs.${source.inputId}}`
+              : `\${variables.${source.name}}`;
+      }
+
+      if (argumentRefused) {
+        continue;
+      }
+
+      apiOperations.add(bound.operationId);
+      for (const host of catalog.hosts) {
+        apiHosts.add(host);
+      }
+
+      if (bound.auth !== undefined) {
+        credentialRefs.add(bound.auth.credentialRef);
+      }
+
+      steps.push({
+        id: step.id,
+        sourceSopStepIds: [step.id],
+        type: 'api.request',
+        catalogId: bound.catalogId,
+        operationId: bound.operationId,
+        ...(Object.keys(callArguments).length === 0 ? {} : { arguments: callArguments }),
+        ...(Object.keys(bound.reads).length === 0 ? {} : { assign: { ...bound.reads } }),
+        ...(bound.auth === undefined
+          ? {}
+          : {
+              auth: {
+                scheme: bound.auth.scheme,
+                ...(bound.auth.headerName === undefined
+                  ? {}
+                  : { headerName: bound.auth.headerName }),
+                credentialRef: bound.auth.credentialRef,
+              },
+            }),
+      });
       continue;
     }
 
@@ -781,10 +881,30 @@ export function compileCandidate(input: CompileInput): CompileResult {
     variables,
     outputs,
     permissions: {
-      browser: {
-        allowedDomains: [...domains].sort(),
-        allowedActions: [...actions].sort(),
-      },
+      // Emitted only when the workflow actually reaches a browser. A workflow
+      // that only calls APIs is now a thing that can exist, and claiming a
+      // browser grant it never uses would be a permission nobody meant to give
+      // (ADR-037).
+      ...(actions.size === 0
+        ? {}
+        : {
+            browser: {
+              allowedDomains: [...domains].sort(),
+              allowedActions: [...actions].sort(),
+            },
+          }),
+      ...(apiOperations.size === 0
+        ? {}
+        : {
+            api: {
+              allowedHosts: [...apiHosts].sort(),
+              allowedOperations: [...apiOperations].sort(),
+              allowedActions: ['request' as const],
+            },
+          }),
+      ...(credentialRefs.size === 0
+        ? {}
+        : { credentials: { allowedRefs: [...credentialRefs].sort() } }),
       // Its own section rather than a browser action: a model call leaves the
       // machine and costs money, and smuggling it in under a browser grant
       // would mean an agent granted `click` had quietly been granted judgement.

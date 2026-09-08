@@ -356,6 +356,19 @@ function checkPermissions(context: Context): void {
     }
 
     if (step.type === 'api.request') {
+      if (
+        step.auth !== undefined &&
+        !(permissions.credentials?.allowedRefs ?? []).includes(step.auth.credentialRef)
+      ) {
+        add(
+          context,
+          'CREDENTIAL_NOT_PERMITTED',
+          `Operation "${step.operationId}" authenticates with "${step.auth.credentialRef}", which is not in permissions.credentials.allowedRefs.`,
+          ['steps', index, 'auth'],
+          step.id,
+        );
+      }
+
       if (!(permissions.api?.allowedOperations ?? []).includes(step.operationId)) {
         add(
           context,

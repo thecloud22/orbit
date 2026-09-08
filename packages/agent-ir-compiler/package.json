@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@orbit/agent-ir": "workspace:*",
+    "@orbit/api-catalog": "workspace:*",
     "@orbit/contracts": "workspace:*",
     "@orbit/db": "workspace:*",
     "@orbit/execution-mapping": "workspace:*",

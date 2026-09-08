@@ -13,6 +13,7 @@
   "dependencies": {
     "@orbit/agent-ir": "workspace:*",
     "@orbit/agent-ir-compiler": "workspace:*",
+    "@orbit/api-catalog": "workspace:*",
     "@orbit/artifact-service": "workspace:*",
     "@orbit/artifacts": "workspace:*",
     "@orbit/contracts": "workspace:*",
@@ -32,6 +33,7 @@
     "@orbit/sop-recording": "workspace:*",
     "@orbit/sop-service": "workspace:*",
     "fastify": "^5.0.0",
+    "yaml": "^2.9.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {

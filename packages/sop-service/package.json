@@ -17,6 +17,7 @@
   "dependencies": {
     "@orbit/agent-ir": "workspace:*",
     "@orbit/agent-ir-compiler": "workspace:*",
+    "@orbit/api-catalog": "workspace:*",
     "@orbit/contracts": "workspace:*",
     "@orbit/db": "workspace:*",
     "@orbit/execution-mapping": "workspace:*",

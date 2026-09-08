@@ -1,3 +1,4 @@
+import type { ApiCatalog } from '@orbit/api-catalog';
 import {
   assessSandboxReadiness,
   compileCandidate,
@@ -84,6 +85,8 @@ function agentIdForDocument(documentId: SopDocumentId): string {
 
 export function createSopCandidateService(options: {
   readonly database: OrbitDatabase;
+  /** The API contracts this deployment holds, for compiling `call` steps. */
+  readonly apiCatalogs?: Readonly<Record<string, ApiCatalog>>;
 }): SopCandidateService {
   const repositories = createRepositories(options.database);
 
@@ -157,6 +160,10 @@ export function createSopCandidateService(options: {
         // versions already published, which is why it is expressed in the IR
         // rather than consulted at run time (ADR-005, ADR-033).
         recoveryAllowed: document.recoveryEnabled,
+        // Held by the deployment rather than the document: a contract is a fact
+        // about a service, and what the compiled version carries is the grant
+        // derived from it (ADR-037).
+        ...(options.apiCatalogs === undefined ? {} : { catalogs: options.apiCatalogs }),
       });
 
       if (!compiled.ok) {
