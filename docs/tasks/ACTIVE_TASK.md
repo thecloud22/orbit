@@ -546,6 +546,17 @@ authenticated workflow can be published and run.
 Authoring is **not** built: nothing maps a recorded sign-in's secret input to a credential reference,
 so such a workflow must be hand-authored in Agent IR and a recorded one still cannot be approved.
 
+**Sub-phase 3.4 is complete**, and smaller than planned. Its stripped `api.request` step existed only
+so the terminal track would not be both the first real adapter and the seam's validation; 3.2 already
+proved the seam with two tests, and the full API surface is being built anyway, so the throwaway step
+was redundant. What remained was the structural guarantee: `executor-boundary.test.ts` proves
+`@orbit/runtime` imports no execution engine, declares none as a dependency, and reaches none through
+the whole workspace closure. `@orbit/credentials` is on that denylist for the same reason
+`@orbit/decision-judge` is on the model seam's. Entries for `@orbit/executor-x3270` and
+`@orbit/executor-http` are inert until those packages exist, which is the point — the test fails on
+the commit that adds one rather than relying on someone remembering the file then. Verified by
+mutation: an import of `playwright` in the package makes it fail.
+
 **Checkpoint C.** The foundation is done. The terminal track (3.5-3.8) and the API track (3.9-3.11)
 touch disjoint packages from here and can proceed independently.
 
