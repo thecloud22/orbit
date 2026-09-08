@@ -1147,7 +1147,9 @@ also suppresses it; it defaults to headed for exactly this reason.
 
 **A run stopped and the error mentions drift** — the element a step was bound to
 no longer matches the fingerprint a person approved. That is the check working,
-not a bug. See [`docs/guides/ui-drift-recovery.md`](./docs/guides/ui-drift-recovery.md).
+not a bug. See [`docs/guides/ui-drift-recovery.md`](./docs/guides/ui-drift-recovery.md),
+and [`docs/guides/upgrade.md`](./docs/guides/upgrade.md) for what it means when
+upgrading a deployment whose agents were passing before.
 
 **Bound agents that used to pass now fail** — the drift check went live in
 sub-phase 2.12. A binding recorded against a page that has since changed now
@@ -1241,6 +1243,7 @@ The short version:
 |---|---|
 | Use the product | Watchtower's **Wiki** tab, or [`docs/guides/`](./docs/guides/) |
 | Install it | [Local setup](#local-setup) above, then [`docs/guides/installation.md`](./docs/guides/installation.md) |
+| Upgrade an existing checkout | [`docs/guides/upgrade.md`](./docs/guides/upgrade.md) — back up, migrate, restart, and what drift enforcement means for agents that used to pass |
 | Configure it | [`.env.example`](./.env.example), then [`docs/guides/configuration.md`](./docs/guides/configuration.md) |
 | Understand a drifted run | [`docs/guides/ui-drift-recovery.md`](./docs/guides/ui-drift-recovery.md) |
 | Fix something | [Troubleshooting](#troubleshooting) below, then [`docs/guides/troubleshooting.md`](./docs/guides/troubleshooting.md) |

@@ -219,25 +219,25 @@ minutes, most of it in `pnpm test:runtime`.
 
 ## Upgrading an existing checkout
 
+Full procedure — backups, migrations, restart order, post-upgrade checks and
+rollback limitations — is in [upgrade.md](./upgrade.md). The short form:
+
 ```bash
+# back up first: pg_dump "$DATABASE_URL", and tar the artifact directory
 git pull
+pnpm db:check         # what changed, before changing anything
 pnpm bootstrap        # install, migrate, seed, and re-check, without touching .env
 ```
 
-or by hand:
-
-```bash
-git pull
-pnpm install
-pnpm db:check         # what changed, before changing anything
-pnpm db:migrate
-```
-
-One behaviour change is worth knowing about, because it makes previously-passing
-agents stop: **the drift check went live in sub-phase 2.12**. A binding recorded
-against a page that has since changed now fails the run rather than acting on
-whatever it finds. Re-record the affected step, or grant the document recovery
-and answer the proposal — see [ui-drift-recovery.md](./ui-drift-recovery.md).
+One behaviour change is worth knowing about before you start, because it makes
+previously-passing agents stop: **the drift check went live in sub-phase 2.12**.
+A binding recorded against a page that has since changed now fails the run rather
+than acting on whatever it finds. This is intentional. Inspect the run's
+evidence, then re-demonstrate the affected step, or — where the document has been
+granted recovery — answer the proposal and **publish a new version**, because
+accepting a proposal does not publish one. See
+[ui-drift-recovery.md](./ui-drift-recovery.md) and
+[upgrade.md](./upgrade.md#the-drift-enforcement-change-read-this-first).
 
 ## Optional: PostgreSQL in Docker
 

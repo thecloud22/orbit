@@ -172,3 +172,4 @@ ever learns that.
 | Immutable versions | ADR-005 |
 | A scripted drift demo | [`../demo/drift-recovery-demo.md`](../demo/drift-recovery-demo.md) |
 | In-app version of this page | Watchtower → **Wiki** → *When a run stops because the page changed* |
+| What an upgrade means for existing bindings | [upgrade.md](./upgrade.md#the-drift-enforcement-change-read-this-first) |
