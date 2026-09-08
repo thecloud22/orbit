@@ -29,6 +29,8 @@ import {
   type RunId,
   type RunStepId,
   type SopAnswerId,
+  apiSystemIdSchema,
+  type ApiSystemId,
   type SopDocumentId,
   type SopRevisionId,
 } from './ids';
@@ -167,6 +169,10 @@ export function newRequestId(): RequestId {
 
 export function newSopDocumentId(): SopDocumentId {
   return sopDocumentIdSchema.parse(`sopdoc_${monotonicUlid()}`);
+}
+
+export function newApiSystemId(): ApiSystemId {
+  return apiSystemIdSchema.parse(`apisys_${monotonicUlid()}`);
 }
 
 export function newSopRevisionId(): SopRevisionId {

@@ -1,3 +1,4 @@
+import { createApiSystemsRepository, type ApiSystemsRepository } from './api-systems';
 import type { Executor, OrbitDatabase } from '../client';
 import {
   createAgentIrCandidateRepository,
@@ -33,6 +34,7 @@ export * from './execution-bindings';
 export * from './model-usage';
 export * from './run-events';
 export * from './run-steps';
+export * from './api-systems';
 export * from './runs';
 export * from './sop-documents';
 export * from './sop-graph-revisions';
@@ -52,6 +54,8 @@ export interface OrbitRepositories {
   readonly bindingRecoveryProposals: BindingRecoveryProposalRepository;
   /** The model-spend ledger: one row per provider call (ADR-029). */
   readonly modelUsage: ModelUsageRepository;
+  /** Registered API contracts, which are configuration rather than history. */
+  readonly apiSystems: ApiSystemsRepository;
 }
 
 export function createRepositories(executor: Executor): OrbitRepositories {
@@ -68,6 +72,7 @@ export function createRepositories(executor: Executor): OrbitRepositories {
     agentIrCandidates: createAgentIrCandidateRepository(executor),
     bindingRecoveryProposals: createBindingRecoveryProposalRepository(executor),
     modelUsage: createModelUsageRepository(executor),
+    apiSystems: createApiSystemsRepository(executor),
   };
 }
 

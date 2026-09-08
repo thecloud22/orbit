@@ -496,3 +496,69 @@ export async function publishRecording(documentId: string): Promise<PublishedAge
     {},
   );
 }
+
+/** One operation a registered contract declares, as Studio needs to show it. */
+export interface ApiSystemOperationView {
+  readonly operationId: string;
+  readonly method: string;
+  readonly path: string;
+  readonly summary: string | null;
+  readonly parameters: readonly {
+    readonly name: string;
+    readonly location: string;
+    readonly required: boolean;
+  }[];
+}
+
+export interface ApiSystemView {
+  readonly id: string;
+  readonly catalogId: string;
+  readonly name: string;
+  readonly authScheme: string;
+  readonly credentialRef: string | null;
+  /**
+   * Whether the deployment supplies the credential — never what it is.
+   *
+   * `null` when the system needs none. The value itself is not on this type,
+   * not on the wire, and not in the database (ADR-038).
+   */
+  readonly credentialConfigured: boolean | null;
+  readonly credentialVariable: string | null;
+  readonly hosts: readonly string[];
+  readonly operations: readonly ApiSystemOperationView[];
+  readonly refusals: readonly { readonly operationId: string; readonly detail: string }[];
+  readonly importError: string | null;
+}
+
+export async function listApiSystems(): Promise<{ readonly systems: readonly ApiSystemView[] }> {
+  return getJson('/v1/api-systems');
+}
+
+export async function registerApiSystem(input: {
+  readonly catalogId: string;
+  readonly name: string;
+  readonly spec: string;
+  readonly authScheme: 'none' | 'bearer' | 'basic';
+  readonly credentialRef?: string;
+  readonly authHeaderName?: string;
+}): Promise<{ readonly id: string; readonly catalogId: string }> {
+  const response = await fetch('/v1/api-systems', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+
+  return (await response.json()) as { id: string; catalogId: string };
+}
+
+export async function deleteApiSystem(id: string): Promise<void> {
+  const response = await fetch(`/v1/api-systems/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+}

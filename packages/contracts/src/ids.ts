@@ -72,6 +72,12 @@ export const sopDocumentIdSchema = z
   .brand<'SopDocumentId'>();
 export type SopDocumentId = z.infer<typeof sopDocumentIdSchema>;
 
+export const apiSystemIdSchema = z
+  .string()
+  .regex(idPattern('apisys'), 'must be an opaque id prefixed with "apisys_"')
+  .brand<'ApiSystemId'>();
+export type ApiSystemId = z.infer<typeof apiSystemIdSchema>;
+
 export const sopRevisionIdSchema = z
   .string()
   .regex(idPattern('soprev'), 'must be an opaque id prefixed with "soprev_"')

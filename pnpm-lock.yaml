@@ -782,6 +782,9 @@ importers:
       '@orbit/sop-recording':
         specifier: workspace:*
         version: link:../sop-recording
+      yaml:
+        specifier: ^2.8.1
+        version: 2.9.0
     devDependencies:
       typescript:
         specifier: ^5.9.0

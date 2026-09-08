@@ -1313,7 +1313,7 @@ The short version:
 | Fix something | [Troubleshooting](#troubleshooting) below, then [`docs/guides/troubleshooting.md`](./docs/guides/troubleshooting.md) |
 | Understand how it fits together | [`docs/architecture/system-design.md`](./docs/architecture/system-design.md) |
 | Change the code | [`CLAUDE.md`](./CLAUDE.md), then [`docs/architecture/system-design.md`](./docs/architecture/system-design.md) |
-| Know why something is the way it is | [`docs/architecture/decisions.md`](./docs/architecture/decisions.md) — 38 ADRs, indexed and status-marked |
+| Know why something is the way it is | [`docs/architecture/decisions.md`](./docs/architecture/decisions.md) — 39 ADRs, indexed and status-marked |
 
 ## Contribution workflow
 

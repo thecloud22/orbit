@@ -23,7 +23,8 @@
     "@orbit/execution-mapping": "workspace:*",
     "@orbit/sop-generation": "workspace:*",
     "@orbit/sop-graph": "workspace:*",
-    "@orbit/sop-recording": "workspace:*"
+    "@orbit/sop-recording": "workspace:*",
+    "yaml": "^2.8.1"
   },
   "devDependencies": {
     "typescript": "^5.9.0"

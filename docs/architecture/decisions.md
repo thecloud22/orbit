@@ -78,6 +78,7 @@ real Gemini or Bedrock service.
 | [ADR-036](#adr-036-revising-a-published-workflow-forks-a-new-draft-and-binding-stays-available-without-it) | Revising a published workflow forks a new draft, and binding stays available without it | Accepted |
 | [ADR-037](#adr-037-give-every-execution-surface-its-own-permission-section-addressing-vocabulary-and-evidence-set) | Give every execution surface its own permission section, addressing vocabulary, and evidence set | Accepted |
 | [ADR-038](#adr-038-name-a-credential-in-the-agent-ir-and-resolve-it-at-the-moment-it-is-typed) | Name a credential in the Agent IR, and resolve it at the moment it is typed | Accepted — amends ADR-021 |
+| [ADR-039](#adr-039-let-admin-register-a-contract-but-never-a-secret) | Let Admin register a contract, but never a secret | Accepted — amends ADR-009 |
 
 ---
 
@@ -1974,3 +1975,53 @@ Phase 3's surfaces make the dead end the binding constraint rather than an accep
 | Let an unresolvable credential type an empty string | The precise failure ADR-021 exists to prevent |
 | Keep `valueLength` for credentials, for consistency | The length of a secret is information about the secret, and consistency is not worth leaking it |
 | Remove ADR-021's gate now that credentials exist | A secret *input* is still unsuppliable. Removing the gate would let that case through as well, which nothing has solved |
+
+## ADR-039: Let Admin register a contract, but never a secret
+
+**Status:** Accepted — amends ADR-009
+
+**Phase:** 3
+
+### Context
+
+Admin was read-only by construction, and its own header comment said why: "Orbit has no authentication, so a button here would be a button for anyone who can reach Watchtower." Budgets and provider selection are deployment configuration, the recovery grant is per-document, and permissions are compiled into an immutable version — so there was nothing left that was both useful and safe to put a control on.
+
+The API surface broke that tidiness. Catalogs shipped as a configuration directory read at boot, which meant registering a service required file access to the server and a restart. A person authoring a workflow could not see which systems existed, and the Studio step form asked them to type a system name as free text with nothing to check it against. The feature was reachable only by whoever could edit YAML on the host, which is not who Orbit is for.
+
+The obvious fix — a registration form with a field for the API key — is the thing the read-only rule exists to prevent.
+
+### Decision
+
+**Admin may write a contract. It may never write a secret.**
+
+The registry holds a system's name, its catalog id, its OpenAPI document, its authentication *scheme*, and the *name* of the credential it uses. The credential's value is not in the form, not on the wire, not in the database, and not on the screen. It is supplied as an environment variable by whoever deploys Orbit, resolved at the moment a request header is built (ADR-038).
+
+Admin reports whether that variable is set, and nothing more: `serviceDeskToken → ORBIT_CREDENTIAL_SERVICE_DESK_TOKEN — configured`. That is the one fact an operator needs from a screen and the one thing that must never appear on one.
+
+**Registering a contract grants nothing.** This is what makes the write acceptable without authentication, and it is a property rather than a hope. A registered operation is only an option: a workflow must still name it, a reviewer must still approve the binding, and the compiled version still carries its own grant derived from what actually compiled. Someone who registered a hostile contract would have added a choice nobody made.
+
+**A contract is refused at registration if it cannot be imported**, rather than at compile time. A document nothing can parse is not a system anybody can use, and discovering that while authoring a workflow is discovering it too late.
+
+**Catalogs are read at compile time, not at boot.** Registering a system takes effect without restarting the API. A contract re-registered after a version was published does not disturb that version, because its grant was compiled in and is immutable (ADR-005).
+
+**The configuration directory is removed rather than kept alongside.** Two ways to register one thing is two places to look when a system is missing.
+
+### Consequences
+
+**A person can set up an API system and then use it, without server access.** That is the point, and it is the first time any Phase 3 surface has been reachable by the people Orbit is built for.
+
+**Admin is no longer uniformly read-only, and the page now has to say which half is which.** The platform values remain resolved at start-up and unchangeable from the UI; API systems are the stated exception with its reason.
+
+**Deleting a system does not stop agents already published against it.** Their grant is compiled in. The asymmetry is deliberate and worth stating: removing a registration removes an authoring option, never a running capability.
+
+**Anyone who can reach Watchtower can register or delete a system.** Unchanged from every other write Orbit already exposes — publishing a workflow is a far larger authority — and the containment is that no secret and no grant is reachable this way. Real authorization remains Phase 5.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Keep the configuration directory | Requires server access and a restart to add a system, and gives the authoring UI nothing to list. It is the reason this was unusable |
+| Store the credential value, encrypted at rest | An encryption key in the same deployment protects against a stolen backup and nothing else, while putting the secret on the wire and in a form. The environment variable is both simpler and stronger |
+| Show a masked value in Admin | A mask still means the value was fetched, sent, and rendered. Reporting whether the variable is set answers the real question without moving the secret at all |
+| Put registration in Studio instead | Systems are deployment-wide and shared across workflows; Studio is per document. It would have preserved a rule at the cost of putting the control in the wrong place |
+| Wait for authentication before allowing any write | Publishing a workflow is already a larger authority than registering a contract, and it has been available since Phase 1. Blocking this specifically would be inconsistent rather than safe |

@@ -1,4 +1,5 @@
-import type { ApiCatalog } from '@orbit/api-catalog';
+import { importOpenApi, type ApiCatalog } from '@orbit/api-catalog';
+import { parse as parseYaml } from 'yaml';
 import {
   assessSandboxReadiness,
   compileCandidate,
@@ -85,10 +86,37 @@ function agentIdForDocument(documentId: SopDocumentId): string {
 
 export function createSopCandidateService(options: {
   readonly database: OrbitDatabase;
-  /** The API contracts this deployment holds, for compiling `call` steps. */
-  readonly apiCatalogs?: Readonly<Record<string, ApiCatalog>>;
 }): SopCandidateService {
   const repositories = createRepositories(options.database);
+
+  /**
+   * The registered API contracts, imported fresh.
+   *
+   * A system whose document no longer imports is skipped rather than throwing:
+   * one broken registration must not stop every other workflow compiling, and
+   * the step that needed it refuses by name anyway.
+   */
+  async function loadRegisteredCatalogs(): Promise<Record<string, ApiCatalog>> {
+    const catalogs: Record<string, ApiCatalog> = {};
+
+    for (const system of await repositories.apiSystems.list()) {
+      let document: unknown;
+
+      try {
+        document = parseYaml(system.specText);
+      } catch {
+        continue;
+      }
+
+      const imported = importOpenApi(system.catalogId, document);
+
+      if (imported.ok) {
+        catalogs[system.catalogId] = imported.catalog;
+      }
+    }
+
+    return catalogs;
+  }
 
   /**
    * The race-condition fallback shared by `approve` and `reject`.
@@ -160,10 +188,11 @@ export function createSopCandidateService(options: {
         // versions already published, which is why it is expressed in the IR
         // rather than consulted at run time (ADR-005, ADR-033).
         recoveryAllowed: document.recoveryEnabled,
-        // Held by the deployment rather than the document: a contract is a fact
-        // about a service, and what the compiled version carries is the grant
-        // derived from it (ADR-037).
-        ...(options.apiCatalogs === undefined ? {} : { catalogs: options.apiCatalogs }),
+        // Read at compile time rather than at boot: registering a system in
+        // Admin has to take effect without restarting the API, and a contract
+        // re-registered after a version was published must not disturb it --
+        // the version's grant is compiled in and immutable (ADR-005, ADR-037).
+        catalogs: await loadRegisteredCatalogs(),
       });
 
       if (!compiled.ok) {

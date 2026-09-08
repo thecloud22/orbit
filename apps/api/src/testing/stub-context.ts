@@ -1,12 +1,13 @@
 import type { ArtifactService } from '@orbit/artifact-service';
 import type {
   AgentIrCandidateRepository,
-  ModelUsageRepository,
   AgentRepository,
   AgentVersionRepository,
   ArtifactRepository,
   BindingRecoveryProposalRepository,
   ExecutionBindingRepository,
+  ModelUsageRepository,
+  OrbitRepositories,
   RunEventRepository,
   RunRepository,
   RunStepRepository,
@@ -88,6 +89,7 @@ export interface StubContextOptions {
   readonly bindingRecoveryProposals?: Partial<BindingRecoveryProposalRepository>;
   readonly modelBudgets?: ModelBudgets;
   readonly platform?: Partial<PlatformFacts>;
+  readonly apiSystems?: Partial<OrbitRepositories['apiSystems']>;
 }
 
 export function createStubContext(options: StubContextOptions = {}): ApiContext {
@@ -110,6 +112,7 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
       sopGraphRevisions: stubbed('sopGraphRevisions', options.sopGraphRevisions ?? {}),
       executionBindings: stubbed('executionBindings', options.executionBindings ?? {}),
       modelUsage: stubbed('modelUsage', options.modelUsage ?? {}),
+      apiSystems: stubbed('apiSystems', options.apiSystems ?? {}),
       agentIrCandidates: stubbed('agentIrCandidates', options.agentIrCandidates ?? {}),
       bindingRecoveryProposals: stubbed(
         'bindingRecoveryProposals',

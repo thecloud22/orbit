@@ -15,6 +15,7 @@
  * that has runs fails rather than orphaning evidence.
  */
 export * from './agent-ir-candidates';
+export * from './api-systems';
 export * from './agent-versions';
 export * from './agents';
 export * from './execution-bindings';
@@ -50,4 +51,8 @@ export const ORBIT_TABLE_NAMES = [
   'runs',
   'agent_versions',
   'agents',
+  // References nothing and is referenced by nothing: a registered contract is
+  // configuration, and a published version carries its own compiled grant
+  // rather than a foreign key to one (ADR-037). Order is therefore free.
+  'api_systems',
 ] as const;

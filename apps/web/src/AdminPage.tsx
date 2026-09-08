@@ -10,6 +10,7 @@ import {
   type MigrationStatus,
 } from './admin-view-model';
 import { ApiErrorNotice } from './ApiErrorNotice';
+import { ApiSystemsPanel } from './ApiSystemsPanel';
 import { ApiRequestError, getModelUsage, getPlatform } from './api-client';
 import type { View } from './navigation';
 import { formatEstimatedCost } from './sop-draft-view-model';
@@ -72,13 +73,20 @@ export function AdminPage({ onNavigate }: { readonly onNavigate: (view: View) =>
       <div>
         <h2 className="text-base font-semibold text-slate-900">Admin</h2>
         <p className="mt-1 text-sm text-slate-600">
-          What this deployment is running with. Everything here is read-only: these values are
+          What this deployment is running with. The platform values below are read-only: they are
           resolved when the API process starts, so changing one means restarting it with a different
           environment — never a click in this page.
+        </p>
+        <p className="mt-1 text-sm text-slate-600">
+          API systems are the exception, and a narrow one (ADR-039). Registering a contract grants
+          nothing by itself, and no field there takes a secret: a credential is named here and its
+          value is read from the environment at the moment a request is built.
         </p>
       </div>
 
       <AccessNotice />
+
+      <ApiSystemsPanel />
 
       {error !== null && (
         <ApiErrorNotice
