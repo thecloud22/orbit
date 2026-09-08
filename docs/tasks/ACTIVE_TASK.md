@@ -527,6 +527,25 @@ opens no browser captures none), and no per-surface error codes, event types or 
 added, because vocabulary for a surface that does not exist would be dead contract in a field
 embedded in immutable published versions. Both arrive with the surfaces that need them.
 
+**Sub-phase 3.3 is complete.** See `docs/tasks/reports/TASK-P3-003-credential-references-report.md`.
+A credential is a *name* in the Agent IR and never a value: `${credentials.name}` is a fourth
+interpolation namespace, legal only where a value is typed into a field, and
+`permissions.credentials.allowedRefs` is the closed list a published version may resolve.
+`@orbit/credentials` resolves a name from an environment variable and nothing more — no vault, no
+rotation, no scoping (**ADR-038**).
+
+Three details carry the security property: the value never enters the resolution scope (it lives in
+the local that types it), an unresolvable credential **fails the step** rather than typing an empty
+string, and `valueLength` is withheld for a credential because the length of a secret is information
+about the secret.
+
+**ADR-021's gate is narrowed, not removed.** A credential reference is resolvable and no longer trips
+it; a secret *input* still does, because Orbit still cannot supply one. This is the first time an
+authenticated workflow can be published and run.
+
+Authoring is **not** built: nothing maps a recorded sign-in's secret input to a credential reference,
+so such a workflow must be hand-authored in Agent IR and a recorded one still cannot be approved.
+
 **Checkpoint C.** The foundation is done. The terminal track (3.5-3.8) and the API track (3.9-3.11)
 touch disjoint packages from here and can proceed independently.
 

@@ -7,9 +7,19 @@
  * there is no `eval`, `Function`, or dynamic import anywhere in the pipeline.
  */
 
-export const REFERENCE_PATTERN = /^\$\{(inputs|variables|result)\.([A-Za-z][A-Za-z0-9_]*)\}$/;
+export const REFERENCE_PATTERN =
+  /^\$\{(inputs|variables|result|credentials)\.([A-Za-z][A-Za-z0-9_]*)\}$/;
 
-export const REFERENCE_NAMESPACES = ['inputs', 'variables', 'result'] as const;
+/**
+ * `credentials` is a namespace the Agent IR can *name* but never *hold*.
+ *
+ * A credential reference resolves at the moment it is used, from deployment
+ * configuration, and the value is never placed in the resolution scope, an
+ * event payload, an output, or the run row. That is why it is a namespace of its
+ * own rather than a kind of input: an input's value is persisted on the run by
+ * design, and a credential's must not be.
+ */
+export const REFERENCE_NAMESPACES = ['inputs', 'variables', 'result', 'credentials'] as const;
 export type ReferenceNamespace = (typeof REFERENCE_NAMESPACES)[number];
 
 export interface InterpolationReference {

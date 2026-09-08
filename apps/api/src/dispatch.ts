@@ -1,3 +1,4 @@
+import { createEnvCredentialResolver } from '@orbit/credentials';
 import type { AgentIr } from '@orbit/agent-ir';
 import type { ArtifactStorage } from '@orbit/artifacts';
 import type { AgentVersionId, RunId, RunInputs, RunTrigger } from '@orbit/contracts';
@@ -121,6 +122,7 @@ export function createInProcessRunDispatcher(deps: InProcessDispatcherDependenci
         trigger: request.trigger,
         store: observing,
         executors: { browser },
+        credentials: createEnvCredentialResolver(),
         logger: deps.logger,
         ...(bindings === undefined ? {} : { bindings }),
         recovery,

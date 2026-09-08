@@ -79,6 +79,8 @@ export interface FakeBrowserOptions {
 
 export interface FakeBrowser extends BrowserExecutor {
   readonly calls: readonly string[];
+  /** What the last fill typed, so a test can prove a value did arrive. */
+  filled(): string;
   readonly closed: () => boolean;
   /** Timeouts `describeElement` was called with, in order. */
   readonly describeTimeouts: readonly number[];
@@ -274,6 +276,11 @@ export function createFakeBrowser(options: FakeBrowserOptions = {}): FakeBrowser
     async close() {
       calls.push('close');
       closed = true;
+    },
+
+    /** What the last fill typed. Exists so a test can prove a value did arrive. */
+    filled() {
+      return filled;
     },
   };
 }

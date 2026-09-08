@@ -77,6 +77,7 @@ real Gemini or Bedrock service.
 | [ADR-035](#adr-035-bind-a-whole-workflow-from-one-walkthrough-by-proposing-an-alignment-nobody-has-to-trust) | Bind a whole workflow from one walkthrough, by proposing an alignment nobody has to trust | Accepted |
 | [ADR-036](#adr-036-revising-a-published-workflow-forks-a-new-draft-and-binding-stays-available-without-it) | Revising a published workflow forks a new draft, and binding stays available without it | Accepted |
 | [ADR-037](#adr-037-give-every-execution-surface-its-own-permission-section-addressing-vocabulary-and-evidence-set) | Give every execution surface its own permission section, addressing vocabulary, and evidence set | Accepted |
+| [ADR-038](#adr-038-name-a-credential-in-the-agent-ir-and-resolve-it-at-the-moment-it-is-typed) | Name a credential in the Agent IR, and resolve it at the moment it is typed | Accepted — amends ADR-021 |
 
 ---
 
@@ -1922,3 +1923,54 @@ the thing ADR-018 exists to prevent.
 | Rename browser-flavoured error codes to surface-neutral ones | `errorCode` is inside published immutable Agent Versions. A rename would invalidate history that ADR-005 and ADR-014 guarantee |
 | Defer the seam and special-case the first new adapter into the browser path | Produces a second seam that never gets merged, and the second adapter pays the cost again. The whole point of ADR-008's boundary was to avoid this |
 | One shared evidence format for every surface | A screenshot, a screen buffer and an HTTP envelope are not the same artifact. Forcing one shape would mean storing the weakest common denominator, when the terminal's text buffer is *better* evidence than an image |
+
+## ADR-038: Name a credential in the Agent IR, and resolve it at the moment it is typed
+
+**Status:** Accepted — amends ADR-021
+
+**Phase:** 3
+
+### Context
+
+ADR-021 made a workflow that needs a secret compile but never be approvable. That was correct at the time and it is what the decision says: "A workflow needing credentials can be compiled but never approved. That is the intended shape — the work is not lost, and it cannot proceed — but it is a dead end until credential handling exists." ADR-022 leaned on it directly: lifting the localhost allowlist was safe because "nothing behind a login is reachable."
+
+Phase 3's surfaces make the dead end the binding constraint rather than an acceptable one. A mainframe is entirely behind a TSO or CICS logon; an enterprise API is behind a token. Neither is reachable, so neither surface is worth building without this.
+
+### Decision
+
+**A credential is a name in the Agent IR. It is never a value, anywhere, at any point.**
+
+`${credentials.name}` joins the interpolation grammar as a fourth namespace, and `permissions.credentials.allowedRefs` is the closed list of names a published version may resolve — the same shape `allowedDomains` has, for the same reason: the grant is what somebody reviewed.
+
+**It is legal only where a value is typed into a field.** Not in an assertion, an output, or an assignment, because those are persisted and a credential must not be. This mirrors the rule the SOP Graph already enforces for secret inputs.
+
+**Resolution happens at the moment of use, through a one-method `CredentialResolver` port**, and the value is never placed in the resolution scope. That is the load-bearing detail rather than a stylistic one: a scope is a record that gets passed down every call, inspected in a debugger, and is one careless spread away from an event payload. A credential is fetched into the local that types it and exists nowhere else.
+
+**An unresolvable credential fails the step.** Not an empty string, not a placeholder — the failure mode ADR-021's gate was built to prevent is exactly "a live credential field is reached with nothing to give it", and that must stay impossible after the gate opens.
+
+**The event records the reference and withholds the length.** `valueSource` is `${credentials.tsoPassword}`, because evidence must still say where a value came from. `valueLength` is omitted for a credential, because the length of a secret is information about the secret. For an ordinary value it is kept, since it is a useful signal that the right thing was typed.
+
+**ADR-021's gate is narrowed, not removed.** A credential reference is resolvable and no longer trips it. A secret *input* still does, because Orbit still has no way to supply one. The fail-closed property is unchanged; only its trigger is narrower.
+
+**Resolution is by environment variable, and that is the whole implementation.** `@orbit/credentials` maps `tsoPassword` to `ORBIT_CREDENTIAL_TSO_PASSWORD`. No vault, no rotation, no scoping, no per-tenant isolation, no UI. Those are Phase 5 and they stay there; what is built is the seam they will need.
+
+### Consequences
+
+**An authenticated workflow can be published and run.** This is the first time that has been true, and it is what unblocks every Phase 3 surface.
+
+**The blast radius of a leaked deployment environment is unchanged but newly relevant.** Anyone who can read the worker's environment can read every credential. That is true of every secret a deployment holds today, but it is worth stating plainly now that credentials will actually be in there.
+
+**Authoring is not built.** Nothing yet lets a person map a recorded sign-in's secret input to a credential reference, so a credential-using workflow must be hand-authored in Agent IR. The recorder still declares a `secret` input, and such a workflow still cannot be approved. The runtime and contract halves exist; the authoring half is a separate task.
+
+**The recorder's known gap is unchanged.** `decisions.md` already records that only password *fields* are detected, so a value typed into a non-password field is still captured verbatim. This decision does not fix that and does not make it worse.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| A `secret: true` flag on an input | An input's value is persisted on the run row by design. Making some inputs secret would mean one field that is sometimes safe to store, which is a rule that gets forgotten exactly once |
+| Resolve all credentials into the scope before the run | The scope is passed everywhere and spread into payloads. Holding a secret there for the length of a run, to save one lookup, is the wrong trade |
+| Build the vault now | Rotation, scoping and per-tenant isolation are real work with no consumer yet. The seam is what the surfaces need; the vault can arrive behind it without changing a published version |
+| Let an unresolvable credential type an empty string | The precise failure ADR-021 exists to prevent |
+| Keep `valueLength` for credentials, for consistency | The length of a secret is information about the secret, and consistency is not worth leaking it |
+| Remove ADR-021's gate now that credentials exist | A secret *input* is still unsuppliable. Removing the gate would let that case through as well, which nothing has solved |

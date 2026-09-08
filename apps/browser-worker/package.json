@@ -15,6 +15,7 @@
     "@orbit/artifact-service": "workspace:*",
     "@orbit/artifacts": "workspace:*",
     "@orbit/contracts": "workspace:*",
+    "@orbit/credentials": "workspace:*",
     "@orbit/db": "workspace:*",
     "@orbit/decision-judge": "workspace:*",
     "@orbit/drift-recovery": "workspace:*",

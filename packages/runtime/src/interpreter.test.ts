@@ -411,3 +411,77 @@ describe('executeAgentVersion — surfaces', () => {
     expect(store.events.map((event) => event.eventType)).toEqual(['run.queued', 'run.failed']);
   });
 });
+
+describe('executeAgentVersion — credentials', () => {
+  const SECRET = 'correct-horse-battery-staple';
+
+  /** The seeded fixture, with its one fill taking a credential instead of an input. */
+  function credentialIr() {
+    const agentIr = loadFixtureAgentIr();
+    return {
+      ...agentIr,
+      permissions: { ...agentIr.permissions, credentials: { allowedRefs: ['tsoPassword'] } },
+      steps: agentIr.steps.map((step) =>
+        step.type === 'browser.fill' ? { ...step, value: '${credentials.tsoPassword}' } : step,
+      ),
+    };
+  }
+
+  it('types the resolved credential without letting it reach any record', async () => {
+    const browser = createFakeBrowser();
+    const store = createRecordingStore();
+    const logged: unknown[] = [];
+
+    const result = await executeAgentVersion({
+      agentVersionId: SEEDED_AGENT_VERSION_ID,
+      agentIr: credentialIr(),
+      inputs: { requestNumber: 'SR-1001' },
+      trigger: TRIGGER,
+      store,
+      executors: { browser: createFakeBrowserFactory(browser) },
+      credentials: { resolve: () => Promise.resolve(SECRET) },
+      logger: {
+        debug: (fields, message) => logged.push([fields, message]),
+        info: (fields, message) => logged.push([fields, message]),
+        warn: (fields, message) => logged.push([fields, message]),
+      },
+    });
+
+    expect(result.status).toBe('succeeded');
+
+    // It really was typed: the point is containment, not withholding.
+    expect(browser.filled()).toBe(SECRET);
+
+    // ...and it is in nothing that outlives the step.
+    const written = JSON.stringify({
+      events: store.events,
+      artifacts: store.artifacts,
+      outputs: result.outputs,
+      steps: result.steps,
+      logs: logged,
+    });
+    expect(written).not.toContain(SECRET);
+
+    // The reference is recorded, because evidence must still say where the
+    // value came from. Its length is not: that is information about the secret.
+    const fill = store.events.find((event) => event.eventType === 'browser.fill.completed');
+    expect(fill?.payload['valueSource']).toBe('${credentials.tsoPassword}');
+    expect(fill?.payload).not.toHaveProperty('valueLength');
+  });
+
+  it('fails the step when the deployment cannot supply the credential', async () => {
+    const result = await executeAgentVersion({
+      agentVersionId: SEEDED_AGENT_VERSION_ID,
+      agentIr: credentialIr(),
+      inputs: { requestNumber: 'SR-1001' },
+      trigger: TRIGGER,
+      store: createRecordingStore(),
+      executors: { browser: createFakeBrowserFactory(createFakeBrowser()) },
+      credentials: { resolve: () => Promise.resolve(undefined) },
+    });
+
+    // Never an empty string typed into a live credential field.
+    expect(result.status).toBe('failed');
+    expect(result.error?.code).toBe('WORKER_FAILURE');
+  });
+});

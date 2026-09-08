@@ -1,5 +1,6 @@
 import { parseArgs } from 'node:util';
 
+import { createEnvCredentialResolver } from '@orbit/credentials';
 import { createLocalFilesystemArtifactStorage } from '@orbit/artifacts';
 import { agentVersionIdSchema, type RunTrigger } from '@orbit/contracts';
 import { createDatabase, createRepositories, requireDatabaseUrl } from '@orbit/db';
@@ -193,6 +194,7 @@ try {
       }),
     },
     logger,
+    credentials: createEnvCredentialResolver(),
     ...(judge === undefined ? {} : { judge }),
     ...(bindings === undefined ? {} : { bindings }),
     recovery,

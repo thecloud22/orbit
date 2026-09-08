@@ -44,6 +44,7 @@ export const AGENT_IR_ISSUE_CODES = [
   'UNSUPPORTED_URL_PROTOCOL',
   'DOMAIN_NOT_PERMITTED',
   'SURFACE_NOT_PERMITTED',
+  'CREDENTIAL_NOT_PERMITTED',
   'ACTION_NOT_PERMITTED',
   'EVIDENCE_NOT_PERMITTED',
   'MODEL_NOT_PERMITTED',
@@ -60,7 +61,10 @@ export interface AgentIrIssue {
 
 /** Which reference namespaces are legal in each position that accepts a dynamic value. */
 const NAMESPACES_BY_POSITION = {
-  value: ['inputs', 'variables'],
+  // `credentials` is legal only here: a value that is typed into a field. Never
+  // in an assertion, an output, or an assignment, because those are persisted
+  // and a credential must not be.
+  value: ['inputs', 'variables', 'credentials'],
   expected: ['inputs', 'variables'],
   assign: ['result'],
   output: ['inputs', 'variables'],
@@ -125,6 +129,20 @@ function checkValue(
       `\${${namespace}.${name}} is not allowed here; this position accepts ${allowed
         .map((entry) => `\${${entry}.*}`)
         .join(' or ')}.`,
+      path,
+      step.id,
+    );
+    return;
+  }
+
+  if (
+    namespace === 'credentials' &&
+    !(context.agentIr.permissions.credentials?.allowedRefs ?? []).includes(name)
+  ) {
+    add(
+      context,
+      'CREDENTIAL_NOT_PERMITTED',
+      `\${credentials.${name}} is not in permissions.credentials.allowedRefs.`,
       path,
       step.id,
     );

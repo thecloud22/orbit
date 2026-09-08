@@ -180,6 +180,24 @@ export interface WaitForTextResult {
 /** Opens one isolated browser session per run. */
 export type BrowserExecutorFactory = SurfaceExecutorFactory<'browser'>;
 
+/**
+ * The credential seam.
+ *
+ * The same shape as `DecisionJudge` and `RecoveryProposer`, for the same reason:
+ * @orbit/runtime declares the interface and depends on no implementation. One
+ * method, taking a name and returning a value.
+ *
+ * Deliberately *not* resolved into the resolution scope before a run. A scope is
+ * a record that gets passed around, logged in a debugger, and is one careless
+ * spread away from an event payload; a credential is fetched at the moment it is
+ * typed and held only in the local that types it. Absent for a name the
+ * deployment does not configure, which fails the step rather than typing an
+ * empty string into a live credential field.
+ */
+export interface CredentialResolver {
+  resolve(reference: string): Promise<string | undefined>;
+}
+
 /** Creates the run and returns the recorder bound to it. */
 export interface RunStore {
   /** Creates the run as `queued` and appends `run.queued` in one transaction. */

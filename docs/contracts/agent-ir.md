@@ -420,6 +420,20 @@ permissions:
 
 Runtime must enforce permissions. Agent IR permission declarations are not merely documentation.
 
+### Credentials are named, never held
+
+`permissions.credentials.allowedRefs` is the closed list of credential names a
+published version may resolve. `${credentials.name}` is legal **only where a
+value is typed into a field** — never in an assertion, an output, or an
+assignment, because those are persisted and a credential must not be.
+
+Resolution happens at the moment of use and the value never enters the
+resolution scope, an event payload, an output, or the run row. An unresolvable
+credential **fails the step**; it never types an empty string. The event records
+`valueSource` (the reference) and omits `valueLength`, because the length of a
+secret is information about the secret. A reference outside `allowedRefs` is
+rejected with `CREDENTIAL_NOT_PERMITTED`. See **ADR-038**.
+
 ### Sections are keyed by surface, and absence means denied
 
 `permissions` holds one optional section per capability: `browser`, `model`

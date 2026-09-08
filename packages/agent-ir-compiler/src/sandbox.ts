@@ -19,6 +19,12 @@ import { classifyInterpolation, type AgentIr } from '@orbit/agent-ir';
  * There is no path on which a password field is reached with nothing to give
  * it, because no field is reached.
  *
+ * **ADR-038 narrows this rather than removing it.** A `${credentials.name}`
+ * value *is* resolvable -- the validator has already proved the name is in the
+ * version's `permissions.credentials.allowedRefs` -- so it no longer trips the
+ * gate. What still trips it is a secret *input*, which Orbit has no way to
+ * supply. The fail-closed property is unchanged; only its trigger is narrower.
+ *
  * Agent IR has no secret type — a secret input compiles to an ordinary string
  * declaration — so secret-ness is not recoverable from the compiled document.
  * The compiler returns the secret input ids separately and this reads those.
@@ -52,11 +58,20 @@ export function assessSandboxReadiness(
 
     const classified = classifyInterpolation(step.value);
 
-    if (
-      classified.kind === 'reference' &&
-      classified.reference.namespace === 'inputs' &&
-      secrets.has(classified.reference.name)
-    ) {
+    if (classified.kind !== 'reference') {
+      continue;
+    }
+
+    // A credential reference is the resolvable form. The validator has already
+    // proved it is in `permissions.credentials.allowedRefs`, so reaching this
+    // field means the deployment is asked for a name the version declared --
+    // which is exactly the case this gate was built to keep out and now lets
+    // through (ADR-038 narrowing ADR-021).
+    if (classified.reference.namespace === 'credentials') {
+      continue;
+    }
+
+    if (classified.reference.namespace === 'inputs' && secrets.has(classified.reference.name)) {
       required.add(classified.reference.name);
     }
   }

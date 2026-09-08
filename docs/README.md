@@ -58,11 +58,11 @@ are the right place to look first.
 | Document | Covers | Currency |
 |---|---|---|
 | [`architecture/system-design.md`](./architecture/system-design.md) | **The current architecture.** Applications, packages, dependency rules, lifecycle, run flow, drift recovery, data and migrations, configuration boundaries, known limitations | Active |
-| [`architecture/decisions.md`](./architecture/decisions.md) | **The decision log — 37 ADRs**, each with a status and an index. The authoritative record of why Orbit is shaped as it is | Active, maintained continuously |
+| [`architecture/decisions.md`](./architecture/decisions.md) | **The decision log — 38 ADRs**, each with a status and an index. The authoritative record of why Orbit is shaped as it is | Active, maintained continuously |
 | [`architecture/phase-1-system-design.md`](./architecture/phase-1-system-design.md) | The Phase 1 system design | **Historical.** Five statements in it are superseded and flagged inline |
 | [`architecture/task-5-artifact-storage-preflight.md`](./architecture/task-5-artifact-storage-preflight.md) | Artifact storage design work | Phase 1 |
 
-Nine of the 37 ADRs carry a qualifier — *Partially implemented*, or *amended /
+Nine of the 38 ADRs carry a qualifier — *Partially implemented*, or *amended /
 partly superseded by* a later one — and each says which part in a note under its
 status. Two describe capabilities that do not exist yet (ADR-010's S3 adapter,
 ADR-013's tier-gated policy engine) and are marked accordingly.

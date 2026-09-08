@@ -100,10 +100,27 @@ export type RecoveryPermissions = z.infer<typeof recoveryPermissionsSchema>;
  * would also make "does this agent touch a browser?" unanswerable from the
  * contract.
  */
+/**
+ * The credential references this agent version may resolve at run time.
+ *
+ * A closed list, for the reason `allowedDomains` is one: the grant is what the
+ * version was published with, so a step cannot reach a credential nobody
+ * reviewed. Absent means no credential may be resolved at all.
+ *
+ * Deliberately names references, never values. Orbit resolves a name from
+ * deployment configuration at the moment of use; nothing here, in the compiled
+ * document, or in the run row ever holds the secret itself.
+ */
+export const credentialPermissionsSchema = z.strictObject({
+  allowedRefs: z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/)).min(1),
+});
+export type CredentialPermissions = z.infer<typeof credentialPermissionsSchema>;
+
 export const permissionsSchema = z.strictObject({
   browser: browserPermissionsSchema.optional(),
   model: modelPermissionsSchema.optional(),
   recovery: recoveryPermissionsSchema.optional(),
+  credentials: credentialPermissionsSchema.optional(),
 });
 export type Permissions = z.infer<typeof permissionsSchema>;
 

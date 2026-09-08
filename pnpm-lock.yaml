@@ -47,6 +47,9 @@ importers:
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@orbit/credentials':
+        specifier: workspace:*
+        version: link:../../packages/credentials
       '@orbit/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -114,6 +117,9 @@ importers:
       '@orbit/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@orbit/credentials':
+        specifier: workspace:*
+        version: link:../../packages/credentials
       '@orbit/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -402,6 +408,12 @@ importers:
       zod:
         specifier: ^4.5.4
         version: 4.5.4
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
+  packages/credentials:
     devDependencies:
       typescript:
         specifier: ^5.9.0

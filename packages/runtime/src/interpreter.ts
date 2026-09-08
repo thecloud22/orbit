@@ -1,5 +1,6 @@
 import {
   buildStepGraph,
+  classifyInterpolation,
   successorsOf,
   surfacesUsedBy,
   type AgentIr,
@@ -29,6 +30,7 @@ import { resolveValue, type ResolutionScope } from './interpolate';
 import { silentLogger, type RuntimeLogger } from './logger';
 import type {
   BrowserExecutor,
+  CredentialResolver,
   ExecutorFactories,
   SurfaceExecutor,
   DecisionJudge,
@@ -68,6 +70,14 @@ export interface ExecuteAgentVersionInput {
    * `WORKER_FAILURE` naming the surface, rather than running partially.
    */
   readonly executors: ExecutorFactories;
+  /**
+   * Resolves credential references, when this deployment configures any.
+   *
+   * Absent is a legitimate configuration and the common one. A workflow that
+   * references a credential and finds no resolver fails the step rather than
+   * typing nothing into a credential field.
+   */
+  readonly credentials?: CredentialResolver;
   readonly logger?: RuntimeLogger;
   /**
    * Approved Execution Bindings, when the agent has any.
@@ -260,6 +270,7 @@ export async function executeAgentVersion(
         bindings: input.bindings,
         judge: input.judge,
         recovery: input.recovery,
+        credentials: input.credentials,
         decisions: input.decisions ?? DEFAULT_DECISION_SETTINGS,
         artifacts,
         steps,
@@ -332,6 +343,7 @@ interface InterpretInput {
   readonly judge: DecisionJudge | undefined;
   readonly decisions: DecisionSettings;
   readonly recovery: RecoveryProposer | undefined;
+  readonly credentials: CredentialResolver | undefined;
 }
 
 async function interpretSteps(context: InterpretInput): Promise<Outcome> {
@@ -506,6 +518,41 @@ function browserFor(context: {
   return executor;
 }
 
+/** The credential a value names, or nothing if it names something else. */
+function credentialReferenceIn(raw: string): string | undefined {
+  const classified = classifyInterpolation(raw);
+  return classified.kind === 'reference' && classified.reference.namespace === 'credentials'
+    ? classified.reference.name
+    : undefined;
+}
+
+/**
+ * Fetches a credential at the moment it is about to be typed.
+ *
+ * Never cached, never returned into the resolution scope, and never logged. The
+ * value exists in the caller's local and nowhere else. Both failures are the
+ * same shape deliberately -- an unconfigured name and an unwired resolver are
+ * both "this deployment cannot supply this", and neither says anything about the
+ * secret.
+ */
+async function resolveCredential(
+  context: PerformStepInput,
+  reference: string,
+  agentStepId: string,
+): Promise<string> {
+  const resolved = await context.credentials?.resolve(reference);
+
+  if (resolved === undefined || resolved === '') {
+    throw new RuntimeError({
+      code: 'WORKER_FAILURE',
+      message: `Step "${agentStepId}" needs the credential "${reference}", which this deployment does not supply.`,
+      agentStepId,
+    });
+  }
+
+  return resolved;
+}
+
 async function performStep(context: PerformStepInput): Promise<StepResult> {
   const { step, recorder, agentIr, inputs, variables } = context;
   const scope: ResolutionScope = { inputs, variables };
@@ -539,7 +586,11 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
 
     case 'browser.fill': {
       const executor = browserFor(context);
-      const value = resolveValue(step.value, 'value', scope, step.id);
+      const credential = credentialReferenceIn(step.value);
+      const value =
+        credential === undefined
+          ? resolveValue(step.value, 'value', scope, step.id)
+          : await resolveCredential(context, credential, step.id);
 
       // Checked before the action, never after: the point is to not type into
       // the wrong field, not to discover afterwards that we did.
@@ -564,7 +615,10 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
         payload: {
           locator: describeLocator(step.locator),
           valueSource: step.value,
-          valueLength: value.length,
+          // A credential's length is itself information about the secret, so it
+          // is withheld. For an ordinary value the length is a useful signal
+          // that the right thing was typed.
+          ...(credential === undefined ? { valueLength: value.length } : {}),
           timeoutMs,
         },
         runStepId: context.runStepId,
