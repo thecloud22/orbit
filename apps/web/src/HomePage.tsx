@@ -90,9 +90,24 @@ export function HomePage({
         <div className="grid gap-4 md:grid-cols-2">
           <article
             className="flex flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-indigo-300"
-            data-testid="guided-path-card"
+            data-testid="record-own-card"
           >
             <StepBadge>1st way</StepBadge>
+            <h3 className="mt-2 text-sm font-semibold text-slate-900">Record yourself doing it</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Do the task once in a real browser. Orbit writes down every step and the exact element
+              you acted on, so it knows where as well as what.
+            </p>
+            <div className="mt-4">
+              <RecordWorkflowForm isStarting={isStartingRecording} onStart={onStartRecording} />
+            </div>
+          </article>
+
+          <article
+            className="flex flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-indigo-300"
+            data-testid="guided-path-card"
+          >
+            <StepBadge>2nd way</StepBadge>
             <h3 className="mt-2 text-sm font-semibold text-slate-900">
               Describe it in your own words
             </h3>
@@ -106,21 +121,6 @@ export function HomePage({
                 onGenerate={onGenerate}
                 spend={summarizeModelSpend(modelUsage)}
               />
-            </div>
-          </article>
-
-          <article
-            className="flex flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-indigo-300"
-            data-testid="record-own-card"
-          >
-            <StepBadge>2nd way</StepBadge>
-            <h3 className="mt-2 text-sm font-semibold text-slate-900">Record yourself doing it</h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Do the task once in a real browser. Orbit writes down every step and the exact element
-              you acted on, so it knows where as well as what.
-            </p>
-            <div className="mt-4">
-              <RecordWorkflowForm isStarting={isStartingRecording} onStart={onStartRecording} />
             </div>
           </article>
         </div>
