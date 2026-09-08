@@ -21,6 +21,7 @@
     "@orbit/drift-recovery": "workspace:*",
     "@orbit/execution-mapping": "workspace:*",
     "@orbit/execution-recorder": "workspace:*",
+    "@orbit/executor-http": "workspace:*",
     "@orbit/executor-playwright": "workspace:*",
     "@orbit/executor-x3270": "workspace:*",
     "@orbit/model-budget": "workspace:*",

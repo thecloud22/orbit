@@ -40,6 +40,7 @@ export const SUPPORTED_STEP_TYPES = [
   'terminal.press',
   'terminal.read',
   'terminal.expect_screen',
+  'api.request',
   'model.decide',
   'complete',
   'fail',
@@ -91,6 +92,7 @@ function locatorsOf(step: AgentIrStep): readonly (readonly [Locator, string])[] 
     case 'terminal.press':
     case 'terminal.read':
     case 'terminal.expect_screen':
+    case 'api.request':
       // A screen address is not a Locator and is deliberately not convertible to
       // one. Terminal addressing is checked by @orbit/screen-mapping's own
       // vocabulary; there is nothing here for the browser profile to validate.

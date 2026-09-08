@@ -45,6 +45,7 @@ export const AGENT_IR_ISSUE_CODES = [
   'UNSUPPORTED_URL_PROTOCOL',
   'DOMAIN_NOT_PERMITTED',
   'HOST_NOT_PERMITTED',
+  'OPERATION_NOT_PERMITTED',
   'SURFACE_NOT_PERMITTED',
   'CREDENTIAL_NOT_PERMITTED',
   'ACTION_NOT_PERMITTED',
@@ -352,6 +353,19 @@ function checkPermissions(context: Context): void {
           );
         }
       }
+    }
+
+    if (step.type === 'api.request') {
+      if (!(permissions.api?.allowedOperations ?? []).includes(step.operationId)) {
+        add(
+          context,
+          'OPERATION_NOT_PERMITTED',
+          `Operation "${step.operationId}" is not in permissions.api.allowedOperations.`,
+          ['steps', index, 'operationId'],
+          step.id,
+        );
+      }
+      return;
     }
 
     if (step.type === 'terminal.connect') {

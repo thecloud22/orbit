@@ -176,6 +176,7 @@ const EVIDENCE_LABELS: Record<ArtifactView['kind'], string> = {
   error_context: 'Error context',
   decision_input: 'What the judge was shown',
   terminal_screen: 'Terminal screen',
+  api_exchange: 'API exchange',
 };
 
 /**

@@ -593,6 +593,30 @@ Migration `0011` widens the `run_events` CHECK constraint for four `terminal.*` 
 Tested against the real `b3270` driven at the byte-emitter host from 3.0, so the decoding under test
 is x3270's rather than Orbit's own.
 
+**Sub-phases 3.9 and 3.10 are complete.** A workflow can call an API operation from a contract its
+owner published. See `docs/tasks/reports/TASK-P3-009-010-api-surface-report.md`.
+
+**A step names an `operationId` in a catalog; there is no URL anywhere in the Agent IR.** That is
+ADR-018's argument applied to endpoints — a URL template with interpolation is a small program for
+constructing a request, exactly what a closed locator vocabulary exists to make unrepresentable.
+`permissions.api.allowedHosts` is derived by the compiler from the catalog's declared servers and
+re-checked immediately before the request leaves the machine. Values fill named slots and are
+encoded, so an argument of `../admin?x=1` stays one path segment.
+
+The import refuses rather than approximates, per ADR-021: `$ref`, non-string parameters and
+non-idempotent methods are each **named** as refusals. `POST` and `PATCH` need the idempotency-key
+design deferred to Phase 5.
+
+Response mapping is **JSON Pointer, not JSONPath** (ADR-007), and a non-scalar at the end of a
+pointer is reported absent rather than stringified into something a workflow would then compare.
+
+Evidence is the `api_exchange` artifact with sensitive headers redacted **by name** — a bearer token
+and an ordinary string are indistinguishable once both are strings. Migration `0012` is additive.
+
+**Not done: 3.11** (SOP `call` kind, binding, Studio), so an API workflow must be hand-authored in
+Agent IR. And `api.request` does not yet resolve a credential into a header, which is the obvious
+small next increment.
+
 **Checkpoint C.** The foundation is done. The terminal track (3.5-3.8) and the API track (3.9-3.11)
 touch disjoint packages from here and can proceed independently.
 

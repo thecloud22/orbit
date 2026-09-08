@@ -1,4 +1,5 @@
 import { createEnvCredentialResolver } from '@orbit/credentials';
+import { createHttpExecutorFactory } from '@orbit/executor-http';
 import { createX3270ExecutorFactory } from '@orbit/executor-x3270';
 import type { AgentIr } from '@orbit/agent-ir';
 import type { ArtifactStorage } from '@orbit/artifacts';
@@ -122,7 +123,11 @@ export function createInProcessRunDispatcher(deps: InProcessDispatcherDependenci
         inputs: request.inputs,
         trigger: request.trigger,
         store: observing,
-        executors: { browser, terminal: createX3270ExecutorFactory() },
+        executors: {
+          browser,
+          terminal: createX3270ExecutorFactory(),
+          api: createHttpExecutorFactory(),
+        },
         credentials: createEnvCredentialResolver(),
         logger: deps.logger,
         ...(bindings === undefined ? {} : { bindings }),

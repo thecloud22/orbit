@@ -12,6 +12,7 @@ export const ARTIFACT_KIND_CONTENT_TYPES = {
   dom_snapshot: 'text/html; charset=utf-8',
   browser_trace: 'application/zip',
   terminal_screen: 'text/plain; charset=utf-8',
+  api_exchange: 'application/json',
   extracted_json: 'application/json',
   error_context: 'application/json',
   /** The judge's input as JSON: the question, the alternatives, the page text. */
@@ -23,6 +24,7 @@ export const ARTIFACT_KIND_EXTENSIONS = {
   dom_snapshot: 'html',
   browser_trace: 'zip',
   terminal_screen: 'txt',
+  api_exchange: 'json',
   extracted_json: 'json',
   error_context: 'json',
   decision_input: 'json',

@@ -43,6 +43,8 @@ export const errorCodeSchema = z.enum([
    * published immutable Agent Versions and keep their names forever, so a second
    * surface gets its own codes rather than a rename (ADR-037).
    */
+  'API_REQUEST_FAILED',
+  'API_RESPONSE_UNEXPECTED',
   'TERMINAL_TIMEOUT',
   'TERMINAL_CONNECT_FAILED',
   'FIELD_NOT_FOUND',

@@ -28,6 +28,8 @@ import { verifyBinding, type ExecutionBindingResolver } from './drift';
 import { captureEvidence, failureEvidence, successEvidence } from './evidence';
 import { resolveValue, type ResolutionScope } from './interpolate';
 import { silentLogger, type RuntimeLogger } from './logger';
+import { assertApiHost, buildRequestUrl, headersFrom, readJsonPointer } from './api-request';
+import { operationById, type ApiCatalog } from '@orbit/api-catalog';
 import {
   compareScreen,
   fingerprintOf,
@@ -36,6 +38,7 @@ import {
   type ScreenField,
 } from '@orbit/screen-mapping';
 import type {
+  ApiExecutor,
   BrowserExecutor,
   CredentialResolver,
   TerminalExecutor,
@@ -91,6 +94,16 @@ export interface ExecuteAgentVersionInput {
    * typing nothing into a credential field.
    */
   readonly credentials?: CredentialResolver;
+  /**
+   * Imported API contracts, by catalog id.
+   *
+   * Held by the deployment rather than embedded in the published version: a
+   * contract is a fact about a service that can be re-imported, while the
+   * version's grant -- which operations, which hosts -- is what was reviewed and
+   * is immutable. A step naming a catalog this deployment does not hold fails
+   * rather than calling anything.
+   */
+  readonly catalogs?: Readonly<Record<string, ApiCatalog>>;
   readonly logger?: RuntimeLogger;
   /**
    * Approved Execution Bindings, when the agent has any.
@@ -181,6 +194,7 @@ function describeLocator(locator: Locator): string {
 interface OpenedExecutors {
   browser?: BrowserExecutor;
   terminal?: TerminalExecutor;
+  api?: ApiExecutor;
 }
 
 /** Every executor actually opened, with the surface it drives, in open order. */
@@ -193,6 +207,9 @@ function openedExecutors(
   }
   if (opened.terminal !== undefined) {
     all.push({ surface: 'terminal', executor: opened.terminal });
+  }
+  if (opened.api !== undefined) {
+    all.push({ surface: 'api', executor: opened.api });
   }
   return all;
 }
@@ -235,6 +252,20 @@ async function openExecutorsFor(
             cause: error,
           });
         }
+        break;
+      }
+
+      case 'api': {
+        const factory = factories.api;
+
+        if (factory === undefined) {
+          throw new RuntimeError({
+            code: 'WORKER_FAILURE',
+            message: 'This workflow has API steps, but no API executor is configured.',
+          });
+        }
+
+        opened.api = await factory.open();
         break;
       }
 
@@ -310,6 +341,7 @@ export async function executeAgentVersion(
         judge: input.judge,
         recovery: input.recovery,
         credentials: input.credentials,
+        catalogs: input.catalogs,
         decisions: input.decisions ?? DEFAULT_DECISION_SETTINGS,
         artifacts,
         steps,
@@ -383,6 +415,7 @@ interface InterpretInput {
   readonly decisions: DecisionSettings;
   readonly recovery: RecoveryProposer | undefined;
   readonly credentials: CredentialResolver | undefined;
+  readonly catalogs: Readonly<Record<string, ApiCatalog>> | undefined;
 }
 
 async function interpretSteps(context: InterpretInput): Promise<Outcome> {
@@ -944,6 +977,98 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
       }
 
       return { output: { fieldCount: observed.fieldCount } };
+    }
+
+    case 'api.request': {
+      const executor = context.executors.api;
+      const catalog = context.catalogs?.[step.catalogId];
+
+      if (executor === undefined) {
+        throw new RuntimeError({
+          code: 'WORKER_FAILURE',
+          message: `Step "${step.id}" runs on the api surface, which was not opened for this run.`,
+          agentStepId: step.id,
+        });
+      }
+
+      if (catalog === undefined) {
+        throw new RuntimeError({
+          code: 'WORKER_FAILURE',
+          message: `Step "${step.id}" names catalog "${step.catalogId}", which this deployment does not hold.`,
+          agentStepId: step.id,
+        });
+      }
+
+      const operation = operationById(catalog, step.operationId);
+
+      if (operation === undefined) {
+        // The validator proved the operation is permitted; finding it absent
+        // here means the catalog changed under a published version, which is a
+        // deployment fault rather than a workflow one.
+        throw new RuntimeError({
+          code: 'WORKER_FAILURE',
+          message: `Operation "${step.operationId}" is not in catalog "${step.catalogId}".`,
+          agentStepId: step.id,
+        });
+      }
+
+      const resolvedArguments: Record<string, string> = {};
+      for (const [name, raw] of Object.entries(step.arguments ?? {})) {
+        resolvedArguments[name] = resolveValue(raw, 'value', scope, step.id);
+      }
+
+      const url = buildRequestUrl(catalog, operation, resolvedArguments, step.id);
+      assertApiHost(url, agentIr.permissions.api?.allowedHosts ?? [], step.id);
+
+      const response = await executor.send({
+        method: operation.method.toUpperCase(),
+        url: url.toString(),
+        headers: headersFrom(operation, resolvedArguments),
+        timeoutMs,
+      });
+
+      if (response.status >= 400) {
+        throw new RuntimeError({
+          code: 'API_REQUEST_FAILED',
+          message: `Step "${step.id}" called "${step.operationId}" and the service answered ${String(response.status)}.`,
+          details: [{ field: 'status', message: String(response.status) }],
+          agentStepId: step.id,
+        });
+      }
+
+      const assigned: Record<string, string> = {};
+      for (const [variable, pointer] of Object.entries(step.assign ?? {})) {
+        const found = readJsonPointer(response.body, pointer);
+
+        if (found === undefined) {
+          throw new RuntimeError({
+            code: 'API_RESPONSE_UNEXPECTED',
+            message: `Step "${step.id}" expected "${pointer}" in the response and it was not there.`,
+            details: [{ field: variable, message: pointer }],
+            agentStepId: step.id,
+          });
+        }
+
+        assigned[variable] = found;
+        variables[variable] = found;
+      }
+
+      await recorder.appendEvent({
+        eventType: 'api.request.completed',
+        payload: {
+          catalogId: step.catalogId,
+          operationId: step.operationId,
+          method: operation.method.toUpperCase(),
+          status: response.status,
+          // The URL is recorded; the response body is not. The body goes to the
+          // artifact store, where it passes through the evidence path once.
+          url: url.toString(),
+        },
+        runStepId: context.runStepId,
+        agentStepId: step.id,
+      });
+
+      return { output: { operationId: step.operationId, status: response.status, ...assigned } };
     }
 
     case 'complete': {

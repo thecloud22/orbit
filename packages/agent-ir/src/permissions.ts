@@ -14,7 +14,7 @@ import { z } from 'zod';
  * shape of a section that already exists, because `permissions` is embedded in
  * published, immutable Agent Versions (ADR-005, ADR-014).
  */
-export const EXECUTION_SURFACES = ['browser', 'terminal'] as const;
+export const EXECUTION_SURFACES = ['browser', 'terminal', 'api'] as const;
 export type ExecutionSurface = (typeof EXECUTION_SURFACES)[number];
 
 /**
@@ -60,6 +60,25 @@ export const terminalPermissionsSchema = z.strictObject({
   allowedActions: z.array(terminalActionSchema).min(1),
 });
 export type TerminalPermissions = z.infer<typeof terminalPermissionsSchema>;
+
+/**
+ * API capabilities an agent version is permitted to use.
+ *
+ * `allowedOperations` names catalog operation ids, never URLs, so what an agent
+ * may call is bounded by a contract its owner published (ADR-018's reasoning
+ * applied to endpoints). `allowedHosts` is derived by the compiler from the
+ * catalog's declared servers and re-checked before the request, the way
+ * `allowedDomains` is for navigation (ADR-022).
+ */
+export const apiActionSchema = z.enum(['request']);
+export type ApiAction = z.infer<typeof apiActionSchema>;
+
+export const apiPermissionsSchema = z.strictObject({
+  allowedHosts: z.array(z.string().min(1)).min(1),
+  allowedOperations: z.array(z.string().min(1)).min(1),
+  allowedActions: z.array(apiActionSchema).min(1),
+});
+export type ApiPermissions = z.infer<typeof apiPermissionsSchema>;
 
 /**
  * Whether this agent may call a model at run time, and how often.
@@ -138,6 +157,7 @@ export type CredentialPermissions = z.infer<typeof credentialPermissionsSchema>;
 export const permissionsSchema = z.strictObject({
   browser: browserPermissionsSchema.optional(),
   terminal: terminalPermissionsSchema.optional(),
+  api: apiPermissionsSchema.optional(),
   model: modelPermissionsSchema.optional(),
   recovery: recoveryPermissionsSchema.optional(),
   credentials: credentialPermissionsSchema.optional(),
@@ -153,7 +173,8 @@ export type Permissions = z.infer<typeof permissionsSchema>;
  */
 export type StepPermission =
   | { readonly surface: 'browser'; readonly action: BrowserAction }
-  | { readonly surface: 'terminal'; readonly action: TerminalAction };
+  | { readonly surface: 'terminal'; readonly action: TerminalAction }
+  | { readonly surface: 'api'; readonly action: ApiAction };
 
 /**
  * Maps each step type to the surface and action it consumes.
@@ -179,6 +200,7 @@ export const STEP_SURFACE_PERMISSION = {
   'terminal.press': { surface: 'terminal', action: 'press' },
   'terminal.read': { surface: 'terminal', action: 'read' },
   'terminal.expect_screen': { surface: 'terminal', action: 'expect_screen' },
+  'api.request': { surface: 'api', action: 'request' },
 } as const satisfies Record<string, StepPermission>;
 
 export type PermissionedStepType = keyof typeof STEP_SURFACE_PERMISSION;

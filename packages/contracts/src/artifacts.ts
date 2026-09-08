@@ -25,6 +25,14 @@ export const artifactKindSchema = z.enum([
    * stored, from the field attribute rather than from a guess (ADR-037).
    */
   'terminal_screen',
+  /**
+   * One run's API request/response exchanges.
+   *
+   * The API surface's answer to the screenshot. Without it the surface has no
+   * evidence and Watchtower's expected-versus-observed view has nothing to show
+   * for a step (ADR-004). Sensitive headers are redacted by name.
+   */
+  'api_exchange',
 ]);
 export type ArtifactKind = z.infer<typeof artifactKindSchema>;
 
@@ -57,6 +65,7 @@ export const artifactLinkRoleSchema = z.enum([
   'extracted_json',
   'decision_input',
   'screen_after_action',
+  'api_exchange',
 ]);
 export type ArtifactLinkRole = z.infer<typeof artifactLinkRoleSchema>;
 

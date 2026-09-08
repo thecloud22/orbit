@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@orbit/agent-ir": "workspace:*",
+    "@orbit/api-catalog": "workspace:*",
     "@orbit/artifact-service": "workspace:*",
     "@orbit/artifacts": "workspace:*",
     "@orbit/contracts": "workspace:*",

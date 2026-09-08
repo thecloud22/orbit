@@ -320,6 +320,33 @@ export const terminalExpectScreenStepSchema = z.strictObject({
   evidence: evidenceSchema.optional(),
 });
 
+/**
+ * Calls one operation from an imported contract.
+ *
+ * `operationId` names a catalog entry; there is no URL here and no template. A
+ * URL with interpolation is a small program for constructing a request, which is
+ * the thing ADR-018's closed locator vocabulary exists to make unrepresentable,
+ * and the argument does not change because the target is an endpoint.
+ *
+ * `arguments` fills the operation's declared parameters by name. `assign` maps
+ * response values into declared variables through **JSON Pointer** (RFC 6901),
+ * not JSONPath: JSONPath has filters and wildcards and is an expression
+ * language, which ADR-007 rules out.
+ */
+export const apiRequestStepSchema = z.strictObject({
+  ...stepBase,
+  type: z.literal('api.request'),
+  /** The imported catalog this operation comes from. */
+  catalogId: z.string().regex(/^[a-z][a-z0-9_-]*$/),
+  operationId: z.string().min(1),
+  /** Parameter name to literal or `${inputs.x}` / `${variables.x}`. */
+  arguments: z.record(z.string().min(1), z.string().min(1)).optional(),
+  /** Declared variable to a JSON Pointer into the response body. */
+  assign: z.record(identifierSchema, z.string().startsWith('/')).optional(),
+  timeoutMs: timeoutMsSchema.optional(),
+  evidence: evidenceSchema.optional(),
+});
+
 export const completeStepSchema = z.strictObject({
   ...stepBase,
   type: z.literal('complete'),
@@ -346,6 +373,7 @@ export const agentIrStepSchema = z.discriminatedUnion('type', [
   terminalPressStepSchema,
   terminalReadStepSchema,
   terminalExpectScreenStepSchema,
+  apiRequestStepSchema,
   modelDecideStepSchema,
   completeStepSchema,
   failStepSchema,

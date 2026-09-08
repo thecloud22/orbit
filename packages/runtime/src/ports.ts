@@ -66,6 +66,7 @@ export interface SurfaceExecutor {
 export interface SurfaceExecutors {
   readonly browser: BrowserExecutor;
   readonly terminal: TerminalExecutor;
+  readonly api: ApiExecutor;
 }
 
 export type ExecutorFor<S extends ExecutionSurface> = SurfaceExecutors[S];
@@ -231,6 +232,41 @@ export interface TerminalPressRequest {
 
 /** Opens one isolated terminal session per run. */
 export type TerminalExecutorFactory = SurfaceExecutorFactory<'terminal'>;
+
+/**
+ * The API surface.
+ *
+ * One method, and it takes a *resolved* request rather than an operation id: the
+ * runtime looks the operation up in the catalog, fills its parameters, and
+ * checks the host, so the executor is handed something already decided. It has
+ * no catalog, no permission list and no way to construct a URL of its own -- it
+ * issues exactly the request it is given.
+ *
+ * There is deliberately no `get`/`post` convenience surface and no way to pass a
+ * raw URL, for the reason `BrowserExecutor` has no `evaluate`.
+ */
+export interface ApiExecutor extends SurfaceExecutor {
+  send(request: ApiSendRequest): Promise<ApiSendResult>;
+}
+
+export interface ApiSendRequest {
+  readonly method: string;
+  /** Absolute, already built and host-checked by the runtime. */
+  readonly url: string;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly timeoutMs: number;
+}
+
+export interface ApiSendResult {
+  readonly status: number;
+  /** Parsed JSON when the response was JSON, otherwise null. */
+  readonly body: unknown;
+  /** The raw body, for evidence. Truncated by the executor if very large. */
+  readonly text: string;
+}
+
+/** Opens one HTTP session per run. */
+export type ApiExecutorFactory = SurfaceExecutorFactory<'api'>;
 
 /**
  * The credential seam.
