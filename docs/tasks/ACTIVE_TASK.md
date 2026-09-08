@@ -557,6 +557,19 @@ the whole workspace closure. `@orbit/credentials` is on that denylist for the sa
 the commit that adds one rather than relying on someone remembering the file then. Verified by
 mutation: an import of `playwright` in the package makes it fail.
 
+**Sub-phase 3.5 is complete.** `@orbit/screen-mapping` defines what a green screen is, how a step
+names a field on one, and how a screen is compared against what somebody approved — pure, with Zod as
+its entire runtime dependency and no transport of any kind. See
+`docs/tasks/reports/TASK-P3-005-screen-model-report.md`.
+
+The addressing vocabulary is closed the way locators are: `field_at`, `field_after_label`,
+`named_field`, and no raw buffer offset or regex over screen text. `Locator` is neither reused nor
+widened. The fingerprint anchors only *protected* captions, because unprotected content is data that
+changes every run — anchoring it would manufacture drift on every execution.
+
+Non-display is a 3270 **field attribute**, so terminal password redaction is protocol-derived rather
+than heuristic. The field still transmits in clear; redaction is Orbit's job, driven off the flag.
+
 **Checkpoint C.** The foundation is done. The terminal track (3.5-3.8) and the API track (3.9-3.11)
 touch disjoint packages from here and can proceed independently.
 
