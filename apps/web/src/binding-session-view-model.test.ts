@@ -229,6 +229,19 @@ describe('bindDisabledReason', () => {
 });
 
 describe('describeBindingSessionFailure', () => {
+  it('tells someone the window is gone rather than to close it', () => {
+    // 409 and 410 are opposite problems: one means a window is still open for
+    // this workflow, the other that the open one was closed. Telling someone
+    // to close a window they already closed is worse than saying nothing.
+    const closed = describeBindingSessionFailure(
+      new ApiRequestError({ status: 410, message: 'The recording browser was closed.' }),
+    );
+
+    expect(closed.title).toContain('closed');
+    expect(closed.sessionSurvived).toBe(false);
+    expect(closed.message).not.toContain('Finish or discard');
+  });
+
   it('reports a closed session as unrecoverable', () => {
     const failure = describeBindingSessionFailure(
       new ApiRequestError({ status: 404, message: 'That binding session is not open.' }),

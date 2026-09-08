@@ -132,6 +132,7 @@ export type StartBindingSessionResult =
 export type TargetStepResult =
   | { readonly ok: true; readonly state: BindingSessionState }
   | { readonly ok: false; readonly reason: 'not_found' }
+  | { readonly ok: false; readonly reason: 'browser_closed' }
   | { readonly ok: false; readonly reason: 'document_not_found' }
   | { readonly ok: false; readonly reason: 'unknown_step'; readonly stepId: string }
   | { readonly ok: false; readonly reason: 'not_bindable'; readonly stepId: string };
@@ -163,6 +164,7 @@ export type BindResult =
       readonly state: BindingSessionState;
     }
   | { readonly ok: false; readonly reason: 'not_found' }
+  | { readonly ok: false; readonly reason: 'browser_closed' }
   | { readonly ok: false; readonly reason: 'document_not_found' }
   | { readonly ok: false; readonly reason: 'unknown_step'; readonly stepId: string }
   | { readonly ok: false; readonly reason: 'not_bindable'; readonly stepId: string }
@@ -442,9 +444,26 @@ export function createBindingSessionRegistry(
         return { ok: false, reason: 'not_bindable', stepId };
       }
 
+      // Nothing stops a person closing the window Orbit opened -- it is their
+      // browser. Checked before the page is touched so a closed window is a
+      // typed refusal like every other outcome here, rather than a
+      // TargetClosedError escaping as a 500.
+      if (open.session.isClosed()) {
+        return { ok: false, reason: 'browser_closed' };
+      }
+
       // Switching modes leaves the page exactly where it is, which is the whole
       // point of not reloading to do it.
-      await open.session.setMode(describeTarget(step, EMPTY_BRANCH_CAPTURES).mode);
+      try {
+        await open.session.setMode(describeTarget(step, EMPTY_BRANCH_CAPTURES).mode);
+      } catch (error) {
+        // The check above closes the ordinary case; this closes the race where
+        // the window goes away between that check and this call.
+        if (open.session.isClosed()) {
+          return { ok: false, reason: 'browser_closed' };
+        }
+        throw error;
+      }
       open.session.clearCaptures();
       // Half-demonstrated branches belong to the step that was being bound.
       // Carrying them to the next one would attach an element captured for one
@@ -460,6 +479,12 @@ export function createBindingSessionRegistry(
 
       if (open === undefined) {
         return { ok: false, reason: 'not_found' };
+      }
+
+      // Saving reads the captured element from the live page, so a closed
+      // window has to refuse here too rather than part-writing a binding.
+      if (open.session.isClosed()) {
+        return { ok: false, reason: 'browser_closed' };
       }
 
       const revision = await currentGraph(open.documentId);

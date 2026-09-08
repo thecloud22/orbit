@@ -85,6 +85,17 @@ export interface RecordingSession {
    * test has to perform the interactions a human performs in production.
    */
   page(): Page;
+  /**
+   * Whether the browser this session drives is gone.
+   *
+   * A person can close the window Orbit opened, and nothing stops them —
+   * it is their browser. Without this, the first call after that closure
+   * reaches `page.evaluate` on a dead page and throws `TargetClosedError`
+   * from inside a registry whose every other outcome is a typed refusal,
+   * so a closed window surfaced as a 500 rather than as "that window is
+   * gone, start again".
+   */
+  isClosed(): boolean;
   /** Switches between performing an action and picking an element to read. */
   setMode(mode: CaptureMode): Promise<void>;
   navigate(url: string): Promise<void>;
@@ -248,6 +259,13 @@ export async function openRecordingSession(options: OpenSessionOptions): Promise
   return {
     page() {
       return page;
+    },
+
+    isClosed() {
+      // The page is what every call here touches, so it is what decides.
+      // Closing the window closes the page even when the browser process
+      // lingers, and closing the browser closes the page too.
+      return page.isClosed();
     },
 
     async setMode(mode) {

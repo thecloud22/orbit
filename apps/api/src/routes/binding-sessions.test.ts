@@ -171,6 +171,39 @@ describe('POST /v1/binding-sessions', () => {
 
     await app.close();
   });
+
+  it('reports a closed browser as gone rather than as a server error', async () => {
+    // The defect this pins: closing the window Orbit opened left the registry
+    // holding a dead page, so the next call reached `page.evaluate` on it and
+    // a TargetClosedError escaped as a 500 -- in a registry where every other
+    // outcome is a typed refusal. A person cannot act on a 500.
+    const app = server({
+      target: () => Promise.resolve({ ok: false, reason: 'browser_closed' }),
+      bind: () => Promise.resolve({ ok: false, reason: 'browser_closed' }),
+    });
+    await app.ready();
+
+    const targeted = await app.inject({
+      method: 'POST',
+      url: '/v1/binding-sessions/bind_1/target',
+      payload: { stepId: 'enter_request_number' },
+    });
+
+    // 410, not 409: 409 already means "a window is still open for this
+    // workflow", which is the opposite problem and reads differently.
+    expect(targeted.statusCode).toBe(410);
+    expect(targeted.json().error.message).toContain('closed');
+
+    const bound = await app.inject({
+      method: 'POST',
+      url: '/v1/binding-sessions/bind_1/binding',
+      payload: { captureId: 'capture-1' },
+    });
+
+    expect(bound.statusCode).toBe(410);
+
+    await app.close();
+  });
 });
 
 describe('GET /v1/binding-sessions/:sessionId', () => {

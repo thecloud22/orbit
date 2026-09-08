@@ -162,6 +162,18 @@ export function registerBindingSessionRoutes(app: FastifyInstance, context: ApiC
         switch (result.reason) {
           case 'not_found':
             throw notFound('That binding session is not open.');
+          case 'browser_closed':
+            // 410 rather than 404 or 409: the session existed and its window
+            // is gone, which is precisely "gone". 409 is already taken here by
+            // "a session is still open for this workflow" -- the opposite
+            // problem, and the UI words them differently.
+            throw new ApiError({
+              code: 'VALIDATION_ERROR',
+              statusCode: 410,
+              message:
+                'The recording browser was closed, so this session cannot continue. ' +
+                'Start binding again to open a new one.',
+            });
           case 'document_not_found':
             throw notFound('That workflow no longer exists.');
           case 'unknown_step':
@@ -206,6 +218,18 @@ export function registerBindingSessionRoutes(app: FastifyInstance, context: ApiC
         switch (result.reason) {
           case 'not_found':
             throw notFound('That binding session is not open.');
+          case 'browser_closed':
+            // 410 rather than 404 or 409: the session existed and its window
+            // is gone, which is precisely "gone". 409 is already taken here by
+            // "a session is still open for this workflow" -- the opposite
+            // problem, and the UI words them differently.
+            throw new ApiError({
+              code: 'VALIDATION_ERROR',
+              statusCode: 410,
+              message:
+                'The recording browser was closed, so this session cannot continue. ' +
+                'Start binding again to open a new one.',
+            });
           case 'document_not_found':
             throw notFound('That workflow no longer exists.');
           case 'unknown_step':

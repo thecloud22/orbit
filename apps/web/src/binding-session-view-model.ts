@@ -216,6 +216,20 @@ export function describeBindingSessionFailure(error: ApiRequestError): BindingFa
     };
   }
 
+  if (error.status === 410) {
+    // Distinct from 409: 409 means a window is still open for this workflow,
+    // 410 means the one that was open has been closed. Opposite problems, and
+    // telling someone to close a window they already closed would be absurd.
+    return {
+      kind: 'gone',
+      title: 'The recording browser was closed',
+      message:
+        'That window is gone, so this session cannot continue. Start binding again to open a new one.',
+      sessionSurvived: false,
+      issues: [],
+    };
+  }
+
   if (error.status === 409) {
     return {
       kind: 'in_use',

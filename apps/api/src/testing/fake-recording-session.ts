@@ -34,6 +34,7 @@ export function createFakeRecordingSession(startUrl: string): FakeRecordingSessi
       }
     },
     closed: () => closed,
+    isClosed: () => closed,
     page: () => {
       throw new Error('The fake recording session has no page.');
     },
