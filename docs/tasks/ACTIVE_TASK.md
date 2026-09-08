@@ -617,6 +617,26 @@ and an ordinary string are indistinguishable once both are strings. Migration `0
 Agent IR. And `api.request` does not yet resolve a credential into a header, which is the obvious
 small next increment.
 
+**Sub-phase 3.8 is complete, and 3.11 is half done.** See
+`docs/tasks/reports/TASK-P3-008-011-timeline-and-call-report.md`.
+
+3.8 was the acceptance test for whether the evidence model generalised rather than fragmented, and it
+did: `buildRunTimeline` needed no structural change, because steps, events and artifacts already join
+by `runStepId` and a terminal or API step flows through the same path a browser step does. What was
+added is legibility — `surfaceOf` derives the surface, returns null for `complete`/`fail`/`model.decide`
+which touch none, and the badge appears **only when a run actually spans surfaces**.
+
+3.11 added the SOP Graph `call` kind — business intent only, no endpoint, and deliberately no
+`urlHint` counterpart to `navigate`'s, because an endpoint is a more consequential thing to guess at
+than a page. The substantive part is the refusal: the compiler's if-chain let a `call` fall through to
+the extract branch and report that it "reads a value but its mapping does not", so
+`call_binding_unsupported` now names the real gap.
+
+**Not built: the binding half of 3.11**, and **3.7 entirely.** There is no `call` binding body, no
+mapping service, and no Studio surface — so a `call` step refuses by design, and both `api.request`
+and terminal workflows must be hand-authored in Agent IR. Both need the same open decision: how a
+person authors against a surface that is not a web page.
+
 **Checkpoint C.** The foundation is done. The terminal track (3.5-3.8) and the API track (3.9-3.11)
 touch disjoint packages from here and can proceed independently.
 
