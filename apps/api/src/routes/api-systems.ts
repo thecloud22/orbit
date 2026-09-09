@@ -6,6 +6,7 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 
 import type { ApiContext } from '../context';
+import { badRequest, conflict } from '../errors';
 
 /**
  * Registering the API contracts this deployment can call.
@@ -20,6 +21,18 @@ import type { ApiContext } from '../context';
  * operation, a reviewer still has to approve the binding, and the compiled
  * version still carries its own immutable grant. Someone who registered a
  * hostile contract here would have added an option nobody had chosen.
+ *
+ * Every failure here is thrown as an `ApiError` and caught by the server's
+ * shared error handler, rather than built by hand with `reply.send()`. That is
+ * not a style preference: a hand-built body is a second, silent error format
+ * that the shared taxonomy and the client's error parser both know nothing
+ * about. This route did that in one place for its Zod validation failure —
+ * `{ error: { code, issues } }`, no `message` — and the client's `toApiError`
+ * only ever reads `error.message`, so that one path rendered as blank or fell
+ * through to a generic "could not be reached," which is exactly what surfaced
+ * when a person hit it. A second place invented `code: 'CONFLICT'`, which is
+ * not in the closed `ErrorCode` taxonomy at all and would have failed silently
+ * had anything actually validated it against the schema.
  */
 
 const createSchema = z.strictObject({
@@ -87,20 +100,22 @@ export function registerApiSystemRoutes(app: FastifyInstance, context: ApiContex
     const parsed = createSchema.safeParse(request.body);
 
     if (!parsed.success) {
-      return reply
-        .status(400)
-        .send({ error: { code: 'VALIDATION_ERROR', issues: parsed.error.issues } });
+      throw badRequest(
+        'The registration form has a problem: ' +
+          parsed.error.issues
+            .map((issue) => `${issue.path.join('.') || '(root)'} — ${issue.message}`)
+            .join('; '),
+        parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.') || '(root)',
+          message: issue.message,
+        })),
+      );
     }
 
     const input = parsed.data;
 
     if (input.authScheme !== 'none' && input.credentialRef === undefined) {
-      return reply.status(400).send({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'An authenticated system must name the credential it uses.',
-        },
-      });
+      throw badRequest('An authenticated system must name the credential it uses.');
     }
 
     const imported = importOpenApi(input.catalogId, safeParse(input.spec));
@@ -109,15 +124,17 @@ export function registerApiSystemRoutes(app: FastifyInstance, context: ApiContex
       // Refused at registration rather than at compile time. A contract nothing
       // can import is not a system anybody can use, and finding that out while
       // authoring a workflow is finding it out too late.
-      return reply.status(400).send({
-        error: { code: 'VALIDATION_ERROR', message: imported.message, refusals: imported.refusals },
-      });
+      throw badRequest(
+        imported.message,
+        imported.refusals.map((refusal) => ({
+          field: refusal.operationId,
+          message: refusal.detail,
+        })),
+      );
     }
 
     if ((await repositories.apiSystems.byCatalogId(input.catalogId)) !== undefined) {
-      return reply.status(409).send({
-        error: { code: 'CONFLICT', message: `"${input.catalogId}" is already registered.` },
-      });
+      throw conflict(`"${input.catalogId}" is already registered.`);
     }
 
     const created = await repositories.apiSystems.create({
@@ -136,7 +153,7 @@ export function registerApiSystemRoutes(app: FastifyInstance, context: ApiContex
     const id = apiSystemIdSchema.safeParse((request.params as { id?: string }).id);
 
     if (!id.success) {
-      return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'bad id' } });
+      throw badRequest('This is not a valid Orbit identifier.');
     }
 
     // Published versions are untouched: their grant is compiled in, so an agent

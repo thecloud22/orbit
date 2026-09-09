@@ -66,6 +66,17 @@ export function notFound(message: string): ApiError {
   return new ApiError({ code: 'VALIDATION_ERROR', statusCode: 404, message });
 }
 
+/**
+ * Naming an id or key that already exists.
+ *
+ * `VALIDATION_ERROR` for the same reason `notFound` uses it rather than a
+ * dedicated code: the Phase 1 taxonomy has no `CONFLICT` entry, and this is
+ * the same precedent applied to a second missing case.
+ */
+export function conflict(message: string): ApiError {
+  return new ApiError({ code: 'VALIDATION_ERROR', statusCode: 409, message });
+}
+
 export function internalError(message: string, cause?: unknown): ApiError {
   return new ApiError({ code: 'INTERNAL_ERROR', statusCode: 500, message, cause });
 }
