@@ -36,7 +36,7 @@ describe('Orbit API', () => {
     const response = await app.inject({ method: 'GET', url: '/v1/nope' });
 
     expect(response.statusCode).toBe(404);
-    expect(response.json().error).toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(response.json().error).toMatchObject({ code: 'NOT_FOUND' });
     expect(response.json().error.requestId).toMatch(/^req_/);
 
     await app.close();
@@ -134,7 +134,7 @@ describe('POST /v1/agent-versions/:agentVersionId/runs', () => {
     });
 
     expect(response.statusCode).toBe(404);
-    expect(response.json().error.code).toBe('VALIDATION_ERROR');
+    expect(response.json().error.code).toBe('NOT_FOUND');
 
     await app.close();
   });

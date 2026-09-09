@@ -63,7 +63,7 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
 
   app.setNotFoundHandler((_request, reply) => {
     const error = new ApiError({
-      code: 'VALIDATION_ERROR',
+      code: 'NOT_FOUND',
       statusCode: 404,
       message: 'No such route.',
     });

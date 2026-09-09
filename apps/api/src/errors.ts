@@ -8,10 +8,12 @@ import { newRequestId, type ErrorCode, type ErrorDetail, type OrbitError } from 
  * filesystem path, a storage key, a stack trace, or a database message: an error
  * body is read by a browser and must be as safe as any other payload.
  *
- * Note a real gap: the Phase 1 error taxonomy has no `NOT_FOUND` code, so a 404
- * is reported as `VALIDATION_ERROR` with a message naming what was not found.
- * Widening `@orbit/contracts` is out of scope for this task; see the Task 7-8
- * report's open questions.
+ * `conflict()` still reports `VALIDATION_ERROR` on a 409 -- the taxonomy has
+ * no dedicated `CONFLICT` code, and the status line already carries that
+ * distinction. `notFound()` no longer needs the same workaround: `NOT_FOUND`
+ * was added once a caller was found branching on the error body rather than
+ * the status code, which the old `VALIDATION_ERROR`-for-everything shape
+ * could not support.
  */
 export class ApiError extends Error {
   readonly code: ErrorCode;
@@ -63,7 +65,7 @@ export function invalidInput(message: string, details?: readonly ErrorDetail[]):
  * are real.
  */
 export function notFound(message: string): ApiError {
-  return new ApiError({ code: 'VALIDATION_ERROR', statusCode: 404, message });
+  return new ApiError({ code: 'NOT_FOUND', statusCode: 404, message });
 }
 
 /**

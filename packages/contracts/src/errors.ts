@@ -11,6 +11,13 @@ import { requestIdSchema } from './ids';
 export const errorCodeSchema = z.enum([
   'VALIDATION_ERROR',
   'INPUT_ERROR',
+  /**
+   * "This id does not name anything." Added after `notFound()` had spent the
+   * Phase 1 taxonomy's whole life reporting `VALIDATION_ERROR` on a 404 for
+   * want of a dedicated code -- correct on the wire (the status line already
+   * says 404) but wrong in the body a caller might branch on.
+   */
+  'NOT_FOUND',
   'BROWSER_TIMEOUT',
   'LOCATOR_NOT_FOUND',
   'ASSERTION_FAILED',
