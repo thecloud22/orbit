@@ -179,6 +179,10 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
             warn: (fields, message) => app.log.warn(fields, message),
           },
           headless: process.env['ORBIT_BROWSER_HEADED'] !== 'true',
+          // The same ceilings Admin reports and drafting is checked against,
+          // so a judged decision spends against one budget rather than a
+          // second one nobody can see.
+          modelBudgets: options.modelBudgets ?? {},
         }),
       ),
     } satisfies ApiContext,

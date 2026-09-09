@@ -19,6 +19,7 @@
     "@orbit/contracts": "workspace:*",
     "@orbit/credentials": "workspace:*",
     "@orbit/db": "workspace:*",
+    "@orbit/decision-judge": "workspace:*",
     "@orbit/drift-recovery": "workspace:*",
     "@orbit/execution-mapping": "workspace:*",
     "@orbit/execution-recorder": "workspace:*",

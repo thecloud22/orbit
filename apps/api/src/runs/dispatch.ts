@@ -8,6 +8,10 @@ import type { ArtifactStorage } from '@orbit/artifacts';
 import type { AgentVersionId, RunId, RunInputs, RunTrigger } from '@orbit/contracts';
 import { createRepositories, type OrbitDatabase } from '@orbit/db';
 import { createPlaywrightExecutorFactory } from '@orbit/executor-playwright';
+import type { ModelBudgets } from '@orbit/model-budget';
+import type { DecisionJudge } from '@orbit/runtime';
+
+import { createRunDecisionJudge } from '../model/decision-judge-env';
 import {
   executeAgentVersion,
   type BrowserExecutorFactory,
@@ -66,6 +70,21 @@ export interface InProcessDispatcherDependencies {
    * how the run id is observed — is exercised without launching Chromium.
    */
   readonly browser?: BrowserExecutorFactory;
+  /**
+   * Token ceilings a judged decision is checked against.
+   *
+   * Passed in rather than read here for the reason every other environment
+   * value is: this module dispatches runs, and an entry point reads the
+   * environment. Absent means uncapped, which is what `checkModelBudget`
+   * already means by an absent scope.
+   */
+  readonly modelBudgets?: ModelBudgets;
+  /**
+   * Overrides the judge a judged decision asks. Production leaves this unset
+   * and gets one built from the configured model provider, or none when no
+   * provider is configured.
+   */
+  readonly judge?: DecisionJudge;
 }
 
 /**
@@ -118,6 +137,13 @@ export function createInProcessRunDispatcher(deps: InProcessDispatcherDependenci
     store: createDatabaseRecoveryProposalStore({ database: deps.database }),
   });
 
+  // Built once, at composition, rather than per run: the provider selection is
+  // deployment configuration and re-reading the environment for every run would
+  // make two runs of the same version answerable differently.
+  const judge =
+    deps.judge ??
+    createRunDecisionJudge({ database: deps.database, budgets: deps.modelBudgets ?? {} });
+
   return {
     async dispatch(request: DispatchRunRequest): Promise<DispatchedRun> {
       const store = createDatabaseRunStore({ database: deps.database, storage: deps.storage });
@@ -163,6 +189,12 @@ export function createInProcessRunDispatcher(deps: InProcessDispatcherDependenci
           api: createHttpExecutorFactory(),
         },
         credentials: createEnvCredentialResolver(),
+        // Absent when no model provider is configured, which is not a failure:
+        // the runtime halts a judged step with `DECISION_JUDGE_UNAVAILABLE`,
+        // and that is the accurate thing to be told. Until this was wired, it
+        // was the *only* thing a published judged decision could ever do
+        // (ADR-032 shipped the capability; no entry point supplied the port).
+        ...(judge === undefined ? {} : { judge }),
         // Read per run rather than at boot, for the reason the compiler reads
         // them per compile: a system registered in Admin has to work without
         // restarting the API.
