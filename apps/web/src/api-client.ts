@@ -224,6 +224,27 @@ export async function editSopStep(
 }
 
 /**
+ * Declaring a new run input, as a new revision.
+ *
+ * The other half of `${inputs.x}`: the step editor already refuses that
+ * reference unless `x` is declared, and this is what lets a person declare it
+ * -- including on a recorded workflow, whose captured values otherwise have no
+ * way to become something a run supplies.
+ */
+export async function declareSopInput(
+  revisionId: string,
+  input: { readonly id: string; readonly label: string; readonly required: boolean },
+  note?: string,
+): Promise<{ revisionId: string; revisionNumber: number }> {
+  return send(`/v1/sop-revisions/${revisionId}/inputs`, 'POST', {
+    id: input.id,
+    label: input.label,
+    required: input.required,
+    ...(note === undefined ? {} : { note }),
+  });
+}
+
+/**
  * Adding a step. Like every other write here, it creates the next revision.
  *
  * No id is sent: one is generated on the server, because branches name their

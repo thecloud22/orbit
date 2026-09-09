@@ -234,6 +234,89 @@ describe('SOP revision review', () => {
     });
   });
 
+  describe('declaring an input', () => {
+    it('adds it to the graph and supersedes with a new revision', async () => {
+      const before = revision.graph.inputs.length;
+      const result = await service().declareInput({
+        revisionId: revision.id,
+        id: 'memberId',
+        label: 'Member ID',
+        required: true,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.revision.graph.inputs.length).toBe(before + 1);
+      expect(result.revision.graph.inputs.find((one) => one.id === 'memberId')).toMatchObject({
+        id: 'memberId',
+        type: 'string',
+        label: 'Member ID',
+        required: true,
+      });
+      // Editing supersedes, exactly like editStep and insertStep -- never
+      // mutates the revision that was current.
+      expect(result.revision.id).not.toBe(revision.id);
+    });
+
+    it('lets a step then reference it, which was refused before the declaration existed', async () => {
+      const declared = await service().declareInput({
+        revisionId: revision.id,
+        id: 'memberId',
+        label: 'Member ID',
+        required: true,
+      });
+      if (!declared.ok) throw new Error('expected the declaration to succeed');
+
+      // The revision `declareInput` returns, not the one just superseded --
+      // editing the old one now correctly fails as `not_editable`, which is a
+      // different thing from what this test is checking.
+      const step = declared.revision.graph.steps.find((one) => one.kind === 'fill');
+      if (step === undefined || step.kind !== 'fill') throw new Error('fixture has no fill step');
+
+      const result = await service().editStep({
+        revisionId: declared.revision.id,
+        stepId: step.id,
+        step: { ...step, value: '${inputs.memberId}' },
+      });
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('refuses a name already declared', async () => {
+      const first = await service().declareInput({
+        revisionId: revision.id,
+        id: 'memberId',
+        label: 'Member ID',
+        required: true,
+      });
+      if (!first.ok) throw new Error('expected the first declaration to succeed');
+
+      const second = await service().declareInput({
+        revisionId: first.revision.id,
+        id: 'memberId',
+        label: 'Member ID again',
+        required: false,
+      });
+
+      expect(second.ok === false && second.reason).toBe('duplicate_input');
+    });
+
+    it('refuses on a revision that is no longer a draft', async () => {
+      await answerEveryQuestion();
+      await service().transition({ revisionId: revision.id, action: 'submit_for_review' });
+
+      const result = await service().declareInput({
+        revisionId: revision.id,
+        id: 'memberId',
+        label: 'Member ID',
+        required: true,
+      });
+
+      expect(result.ok === false && result.reason).toBe('not_editable');
+    });
+  });
+
   describe('inserting a step', () => {
     const CLICK = {
       kind: 'click',

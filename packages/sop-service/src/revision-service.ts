@@ -151,6 +151,17 @@ export type GetReviewResult =
   | { readonly ok: true; readonly review: RevisionReview }
   | { readonly ok: false; readonly reason: 'not_found' };
 
+export type DeclareInputResult =
+  | { readonly ok: true; readonly revision: SopGraphRevisionRecord }
+  | { readonly ok: false; readonly reason: 'not_found' }
+  | { readonly ok: false; readonly reason: 'not_editable'; readonly state: SopRevisionState }
+  | { readonly ok: false; readonly reason: 'duplicate_input'; readonly inputId: string }
+  | {
+      readonly ok: false;
+      readonly reason: 'invalid_graph';
+      readonly issues: readonly SopGraphIssue[];
+    };
+
 export type EditStepResult =
   | { readonly ok: true; readonly revision: SopGraphRevisionRecord }
   | { readonly ok: false; readonly reason: 'not_found' }
@@ -222,6 +233,29 @@ export interface SopRevisionService {
     readonly step: SopStep;
     readonly note?: string;
   }): Promise<EditStepResult>;
+  /**
+   * Declares a new run input on the workflow, as a new revision.
+   *
+   * The gap this closes: a recorded step captures whatever value a person
+   * actually typed as a literal (a real member id, a real ISBN), and there was
+   * no way afterward to turn that literal into something a run supplies. The
+   * interpolation grammar already refuses `${inputs.x}` in a step's `value`
+   * unless `x` is declared (ADR-007) -- this is the missing other half, adding
+   * the declaration itself so a person can then reference it from the step
+   * editor.
+   *
+   * String-only for now, matching the only input type Agent IR's compiler
+   * actually carries through to a run (`SUPPORTED_VALUE_TYPES`). Widening to
+   * other declared types is a real gap, not a design choice, and stays out of
+   * scope until something needs one.
+   */
+  declareInput(input: {
+    readonly revisionId: SopRevisionId;
+    readonly id: string;
+    readonly label: string;
+    readonly required: boolean;
+    readonly note?: string;
+  }): Promise<DeclareInputResult>;
   /**
    * Adds a step at a chosen position, as a new revision.
    *
@@ -465,6 +499,47 @@ export function createSopRevisionService(options: SopRevisionServiceOptions): So
         // `value` can read a variable produced later, a changed branch target can
         // strand a step.
         const parsed = parseSopGraphDocument({ ...revision.graph, steps });
+
+        if (!parsed.ok) {
+          return { ok: false, reason: 'invalid_graph', issues: parsed.issues };
+        }
+
+        return {
+          ok: true,
+          revision: await supersedeWith(repositories, revision, parsed.graph, input.note),
+        };
+      });
+    },
+
+    async declareInput(input) {
+      return withTransaction(database, async (repositories) => {
+        const revision = await repositories.sopGraphRevisions.findById(input.revisionId);
+
+        if (revision === null) {
+          return { ok: false, reason: 'not_found' };
+        }
+
+        if (!isEditableState(revision.state)) {
+          return { ok: false, reason: 'not_editable', state: revision.state };
+        }
+
+        if (revision.graph.inputs.some((declared) => declared.id === input.id)) {
+          return { ok: false, reason: 'duplicate_input', inputId: input.id };
+        }
+
+        const inputs = [
+          ...revision.graph.inputs,
+          { id: input.id, type: 'string' as const, label: input.label, required: input.required },
+        ];
+
+        // Re-validated through the same path editStep uses, for consistency
+        // rather than because this particular change is likely to fail it: an
+        // added declaration cannot by itself break a graph that was already
+        // valid, since nothing yet references it. Declaring an input that
+        // nothing uses is accepted -- there is no unused-input check -- and a
+        // person finds out it went unreferenced only if they never end up
+        // writing `${inputs.<id>}` anywhere.
+        const parsed = parseSopGraphDocument({ ...revision.graph, inputs });
 
         if (!parsed.ok) {
           return { ok: false, reason: 'invalid_graph', issues: parsed.issues };

@@ -30,6 +30,7 @@ import { isFullyBoundForPublish } from './sop-binding-view-model';
 import { describePublishRecordingFailure, type CompileFailure } from './publication-view-model';
 import { SopBindingPanel } from './SopBindingPanel';
 import { SopCallBindingPanel } from './SopCallBindingPanel';
+import { SopInputsPanel } from './SopInputsPanel';
 import { WalkthroughPanel } from './WalkthroughPanel';
 import {
   DECISION_NOTICE,
@@ -434,6 +435,13 @@ export function SopReviewPage({
 
   const authoring = (
     <>
+      <SopInputsPanel
+        editable={review.editable}
+        inputs={review.inputs}
+        onSaved={() => void load()}
+        revisionId={review.revisionId}
+      />
+
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="text-sm font-semibold text-slate-900">Steps</h3>
         <ol className="mt-2 flex flex-col gap-2" data-testid="sop-review-steps">

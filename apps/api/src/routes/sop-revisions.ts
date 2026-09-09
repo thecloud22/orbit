@@ -1,5 +1,10 @@
 import { sopDocumentIdSchema, sopRevisionIdSchema } from '@orbit/contracts';
-import { sopStepDraftSchema, sopStepSchema, type SopGraphIssue } from '@orbit/sop-graph';
+import {
+  identifierSchema,
+  sopStepDraftSchema,
+  sopStepSchema,
+  type SopGraphIssue,
+} from '@orbit/sop-graph';
 import { SOP_REVISION_ACTIONS } from '@orbit/sop-service';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -23,6 +28,17 @@ import type { DataEnvelope, SopDocumentSummaryView, SopReviewView } from '../vie
 
 const editStepBodySchema = z.strictObject({
   step: sopStepSchema,
+  note: z.string().trim().min(1).max(500).optional(),
+});
+
+/**
+ * Declaring a new run input. String-only, matching `declareInput`'s own scope
+ * note in @orbit/sop-service.
+ */
+const declareInputBodySchema = z.strictObject({
+  id: identifierSchema,
+  label: z.string().trim().min(1).max(200),
+  required: z.boolean().default(true),
   note: z.string().trim().min(1).max(500).optional(),
 });
 
@@ -308,6 +324,59 @@ export function registerSopRevisionRoutes(app: FastifyInstance, context: ApiCont
           revisionNumber: result.revision.revisionNumber,
           stepId: result.stepId,
         },
+      };
+
+      return reply.code(201).send(payload);
+    },
+  );
+
+  /**
+   * Declaring a new run input, as a new revision.
+   *
+   * The other half of an interpolation reference: `${inputs.x}` is refused by
+   * the step editor unless `x` is declared, and until this route existed there
+   * was no way to declare one on a workflow that did not come from the
+   * drafting flow -- including every recorded workflow, whose captured values
+   * arrive as literals with nothing to parameterize them.
+   */
+  app.post<{ Params: { revisionId: string } }>(
+    '/v1/sop-revisions/:revisionId/inputs',
+    async (request, reply) => {
+      const { revisionId } = parseParams(
+        z.object({ revisionId: sopRevisionIdSchema }),
+        request.params,
+        'revision id',
+      );
+      const body = parseBody(declareInputBodySchema, request.body, 'input declaration');
+
+      const result = await context.sopRevisionService.declareInput({
+        revisionId,
+        id: body.id,
+        label: body.label,
+        required: body.required,
+        ...(body.note === undefined ? {} : { note: body.note }),
+      });
+
+      if (!result.ok) {
+        switch (result.reason) {
+          case 'not_found':
+            throw notFound(`SOP revision "${revisionId}" does not exist.`);
+          case 'not_editable':
+            throw conflict(
+              `This revision is "${result.state}" and can no longer be edited. Send it back for clarification first.`,
+            );
+          case 'duplicate_input':
+            throw conflict(`"${result.inputId}" is already declared on this workflow.`);
+          case 'invalid_graph':
+            throw unprocessable(
+              'That declaration would make the workflow invalid, so it was not saved.',
+              toIssueDetails(result.issues),
+            );
+        }
+      }
+
+      const payload: DataEnvelope<{ revisionId: string; revisionNumber: number }> = {
+        data: { revisionId: result.revision.id, revisionNumber: result.revision.revisionNumber },
       };
 
       return reply.code(201).send(payload);
