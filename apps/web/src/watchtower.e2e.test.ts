@@ -826,7 +826,7 @@ describe('Watchtower end to end', () => {
       await page.close();
     });
 
-    it('offers no way to approve someone else’s binding, or to bind a person’s step', async () => {
+    it('offers no review buttons when nothing needs one, and no way to bind a person’s step', async () => {
       const page = await open();
       await openSeededReview(page);
 
@@ -837,13 +837,15 @@ describe('Watchtower end to end', () => {
       const panel = page.getByTestId('sop-bindings');
       const buttons = (await panel.locator('button').allTextContents()).join('\n');
 
-      // Binding a step is offered (ADR-027); reviewing a binding somebody else
-      // made is not, and the panel says as much rather than leaving it to be
-      // discovered.
+      // Binding a step is offered (ADR-027). Reviewing somebody else's binding
+      // is offered too (the seeded fixture just has none sitting in draft or
+      // needs_review to review — every bindable step here is either unbound or
+      // already approved), and the panel says where a binding that does need
+      // review will be handled rather than leaving it to be discovered.
       expect(buttons).not.toContain('Approve');
       expect(buttons).not.toContain('Reject');
       expect((await panel.textContent()) ?? '').toContain(
-        'Approving or turning down what someone else recorded is not done from here',
+        'A binding someone else demonstrated waits below for you to approve or reject it',
       );
 
       // The heading and the lead explain the panel without the word "binding",

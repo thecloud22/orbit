@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { ApiRequestError } from './api-client';
 import {
   describePublishRecordingFailure,
+  isPublishableStage,
   offersBoundPublish,
   offersOneClickPublish,
   publicationStage,
@@ -197,6 +198,44 @@ describe('offersOneClickPublish', () => {
         stage: publicationStage(publication()),
       }),
     ).toBe(false);
+  });
+});
+
+describe('isPublishableStage', () => {
+  // The bug this pins: SopPublishPanel renders a whole "Publish" section
+  // whenever this is true. A published document with nothing pending has
+  // this false, and the panel renders nothing -- the lead card one section
+  // up already says "Published as version X" with a working link, and a
+  // second section repeating the same fact in prose with no link read as a
+  // dead end rather than as the "nothing to do here" it actually was.
+  it('is false once a document is published with nothing pending', () => {
+    const stage = publicationStage(
+      publication({ agentVersionId: 'agentv_1', agentVersion: '0.1.0' }),
+    );
+
+    expect(isPublishableStage(stage)).toBe(false);
+  });
+
+  it('is true again once a published document has been revised', () => {
+    const stage = publicationStage(
+      publication({
+        agentVersionId: 'agentv_1',
+        agentVersion: '0.1.0',
+        compiledFromRevisionId: 'soprev_1',
+      }),
+      'soprev_2',
+    );
+
+    expect(isPublishableStage(stage)).toBe(true);
+  });
+
+  it('is true for every stage before publishing', () => {
+    expect(isPublishableStage(publicationStage(publication()))).toBe(true);
+    expect(
+      isPublishableStage(
+        publicationStage(publication({ candidateId: 'aircand_1', candidateState: 'approved' })),
+      ),
+    ).toBe(true);
   });
 });
 

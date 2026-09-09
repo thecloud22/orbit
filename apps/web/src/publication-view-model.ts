@@ -155,8 +155,14 @@ export function offersOneClickPublish(input: {
  * a complete answer; now a revised one is published *and* has an unpublished
  * revision, and withholding the button there would leave the fork with nothing
  * to do.
+ *
+ * Exported as well as used locally: `!isPublishableStage(stage)` is also
+ * exactly the condition under which `SopPublishPanel` has nothing left to
+ * show. The lead card one section up already carries that fact with a
+ * working link this panel does not have (see its own module comment), so
+ * that panel renders nothing at all rather than a dead-end restatement.
  */
-function isPublishableStage(stage: PublicationStage): boolean {
+export function isPublishableStage(stage: PublicationStage): boolean {
   return stage.kind !== 'published' || stage.hasNewerRevision;
 }
 

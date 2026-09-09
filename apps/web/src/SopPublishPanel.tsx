@@ -1,6 +1,7 @@
 import type { SopDeclaredOutcomeView, SopPublicationView } from '@orbit/api/views';
 
 import {
+  isPublishableStage,
   offersBoundPublish,
   offersOneClickPublish,
   publicationStage,
@@ -14,6 +15,14 @@ import {
  * in that lead — rendered twice it would be two controls with one name, and
  * rendered here alone it would be buried in the section a finished workflow
  * collapses.
+ *
+ * The same reasoning extends to the whole panel once nothing is left to say
+ * here: a document that is published with no newer revision offers no button
+ * (`isPublishableStage`) and no form, so all that was left was a sentence
+ * restating the lead card's own headline one section up -- "Published as
+ * version X" beside "Running as version X" -- without that card's working
+ * link. Rendered as a whole empty-looking "Publish" section, it read as a
+ * dead end rather than as the nothing-to-do-here it actually was.
  */
 
 /**
@@ -54,8 +63,16 @@ export function SopPublishPanel(props: {
   readonly isRejecting: boolean;
   /** Closes out a candidate that will never be approved (`cannot_validate`). */
   readonly onReject: () => void;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   const stage = publicationStage(props.publication, props.revisionId);
+
+  // Nothing left to say here: no button, no form, and the lead card one
+  // section up already carries this exact fact with a working link this
+  // panel does not have. See the module comment for why the link stays there
+  // rather than being duplicated here.
+  if (!isPublishableStage(stage)) {
+    return null;
+  }
 
   const recorded = offersOneClickPublish({ provenanceKind: props.provenanceKind, stage });
   const bound = offersBoundPublish({
