@@ -18,6 +18,7 @@ import {
 import type { RecordedEntry } from '@orbit/sop-recording';
 import { SOP_GRAPH_SCHEMA_VERSION, type SopGraph } from '@orbit/sop-graph';
 import {
+  approveBinding,
   createSopCandidateService,
   createSopDraftService,
   createPublishBoundDocumentService,
@@ -26,6 +27,7 @@ import {
   createSopPublishService,
   createSopRecordingService,
   createSopRevisionService,
+  rejectBinding,
 } from '@orbit/sop-service';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -96,6 +98,10 @@ describe('Orbit API over real persistence', () => {
           provider: createFakeSopProvider({ respond: () => respondWith(validSopGraphProposal()) }),
         }),
         sopRevisionService: createSopRevisionService({ database: getDatabase().db }),
+        bindingReview: {
+          approve: (id, note) => approveBinding(getDatabase().db, id, note),
+          reject: (id, note) => rejectBinding(getDatabase().db, id, note),
+        },
         sopCandidateService: createSopCandidateService({ database: getDatabase().db }),
         sopPublishService: createSopPublishService({ database: getDatabase().db }),
         publishRecordingService: createPublishRecordingService({ database: getDatabase().db }),

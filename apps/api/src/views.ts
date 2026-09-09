@@ -57,6 +57,15 @@ export interface CandidateActionView {
   readonly sandboxNote: string | null;
 }
 
+/** What approving or rejecting a binding produced. */
+export interface ExecutionBindingReviewView {
+  readonly bindingId: string;
+  readonly stepId: string;
+  readonly state: string;
+  readonly reviewNote: string | null;
+  readonly reviewedAt: string | null;
+}
+
 /**
  * What publishing produced.
  *

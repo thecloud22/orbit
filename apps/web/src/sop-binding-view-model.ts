@@ -260,6 +260,19 @@ export function bindActionLabel(row: BindingRow): string {
 }
 
 /**
+ * Whether a binding needs someone to look at it and say yes or no.
+ *
+ * Every binding a person demonstrates through this panel is approved in the
+ * same sitting (the binding-session flow always confirms), so a row that
+ * still reads `draft` or `needs_review` was demonstrated or proposed by
+ * something other than the person now looking at this page -- exactly the
+ * case this offers review for.
+ */
+export function needsHumanReview(row: BindingRow): boolean {
+  return row.binding.status === 'draft' || row.binding.status === 'needs_review';
+}
+
+/**
  * Whether every step the compiler needs a binding for has a usable one.
  *
  * Derived from the rows the panel already has rather than from

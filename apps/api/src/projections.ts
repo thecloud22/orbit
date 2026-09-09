@@ -39,6 +39,7 @@ import {
   type SavedBindingView,
   type AgentVersionView,
   type CandidateActionView,
+  type ExecutionBindingReviewView,
   type PublishedAgentVersionView,
   type RunListItemView,
   type SopPublicationView,
@@ -88,6 +89,18 @@ export function toCandidateActionView(record: AgentIrCandidateRecord): Candidate
     state: record.state,
     sandboxState: record.sandboxState,
     sandboxNote: record.sandboxNote,
+  };
+}
+
+export function toExecutionBindingReviewView(
+  record: ExecutionBindingRecord,
+): ExecutionBindingReviewView {
+  return {
+    bindingId: record.id,
+    stepId: record.stepId,
+    state: record.state,
+    reviewNote: record.reviewNote,
+    reviewedAt: record.reviewedAt === null ? null : record.reviewedAt.toISOString(),
   };
 }
 

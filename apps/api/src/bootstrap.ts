@@ -3,6 +3,7 @@ import { createArtifactService } from '@orbit/artifact-service';
 import { createDatabase, createRepositories } from '@orbit/db';
 import type { LLMProvider, ModelBudgets, ModelRates } from '@orbit/sop-generation';
 import {
+  approveBinding,
   createSopCandidateService,
   createSopDraftService,
   createPublishBoundDocumentService,
@@ -10,6 +11,7 @@ import {
   createPublishRecordingService,
   createSopPublishService,
   createSopRevisionService,
+  rejectBinding,
 } from '@orbit/sop-service';
 
 import { createBindingSessionRegistry } from './recording/binding-session-registry';
@@ -141,6 +143,10 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
         ...(options.modelRates === undefined ? {} : { rates: options.modelRates }),
       }),
       sopRevisionService: createSopRevisionService({ database: handle.db }),
+      bindingReview: {
+        approve: (id, note) => approveBinding(handle.db, id, note),
+        reject: (id, note) => rejectBinding(handle.db, id, note),
+      },
       sopCandidateService: createSopCandidateService({ database: handle.db }),
       sopPublishService: createSopPublishService({ database: handle.db }),
       publishRecordingService: createPublishRecordingService({ database: handle.db }),

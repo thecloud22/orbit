@@ -1,6 +1,8 @@
-import type { SopDocumentId, SopRevisionId } from '@orbit/contracts';
+import type { ExecutionBindingId, SopDocumentId, SopRevisionId } from '@orbit/contracts';
 import {
   createRepositories,
+  InvalidRunTransitionError,
+  RecordNotFoundError,
   stepChecksum,
   withTransaction,
   type ExecutionBindingRecord,
@@ -382,6 +384,91 @@ export async function createBinding(input: CreateBindingInput): Promise<CreateBi
   });
 
   return { ok: true, binding: created };
+}
+
+export type ReviewBindingResult =
+  | { readonly ok: true; readonly binding: ExecutionBindingRecord }
+  | { readonly ok: false; readonly reason: 'not_found' }
+  | { readonly ok: false; readonly reason: 'illegal_transition'; readonly state: string };
+
+/**
+ * Approves or rejects a binding nobody has confirmed yet -- one demonstrated
+ * or proposed by something other than the person now reviewing it, since
+ * every binding a person demonstrates themselves is approved in the same
+ * sitting (`createBinding`'s `confirmedByDemonstration`) and never needs
+ * this. What's true today has no production path leaving a binding here to
+ * find; the state machine (`draft -> needs_review -> approved | rejected`)
+ * already exists in the repository and had no way to reach it from
+ * Watchtower at all.
+ *
+ * Collapses `draft -> needs_review` into the same call rather than requiring
+ * a separate "submit for review" action first: a reviewer's approve or
+ * reject already says everything a submit step would have asked, and this
+ * codebase's convention is not to ask twice for one decision (the same
+ * reasoning that collapses compiling, approving and publishing a candidate
+ * into one action once nothing is left to check).
+ */
+async function reviewBinding(
+  database: OrbitDatabase,
+  id: ExecutionBindingId,
+  decision: 'approve' | 'reject',
+  note: string | undefined,
+): Promise<ReviewBindingResult> {
+  return withTransaction(database, async (repositories) => {
+    const existing = await repositories.executionBindings.findById(id);
+
+    if (existing === null) {
+      return { ok: false, reason: 'not_found' };
+    }
+
+    if (existing.state !== 'draft' && existing.state !== 'needs_review') {
+      return { ok: false, reason: 'illegal_transition', state: existing.state };
+    }
+
+    try {
+      if (existing.state === 'draft') {
+        await repositories.executionBindings.submitForReview(id);
+      }
+
+      const reviewed = await repositories.executionBindings[decision](
+        id,
+        note === undefined ? undefined : { reviewNote: note },
+      );
+
+      return { ok: true, binding: reviewed };
+    } catch (error) {
+      if (error instanceof RecordNotFoundError) {
+        return { ok: false, reason: 'not_found' };
+      }
+
+      // The pre-check above and this cannot disagree in practice -- nothing
+      // else in the same transaction can move this row -- but "cannot
+      // happen" is not the same claim as "cannot throw", and an uncaught
+      // error here would surface as a raw 500 for what is still an ordinary
+      // refusal.
+      if (error instanceof InvalidRunTransitionError) {
+        return { ok: false, reason: 'illegal_transition', state: existing.state };
+      }
+
+      throw error;
+    }
+  });
+}
+
+export function approveBinding(
+  database: OrbitDatabase,
+  id: ExecutionBindingId,
+  note?: string,
+): Promise<ReviewBindingResult> {
+  return reviewBinding(database, id, 'approve', note);
+}
+
+export function rejectBinding(
+  database: OrbitDatabase,
+  id: ExecutionBindingId,
+  note?: string,
+): Promise<ReviewBindingResult> {
+  return reviewBinding(database, id, 'reject', note);
 }
 
 /** Names a fill may reference: the graph's declared inputs and produced variables. */

@@ -10,6 +10,7 @@ import {
   bindActionLabel,
   bindingRows,
   canBindStep,
+  needsHumanReview,
   describeBindingStatus,
   describeProposal,
   isBindingRequired,
@@ -260,6 +261,43 @@ describe('canBindStep', () => {
     // workflow's own URL, and an outcome step is not compiled at all today.
     expect(canBindStep(row({ kind: 'navigate' }))).toBe(false);
     expect(canBindStep(row({ kind: 'outcome' }))).toBe(false);
+  });
+});
+
+describe('needsHumanReview', () => {
+  function row(overrides: Partial<SopStepBindingView> = {}) {
+    const [first] = bindingRows(
+      [reviewStep({ id: overrides.stepId ?? 'sign_in', kind: overrides.kind ?? 'click' })],
+      bindings([entry(overrides)]),
+    );
+
+    if (first === undefined) {
+      throw new Error('the fixture should produce one row');
+    }
+
+    return first;
+  }
+
+  it('offers review for a binding recorded but not yet submitted', () => {
+    expect(needsHumanReview(row({ status: 'draft' }))).toBe(true);
+  });
+
+  it('offers review for a binding waiting on someone to decide', () => {
+    expect(needsHumanReview(row({ status: 'needs_review' }))).toBe(true);
+  });
+
+  it('offers nothing once a binding is approved -- it was already reviewed', () => {
+    // Every binding demonstrated through this panel is approved in the same
+    // sitting, so an approved row is never something left for someone else.
+    expect(needsHumanReview(row({ status: 'approved' }))).toBe(false);
+  });
+
+  it('offers nothing for a rejected binding -- the decision was already made', () => {
+    expect(needsHumanReview(row({ status: 'rejected' }))).toBe(false);
+  });
+
+  it('offers nothing for a step with no binding at all', () => {
+    expect(needsHumanReview(row())).toBe(false);
   });
 });
 

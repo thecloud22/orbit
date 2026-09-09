@@ -7,6 +7,7 @@ import {
   canBindStep,
   describeProposal,
   isFullyApproved,
+  needsHumanReview,
   proposalForStep,
   summarizeBindings,
   type BindingRow,
@@ -46,6 +47,16 @@ export interface SopBindingPanelProps {
   readonly onDismissProposal: (proposalId: string) => void;
   readonly resolvingProposalId: string | null;
   /**
+   * Approving or rejecting a binding nobody has confirmed yet -- one
+   * demonstrated or proposed by someone other than the person now reviewing
+   * it. Every binding demonstrated through this panel is approved in the
+   * same sitting, so this only ever offers on a `draft` or `needs_review`
+   * row (`needsHumanReview`).
+   */
+  readonly onApproveBinding: (bindingId: string) => void;
+  readonly onRejectBinding: (bindingId: string) => void;
+  readonly reviewingBindingId: string | null;
+  /**
    * The offer to demonstrate every step in one pass (ADR-035).
    *
    * Rendered inside this panel rather than above it, because a walkthrough *is*
@@ -78,10 +89,11 @@ const TONE_CLASSES: Readonly<Record<BindingTone, string>> = {
  * (ADR-019), and a binding session started from here, which opens the browser
  * on the machine running Orbit (ADR-027).
  *
- * What this panel still offers no way to do is approve or reject somebody
- * else's binding, or bind a step that routes to a person. The first is review
- * this phase does not have a surface for; the second is not a thing a browser
- * can perform.
+ * What this panel still offers no way to do is bind a step that routes to a
+ * person -- not a thing a browser can perform. Approving or rejecting
+ * somebody else's binding it does offer: every binding demonstrated through
+ * this panel is approved in the same sitting, so a `draft` or `needs_review`
+ * row is exactly the one a different person or a proposal left behind.
  */
 export function SopBindingPanel({
   steps,
@@ -96,6 +108,9 @@ export function SopBindingPanel({
   onAcceptProposal,
   onDismissProposal,
   resolvingProposalId,
+  onApproveBinding,
+  onRejectBinding,
+  reviewingBindingId,
   walkthrough,
 }: SopBindingPanelProps) {
   const rows = bindingRows(steps, bindings);
@@ -141,7 +156,7 @@ export function SopBindingPanel({
       <p className="mt-1 text-xs text-slate-500">
         Show a step here, or from a terminal with{' '}
         <span className="font-mono">pnpm record:binding</span>. Either way a person does it once,
-        for real. Approving or turning down what someone else recorded is not done from here.
+        for real. A binding someone else demonstrated waits below for you to approve or reject it.
       </p>
 
       {walkthrough}
@@ -212,11 +227,14 @@ export function SopBindingPanel({
           <BindingRowItem
             isStarting={isStarting}
             key={row.stepId}
+            onApproveBinding={onApproveBinding}
             onBind={onBind}
             onAcceptProposal={onAcceptProposal}
             onDismissProposal={onDismissProposal}
+            onRejectBinding={onRejectBinding}
             proposal={proposalForStep(proposals, row.stepId)}
             resolvingProposalId={resolvingProposalId}
+            reviewingBindingId={reviewingBindingId}
             row={row}
           />
         ))}
@@ -233,6 +251,9 @@ function BindingRowItem({
   onAcceptProposal,
   onDismissProposal,
   resolvingProposalId,
+  onApproveBinding,
+  onRejectBinding,
+  reviewingBindingId,
 }: {
   readonly row: BindingRow;
   readonly onBind: (stepId: string) => void;
@@ -241,6 +262,9 @@ function BindingRowItem({
   readonly onAcceptProposal: (proposalId: string) => void;
   readonly onDismissProposal: (proposalId: string) => void;
   readonly resolvingProposalId: string | null;
+  readonly onApproveBinding: (bindingId: string) => void;
+  readonly onRejectBinding: (bindingId: string) => void;
+  readonly reviewingBindingId: string | null;
 }) {
   // Open when the detail is the answer to a question the reader has: a stale
   // binding, a rejected one, or one the server raised issues about.
@@ -281,6 +305,33 @@ function BindingRowItem({
         >
           {isStarting ? 'Opening a browser…' : bindActionLabel(row)}
         </button>
+      ) : null}
+
+      {needsHumanReview(row) && row.binding.bindingId !== null ? (
+        <div className="mt-2 flex gap-2">
+          <button
+            className="rounded-md bg-indigo-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-indigo-500 disabled:bg-slate-300"
+            data-testid={`sop-binding-approve-${row.stepId}`}
+            disabled={reviewingBindingId !== null}
+            onClick={() => {
+              onApproveBinding(row.binding.bindingId!);
+            }}
+            type="button"
+          >
+            {reviewingBindingId === row.binding.bindingId ? 'Working…' : 'Approve'}
+          </button>
+          <button
+            className="rounded-md border border-rose-300 px-2 py-1 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-50 disabled:border-slate-200 disabled:text-slate-400"
+            data-testid={`sop-binding-reject-${row.stepId}`}
+            disabled={reviewingBindingId !== null}
+            onClick={() => {
+              onRejectBinding(row.binding.bindingId!);
+            }}
+            type="button"
+          >
+            Reject
+          </button>
+        </div>
       ) : null}
 
       {row.binding.supersededCount > 0 && (

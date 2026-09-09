@@ -3,6 +3,7 @@ import type {
   AgentVersionView,
   BindingSessionView,
   CandidateActionView,
+  ExecutionBindingReviewView,
   CreateRunResultView,
   DataEnvelope,
   RunDetailView,
@@ -338,6 +339,30 @@ export async function transitionSopRevision(
  */
 export async function getSopBindings(documentId: string): Promise<SopBindingsView> {
   return getJson<SopBindingsView>(`/v1/sop-documents/${documentId}/bindings`);
+}
+
+/**
+ * Approving or rejecting a binding nobody has confirmed yet -- one
+ * demonstrated or proposed by someone other than the person now reviewing
+ * it. Every binding a person demonstrates themselves is approved in the
+ * same sitting and never reaches this.
+ */
+export async function approveBinding(
+  bindingId: string,
+  note?: string,
+): Promise<ExecutionBindingReviewView> {
+  return send(`/v1/execution-bindings/${bindingId}/approve`, 'POST', {
+    ...(note === undefined ? {} : { note }),
+  });
+}
+
+export async function rejectBinding(
+  bindingId: string,
+  note?: string,
+): Promise<ExecutionBindingReviewView> {
+  return send(`/v1/execution-bindings/${bindingId}/reject`, 'POST', {
+    ...(note === undefined ? {} : { note }),
+  });
 }
 
 /**

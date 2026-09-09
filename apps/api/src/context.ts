@@ -1,10 +1,12 @@
 import type { ArtifactService } from '@orbit/artifact-service';
+import type { ExecutionBindingId } from '@orbit/contracts';
 import type { OrbitRepositories } from '@orbit/db';
 import type { ModelBudgets } from '@orbit/sop-generation';
 import type {
   PublishBoundDocumentService,
   PublishRecordingService,
   RecoveryProposalService,
+  ReviewBindingResult,
   SopCandidateService,
   SopDraftService,
   SopPublishService,
@@ -94,4 +96,17 @@ export interface ApiContext {
    * their own.
    */
   readonly modelBudgets: ModelBudgets;
+  /**
+   * Approving or rejecting a binding nobody has confirmed yet -- one
+   * demonstrated or proposed by something other than the person now
+   * reviewing it. Every binding a person demonstrates themselves is approved
+   * in the same sitting and never reaches this; see `binding-service.ts`'s
+   * `reviewBinding`.
+   */
+  readonly bindingReview: BindingReviewService;
+}
+
+export interface BindingReviewService {
+  approve(id: ExecutionBindingId, note?: string): Promise<ReviewBindingResult>;
+  reject(id: ExecutionBindingId, note?: string): Promise<ReviewBindingResult>;
 }

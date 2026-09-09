@@ -463,3 +463,70 @@ dev database -- `run_01M20G3326YY44WWPXWZVJAN4Z`, `status: running`,
 behind by an earlier API restart during this session's own testing. Not a
 synthetic fixture; the feature caught a real instance of exactly the problem
 it exists for on its first live query.
+
+---
+
+## 10. Watchtower surface for approving/rejecting someone else's binding
+
+**The gap, already named in the codebase's own comments.** `SopBindingPanel.tsx`'s
+module doc comment and a caption inside it both said, verbatim, that the
+panel offers no way to approve or reject somebody else's binding -- these
+sentences existed before this task and stated exactly the thing to fix. The
+binding lifecycle (`draft -> needs_review -> approved | rejected`) has
+existed in `ExecutionBindingRepository` and `@orbit/execution-mapping`'s
+`BINDING_TRANSITIONS` since Execution Bindings were introduced, and the UI's
+own `STATUS_LABELS` already render `draft` as "Recorded, not yet submitted"
+and `needs_review` as "Waiting for review" -- the display side anticipated
+these states; only the write side to act on them was missing. Every
+production binding today is created through `createBinding`'s
+`confirmedByDemonstration`, which drives it straight to `approved` in the
+same call, so nothing ever reaches `needs_review` in practice yet -- but the
+gap is real and structural: a binding demonstrated or proposed by anyone
+other than the person now looking at the review page (a future AI-drafted
+proposal, a teammate's recording, a script) had no way to be reviewed at
+all.
+
+**Decision.** Built the full path rather than only the service layer:
+`binding-service.ts`'s `approveBinding`/`rejectBinding` (pre-checks state,
+falls back to catching the repository's own `InvalidRunTransitionError` as a
+defensive backstop -- the same two-layer pattern `candidate-service.ts`
+already established for exactly this reason), a `BindingReviewService` on
+`ApiContext` (a plain object, matching `platform: PlatformFacts` rather than
+inventing a heavier abstraction), two routes
+(`POST /v1/execution-bindings/:bindingId/{approve,reject}`), client
+functions, and buttons in `SopBindingPanel` gated by a new
+`needsHumanReview(row)` predicate. Updated both stale comments in that file
+now that the gap they named is closed.
+
+**Collapses `draft -> needs_review` into the approve/reject call itself**
+rather than requiring a separate "submit for review" step first -- the same
+reasoning that already collapses compiling, approving and publishing a
+candidate into one action once a person's single decision already implies
+every step in between.
+
+**Verification.** Db-integration tests reproduce the case with no
+production path yet reaches: create a binding via `createBinding` *without*
+`confirmedByDemonstration` (leaving it `draft`), then approve or reject it
+through the new function, plus an illegal-transition case (approving an
+already-approved binding) and a not-found case. Mutation-verified by
+removing both the pre-check and the exception translation together --
+removing only the pre-check produced no failure, confirming it really is a
+redundant safety net exactly as the comment claims, since the repository's
+own transition guard catches it identically; removing both broke the test as
+expected. Route tests (8) mirror `candidates.test.ts`'s pattern exactly.
+View-model tests for `needsHumanReview`, mutation-verified.
+
+Live-verified end-to-end against the real running app, including the one
+case no test fixture can express without help: manufactured two real
+`draft` bindings directly through `createBinding` (bypassing
+`confirmedByDemonstration`) against a real document in the dev database,
+since no product flow creates one today. Drove the real UI with Playwright:
+the draft binding showed "Recorded, not yet submitted" with both Approve and
+Reject buttons visible; clicking Approve made a real `POST
+.../execution-bindings/.../approve` request that returned 200 and the status
+updated to "Approved" with the buttons disappearing; a second manufactured
+binding was rejected the same way and the status updated to "Rejected".
+Restored the test document afterward -- a rejected binding left a step
+genuinely unbound, unlike the harmless residue from other items in this
+batch -- by demonstrating a fresh approved binding over it, leaving the
+document's binding state exactly as healthy as before the test.

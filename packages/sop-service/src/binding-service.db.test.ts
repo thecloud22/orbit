@@ -7,7 +7,13 @@ import { escalationReviewGraph } from '@orbit/sop-graph/testing';
 import type { SopGraph, SopStep } from '@orbit/sop-graph';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { assembleBinding, boundStepIds, createBinding } from './binding-service';
+import {
+  approveBinding,
+  assembleBinding,
+  boundStepIds,
+  createBinding,
+  rejectBinding,
+} from './binding-service';
 
 /**
  * Turning a capture into a persisted binding.
@@ -192,6 +198,84 @@ describe('recording a binding', () => {
 
     expect(bound.has('sign_in')).toBe(true);
     expect(bound.has('open_portal')).toBe(false);
+  });
+
+  describe('reviewing a binding someone else demonstrated', () => {
+    it('approves a draft binding, submitting it for review in the same call', async () => {
+      const result = await create({ step: step('sign_in'), body: clickBody() });
+      if (!result.ok) throw new Error('expected the fixture binding to be created');
+      expect(result.binding.state).toBe('draft');
+
+      const approved = await approveBinding(
+        getDatabase().db,
+        result.binding.id,
+        'Confirmed against the real page.',
+      );
+
+      expect(approved.ok).toBe(true);
+      if (!approved.ok) return;
+      expect(approved.binding.state).toBe('approved');
+      expect(approved.binding.reviewNote).toBe('Confirmed against the real page.');
+    });
+
+    it('rejects a draft binding the same way', async () => {
+      const result = await create({ step: step('sign_in'), body: clickBody() });
+      if (!result.ok) throw new Error('expected the fixture binding to be created');
+
+      const rejected = await rejectBinding(
+        getDatabase().db,
+        result.binding.id,
+        'This is the wrong element.',
+      );
+
+      expect(rejected.ok).toBe(true);
+      if (!rejected.ok) return;
+      expect(rejected.binding.state).toBe('rejected');
+    });
+
+    it('approves a binding already sitting in needs_review without re-submitting it', async () => {
+      const result = await create({ step: step('sign_in'), body: clickBody() });
+      if (!result.ok) throw new Error('expected the fixture binding to be created');
+      await createRepositories(getDatabase().db).executionBindings.submitForReview(
+        result.binding.id,
+      );
+
+      const approved = await approveBinding(getDatabase().db, result.binding.id);
+
+      expect(approved.ok).toBe(true);
+      if (!approved.ok) return;
+      expect(approved.binding.state).toBe('approved');
+    });
+
+    it('refuses to approve a binding nobody may currently review', async () => {
+      // Approved -> superseded is the only legal move left; approving again
+      // is refused rather than silently repeated.
+      const result = await create({
+        step: step('sign_in'),
+        body: clickBody(),
+        confirmedByDemonstration: { reviewNote: 'Approved by demonstrating the step.' },
+      });
+      if (!result.ok) throw new Error('expected the fixture binding to be created');
+      expect(result.binding.state).toBe('approved');
+
+      const reviewed = await approveBinding(getDatabase().db, result.binding.id);
+
+      expect(reviewed.ok).toBe(false);
+      expect(reviewed.ok === false && reviewed.reason).toBe('illegal_transition');
+      expect(
+        reviewed.ok === false && reviewed.reason === 'illegal_transition' && reviewed.state,
+      ).toBe('approved');
+    });
+
+    it('reports an unknown binding as missing rather than throwing', async () => {
+      const reviewed = await approveBinding(
+        getDatabase().db,
+        'execbind_01hzz0000000000000000000' as never,
+      );
+
+      expect(reviewed.ok).toBe(false);
+      expect(reviewed.ok === false && reviewed.reason).toBe('not_found');
+    });
   });
 });
 

@@ -31,7 +31,7 @@ import type { BindingSessionRegistry } from '../recording/binding-session-regist
 import type { WalkthroughSessionRegistry } from '../recording/walkthrough-session-registry';
 import type { RecordingSessionRegistry } from '../recording/session-registry';
 
-import type { ApiContext } from '../context';
+import type { ApiContext, BindingReviewService } from '../context';
 import type { PlatformFacts } from '../platform';
 import type { RunDispatcher } from '../dispatch';
 
@@ -90,6 +90,7 @@ export interface StubContextOptions {
   readonly modelBudgets?: ModelBudgets;
   readonly platform?: Partial<PlatformFacts>;
   readonly apiSystems?: Partial<OrbitRepositories['apiSystems']>;
+  readonly bindingReview?: Partial<BindingReviewService>;
 }
 
 export function createStubContext(options: StubContextOptions = {}): ApiContext {
@@ -120,6 +121,7 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
       ),
     },
     platform: stubbed('platform', options.platform ?? {}),
+    bindingReview: stubbed('bindingReview', options.bindingReview ?? {}),
     artifactService: stubbed('artifactService', options.artifactService ?? {}),
     dispatcher: stubbed('dispatcher', options.dispatcher ?? {}),
     sopDraftService: stubbed('sopDraftService', options.sopDraftService ?? {}),

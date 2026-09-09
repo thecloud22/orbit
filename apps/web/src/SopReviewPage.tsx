@@ -5,6 +5,7 @@ import type { RecoveryProposalView, SopBindingsView, SopReviewView } from '@orbi
 import {
   answerSopQuestion,
   ApiRequestError,
+  approveBinding as approveExecutionBinding,
   declareSopInput,
   editSopStep,
   acceptRecoveryProposal,
@@ -15,6 +16,7 @@ import {
   insertSopStep,
   publishBoundDocument,
   publishRecording,
+  rejectBinding as rejectExecutionBinding,
   rejectCandidate,
   reorderSopStep,
   reviseSopDocument,
@@ -92,6 +94,7 @@ export function SopReviewPage({
   const [bindings, setBindings] = useState<SopBindingsView | null>(null);
   const [proposals, setProposals] = useState<readonly RecoveryProposalView[]>([]);
   const [resolvingProposalId, setResolvingProposalId] = useState<string | null>(null);
+  const [reviewingBindingId, setReviewingBindingId] = useState<string | null>(null);
   const [failure, setFailure] = useState<ReviewFailure | null>(null);
   const [busy, setBusy] = useState(false);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
@@ -181,6 +184,39 @@ export function SopReviewPage({
       }
     },
     [documentId, load],
+  );
+
+  /**
+   * Approving or rejecting a binding nobody has confirmed yet -- one
+   * demonstrated or proposed by someone other than the person now reviewing
+   * it. Every binding demonstrated through this page's own binding sessions
+   * is approved in the same sitting and never reaches this.
+   */
+  const reviewBinding = useCallback(
+    async (bindingId: string, decision: 'approve' | 'reject') => {
+      setReviewingBindingId(bindingId);
+
+      try {
+        if (decision === 'approve') {
+          await approveExecutionBinding(bindingId);
+        } else {
+          await rejectExecutionBinding(bindingId);
+        }
+
+        await load();
+      } catch (caught) {
+        setFailure(
+          describeReviewFailure(
+            caught instanceof ApiRequestError
+              ? caught
+              : new ApiRequestError({ status: 0, message: 'The API could not be reached.' }),
+          ),
+        );
+      } finally {
+        setReviewingBindingId(null);
+      }
+    },
+    [load],
   );
 
   useEffect(() => {
@@ -562,13 +598,16 @@ export function SopReviewPage({
       <SopBindingPanel
         bindings={bindings}
         isStarting={isStartingBinding}
+        onApproveBinding={(bindingId) => void reviewBinding(bindingId, 'approve')}
         onBind={(stepId) => void bindStep(stepId)}
         onAcceptProposal={(proposalId) => void resolveProposal(proposalId, 'accept')}
         onDismissProposal={(proposalId) => void resolveProposal(proposalId, 'dismiss')}
+        onRejectBinding={(bindingId) => void reviewBinding(bindingId, 'reject')}
         onSaveStartUrl={saveStartUrl}
         onStartUrlChange={setStartUrl}
         proposals={proposals}
         resolvingProposalId={resolvingProposalId}
+        reviewingBindingId={reviewingBindingId}
         startUrl={bindingSessionId === null ? (startUrl ?? '') : null}
         startUrlEditable={review.editable}
         steps={review.steps}
