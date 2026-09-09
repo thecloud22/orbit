@@ -41,3 +41,61 @@ test coupled to the old code.
 
 *(terminal.read / terminal.type / api.request.arguments)*
 
+**The gap.** `packages/agent-ir/src/validate.ts`'s `checkReferences` switch —
+the pass that rejects `${inputs.x}`/`${variables.x}` references that do not
+name a real declaration — was written against `browser.fill` and
+`browser.extract` and never extended for the terminal or API surfaces added
+later:
+
+- `terminal.type` had no case at all, so an undeclared input typed into a
+  terminal field passed validation silently.
+- `terminal.read` had no case at all, so an undeclared assign target on a
+  screen read, and a `${result.x}` naming no field the step reads, both
+  passed. `checkValue`'s field-existence check was additionally hard-coded to
+  `step.type === 'browser.extract'`, so widening the switch alone would not
+  have been enough.
+- `api.request`'s case checked `step.assign` (the response side) but never
+  `step.arguments` (the request side) — the half that actually carries
+  dynamic values into a call.
+
+Found a fourth, related gap while fixing the third: `checkDefiniteAssignment`
+(`VARIABLE_NOT_ASSIGNED_ON_ALL_PATHS`) tracks which steps assign a variable
+via a hard-coded `browser.extract` / `api.request` check with no
+`terminal.read` arm, and its `readsOf` helper — which decides what a step
+reads — had no case for `terminal.type` or `api.request` either. Left as
+found, a correct terminal workflow that assigned a variable via
+`terminal.read` and read it later would have failed to validate at all: the
+variable would look permanently unassigned.
+
+**Decision.** Extend all four sites consistently rather than only the two
+named: `checkReferences`, `checkValue`'s field-existence check, `readsOf`, and
+`checkDefiniteAssignment`'s assigned-tracking. Fixing the named blind spots
+while leaving `readsOf` behind would have just moved the same defect into a
+different function.
+
+For `api.request.arguments`, added a new `argument` value-position
+(`NAMESPACES_BY_POSITION`) rather than reusing `value`: `value` permits
+`${credentials.x}` because a browser or terminal field is typed once and
+never serialized elsewhere, but an API argument becomes part of a request
+that is logged, retried and shown as evidence. Authentication already has its
+own path (`step.auth.credentialRef`, ADR-038); letting a credential leak in
+through a plain argument string would be a second, uncontrolled path to the
+same secret. `argument` allows only `inputs`/`variables`, and a test pins
+down that `${credentials.x}` in an argument is refused.
+
+Reused the existing `UNKNOWN_EXTRACT_FIELD` / `UNDECLARED_ASSIGN_TARGET`
+issue codes for `terminal.read` rather than minting terminal-flavoured ones.
+This is unlike the *runtime* error codes (`BROWSER_TIMEOUT` etc.), which
+ADR-037 keeps separate per surface because they are embedded in immutable
+published Agent Versions forever. `AgentIrIssueCode`s are compile-time
+validator output, not a runtime execution fact, so there is no immutability
+argument for a second code meaning the same thing.
+
+**No compiler path emits `terminal.*` steps yet** (Phase 3's terminal track
+is schema-only so far), so there is no seeded fixture to mutate the way
+`__tests__/fixture.test.ts` mutates the Find Service Request YAML. Nine new
+tests in `packages/agent-ir/src/validate-surfaces.test.ts` hand-build minimal
+valid documents against the raw schemas instead. Mutation-tested by
+reverting all four sites and confirming exactly the five negative-case tests
+failed (the four positive-case tests pass trivially either way); restored.
+

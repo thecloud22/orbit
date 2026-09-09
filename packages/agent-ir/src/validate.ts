@@ -66,11 +66,19 @@ export interface AgentIrIssue {
 const NAMESPACES_BY_POSITION = {
   // `credentials` is legal only here: a value that is typed into a field. Never
   // in an assertion, an output, or an assignment, because those are persisted
-  // and a credential must not be.
+  // and a credential must not be. `terminal.type`'s value is the same kind of
+  // position as `browser.fill`'s -- a value typed into a field -- so it shares
+  // this list rather than getting its own.
   value: ['inputs', 'variables', 'credentials'],
   expected: ['inputs', 'variables'],
   assign: ['result'],
   output: ['inputs', 'variables'],
+  // An `api.request` argument is never a credential: authentication goes
+  // through `step.auth.credentialRef`, resolved by the runtime and never
+  // serialized (ADR-038). Allowing `${credentials.x}` here would let a secret
+  // reach a request argument -- logged, retried, and shown as evidence -- by a
+  // path the credential design deliberately does not cover.
+  argument: ['inputs', 'variables'],
 } as const satisfies Record<string, readonly ReferenceNamespace[]>;
 
 type ValuePosition = keyof typeof NAMESPACES_BY_POSITION;
@@ -176,7 +184,7 @@ function checkValue(
 
   if (
     namespace === 'result' &&
-    step.type === 'browser.extract' &&
+    (step.type === 'browser.extract' || step.type === 'terminal.read') &&
     step.fields[name] === undefined
   ) {
     add(
@@ -444,6 +452,7 @@ function checkReferences(context: Context): void {
   agentIr.steps.forEach((step, index) => {
     switch (step.type) {
       case 'browser.fill':
+      case 'terminal.type':
         checkValue(context, step.value, 'value', ['steps', index, 'value'], step);
         break;
 
@@ -460,6 +469,10 @@ function checkReferences(context: Context): void {
         break;
 
       case 'api.request':
+        for (const [argumentName, raw] of Object.entries(step.arguments ?? {})) {
+          checkValue(context, raw, 'argument', ['steps', index, 'arguments', argumentName], step);
+        }
+
         for (const variableName of Object.keys(step.assign ?? {})) {
           if (agentIr.variables[variableName] === undefined) {
             add(
@@ -470,6 +483,22 @@ function checkReferences(context: Context): void {
               step.id,
             );
           }
+        }
+        break;
+
+      case 'terminal.read':
+        for (const [variableName, raw] of Object.entries(step.assign)) {
+          if (agentIr.variables[variableName] === undefined) {
+            add(
+              context,
+              'UNDECLARED_ASSIGN_TARGET',
+              `"${variableName}" is not a declared variable.`,
+              ['steps', index, 'assign', variableName],
+              step.id,
+            );
+          }
+
+          checkValue(context, raw, 'assign', ['steps', index, 'assign', variableName], step);
         }
         break;
 
@@ -598,10 +627,13 @@ function checkDefiniteAssignment(context: Context): void {
 
     const assigned = new Set(assignedBefore);
 
-    // Both kinds of step that produce a value: reading it off a page, and
-    // reading it out of a response. A step type that assigns and is missing
-    // here looks, to this analysis, like a variable nothing ever sets.
-    if (step.type === 'browser.extract') {
+    // Three kinds of step that produce a value: reading it off a page, reading
+    // it off a screen, and reading it out of a response. A step type that
+    // assigns and is missing here looks, to this analysis, like a variable
+    // nothing ever sets -- which is exactly what happened to `terminal.read`
+    // before this: a variable assigned only by a screen read looked
+    // permanently unassigned to every step after it.
+    if (step.type === 'browser.extract' || step.type === 'terminal.read') {
       for (const variableName of Object.keys(step.assign)) {
         assigned.add(variableName);
       }
@@ -621,11 +653,16 @@ function readsOf(
 ): readonly (readonly [string, readonly (string | number)[]])[] {
   switch (step.type) {
     case 'browser.fill':
+    case 'terminal.type':
       return [[step.value, ['steps', index, 'value']]];
     case 'browser.assert':
       return step.assertion.type === 'locator_has_text'
         ? [[step.assertion.expected, ['steps', index, 'assertion', 'expected']]]
         : [];
+    case 'api.request':
+      return Object.entries(step.arguments ?? {}).map(
+        ([name, raw]) => [raw, ['steps', index, 'arguments', name]] as const,
+      );
     case 'complete':
       return Object.entries(step.outputs ?? {}).map(
         ([name, raw]) => [raw, ['steps', index, 'outputs', name]] as const,
