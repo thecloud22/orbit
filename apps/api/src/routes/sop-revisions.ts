@@ -42,6 +42,14 @@ const declareInputBodySchema = z.strictObject({
   note: z.string().trim().min(1).max(500).optional(),
 });
 
+/** Declaring a new run output, symmetric to `declareInputBodySchema`. */
+const declareOutputBodySchema = z.strictObject({
+  name: identifierSchema,
+  label: z.string().trim().min(1).max(200),
+  description: z.string().trim().min(1).max(500).optional(),
+  note: z.string().trim().min(1).max(500).optional(),
+});
+
 /**
  * Adding a step. The body carries no id: one is generated (`generateStepId`),
  * because branches name their targets by it and the step editor refuses to
@@ -367,6 +375,57 @@ export function registerSopRevisionRoutes(app: FastifyInstance, context: ApiCont
             );
           case 'duplicate_input':
             throw conflict(`"${result.inputId}" is already declared on this workflow.`);
+          case 'invalid_graph':
+            throw unprocessable(
+              'That declaration would make the workflow invalid, so it was not saved.',
+              toIssueDetails(result.issues),
+            );
+        }
+      }
+
+      const payload: DataEnvelope<{ revisionId: string; revisionNumber: number }> = {
+        data: { revisionId: result.revision.id, revisionNumber: result.revision.revisionNumber },
+      };
+
+      return reply.code(201).send(payload);
+    },
+  );
+
+  /**
+   * Declaring a new run output, as a new revision. Symmetric to declaring an
+   * input: an outcome step's `returns` names a variable a step produces, but
+   * the compiler also requires that name in the graph's own `outputs`
+   * declaration (it becomes `agentIr.outputs`), and until this route existed
+   * there was no way to add one after the fact.
+   */
+  app.post<{ Params: { revisionId: string } }>(
+    '/v1/sop-revisions/:revisionId/outputs',
+    async (request, reply) => {
+      const { revisionId } = parseParams(
+        z.object({ revisionId: sopRevisionIdSchema }),
+        request.params,
+        'revision id',
+      );
+      const body = parseBody(declareOutputBodySchema, request.body, 'output declaration');
+
+      const result = await context.sopRevisionService.declareOutput({
+        revisionId,
+        name: body.name,
+        label: body.label,
+        ...(body.description === undefined ? {} : { description: body.description }),
+        ...(body.note === undefined ? {} : { note: body.note }),
+      });
+
+      if (!result.ok) {
+        switch (result.reason) {
+          case 'not_found':
+            throw notFound(`SOP revision "${revisionId}" does not exist.`);
+          case 'not_editable':
+            throw conflict(
+              `This revision is "${result.state}" and can no longer be edited. Send it back for clarification first.`,
+            );
+          case 'duplicate_output':
+            throw conflict(`"${result.outputName}" is already declared on this workflow.`);
           case 'invalid_graph':
             throw unprocessable(
               'That declaration would make the workflow invalid, so it was not saved.',

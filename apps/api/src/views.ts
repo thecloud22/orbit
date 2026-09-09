@@ -206,6 +206,20 @@ export interface SopDraftInputView {
   readonly required: boolean;
 }
 
+/**
+ * A declared run output, symmetric to `SopDraftInputView`.
+ *
+ * Keyed by `name` rather than `id`, matching `outputDeclarationSchema` in
+ * `@orbit/sop-graph` -- there is no `type` or `required` here because an
+ * output declaration carries neither; the graph's own `outputs` array is
+ * `{name, label, description?}`.
+ */
+export interface SopDraftOutputView {
+  readonly name: string;
+  readonly label: string;
+  readonly description: string | null;
+}
+
 export interface SopDraftAssumptionView {
   readonly id: string;
   readonly statement: string;
@@ -321,6 +335,7 @@ export interface SopReviewView {
   readonly description: string | null;
   readonly steps: readonly SopReviewStepView[];
   readonly inputs: readonly SopDraftInputView[];
+  readonly outputs: readonly SopDraftOutputView[];
   readonly assumptions: readonly SopDraftAssumptionView[];
   readonly clarifications: readonly SopClarificationView[];
   readonly unansweredQuestionIds: readonly string[];

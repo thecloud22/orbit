@@ -156,3 +156,54 @@ the time available (every seeded document's current revision was either
 already superseded past `approved` or blocked by an unrelated stale binding
 on recompile); the success path is covered by the route-level and
 view-model-level tests instead, both mutation-verified.
+
+---
+
+## 4. `declareOutput`, symmetric to `declareInput`
+
+**The gap.** `declareInput` closed the "recorded literal → declared run
+input" gap earlier this session. Its exact mirror was missing on the output
+side: an outcome step's `returns[].name` is checked against what some step
+*produces* (`UNDECLARED_OUTCOME_RETURN` in `@orbit/sop-graph`'s own
+validator), but the compiler separately requires that same name to appear in
+the graph's own top-level `outputs` declaration — it becomes
+`agentIr.outputs`, and Agent IR's `checkReferences` checks `complete.outputs`
+against exactly that (`UNDECLARED_OUTPUT`). Nothing let a person add to
+`graph.outputs` after a document was created; it was populated only by
+whatever the drafting flow happened to generate.
+
+**Found while building this**: the seeded escalation-review test fixture
+itself has the bug this closes. Its `completed` outcome step returns
+`openedDate` and `lastUpdatedDate` — both genuinely produced, by an `extract`
+step earlier in the graph — but neither name is in the fixture's `outputs`
+array. `@orbit/sop-graph`'s own validator has no cross-check between
+`returns` and `outputs` (confirmed by reading `validate.ts` — `graph.outputs`
+is only checked for duplicate names), so this passes SOP Graph validation
+today and would only surface as `UNDECLARED_OUTPUT` at Agent IR compile time.
+Not fixed here — out of scope for a symmetric-API task, and fixing the
+fixture wasn't asked for — but used as the realistic example in the new
+tests, since it is a real instance of exactly the gap `declareOutput` closes.
+
+**Decision.** Mirror `declareInput` at every layer: `declareOutput` on
+`SopRevisionService` (not_found / not_editable / duplicate_output /
+invalid_graph, keyed by `name` rather than `id` since `outputDeclarationSchema`
+is `{name, label, description?}` with no `type`/`required` — an output
+declaration carries neither), `POST /v1/sop-revisions/:revisionId/outputs`,
+`declareSopOutput()` client function, and a new `SopOutputsPanel` component
+next to `SopInputsPanel` in Studio's review page. Also added `outputs` to
+`SopReviewView` (via a new `SopDraftOutputView`) and its projection — the
+review view had no way to read declared outputs back at all, the same way it
+already couldn't before `declareInput`'s own `inputs` field existed.
+
+**Coverage parity check.** `declareInput` has no dedicated HTTP-route-level
+test anywhere in the codebase — only service-layer db-integration tests.
+Matched that exactly rather than introducing asymmetric extra coverage:
+4 new db-integration tests (add, add-with-description, duplicate, not-
+editable), mutation-verified by disabling the duplicate check and confirming
+the expected test fails (falling through to the schema's own
+`DUPLICATE_OUTPUT_ID` as `invalid_graph` instead of the friendlier
+`duplicate_output`). Live-verified the route end-to-end against the real API
+and database: declared `memberStatus` on a real draft document, confirmed it
+appeared in the review response, and confirmed a second attempt at the same
+name was correctly refused with the exact conflict message the route
+constructs.

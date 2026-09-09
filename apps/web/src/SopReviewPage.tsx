@@ -33,6 +33,7 @@ import { describePublishRecordingFailure, type CompileFailure } from './publicat
 import { SopBindingPanel } from './SopBindingPanel';
 import { SopCallBindingPanel } from './SopCallBindingPanel';
 import { SopInputsPanel } from './SopInputsPanel';
+import { SopOutputsPanel } from './SopOutputsPanel';
 import { WalkthroughPanel } from './WalkthroughPanel';
 import {
   DECISION_NOTICE,
@@ -470,6 +471,13 @@ export function SopReviewPage({
         editable={review.editable}
         inputs={review.inputs}
         onSaved={() => void load()}
+        revisionId={review.revisionId}
+      />
+
+      <SopOutputsPanel
+        editable={review.editable}
+        onSaved={() => void load()}
+        outputs={review.outputs}
         revisionId={review.revisionId}
       />
 

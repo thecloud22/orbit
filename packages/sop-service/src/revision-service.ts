@@ -165,6 +165,17 @@ export type DeclareInputResult =
       readonly issues: readonly SopGraphIssue[];
     };
 
+export type DeclareOutputResult =
+  | { readonly ok: true; readonly revision: SopGraphRevisionRecord }
+  | { readonly ok: false; readonly reason: 'not_found' }
+  | { readonly ok: false; readonly reason: 'not_editable'; readonly state: SopRevisionState }
+  | { readonly ok: false; readonly reason: 'duplicate_output'; readonly outputName: string }
+  | {
+      readonly ok: false;
+      readonly reason: 'invalid_graph';
+      readonly issues: readonly SopGraphIssue[];
+    };
+
 export type EditStepResult =
   | { readonly ok: true; readonly revision: SopGraphRevisionRecord }
   | { readonly ok: false; readonly reason: 'not_found' }
@@ -259,6 +270,28 @@ export interface SopRevisionService {
     readonly required: boolean;
     readonly note?: string;
   }): Promise<DeclareInputResult>;
+  /**
+   * Declares a new run output on the workflow, as a new revision.
+   *
+   * The symmetric gap to `declareInput`: an outcome step's `returns` names a
+   * variable a step produces, but the compiler also requires that name to
+   * appear in the graph's own `outputs` declaration (it becomes
+   * `agentIr.outputs`, and `complete.outputs` is checked against it there) --
+   * and until this route existed there was no way to add one after the fact,
+   * on any workflow that did not already have it from the drafting flow.
+   *
+   * Declaring an output nothing returns yet is accepted, the same as
+   * `declareInput` accepts one nothing references yet: there is no
+   * unused-output check, and a person finds out it went unused only when they
+   * never end up writing it into an outcome's `returns`.
+   */
+  declareOutput(input: {
+    readonly revisionId: SopRevisionId;
+    readonly name: string;
+    readonly label: string;
+    readonly description?: string;
+    readonly note?: string;
+  }): Promise<DeclareOutputResult>;
   /**
    * Adds a step at a chosen position, as a new revision.
    *
@@ -634,6 +667,44 @@ export function createSopRevisionService(options: SopRevisionServiceOptions): So
         // person finds out it went unreferenced only if they never end up
         // writing `${inputs.<id>}` anywhere.
         const parsed = parseSopGraphDocument({ ...revision.graph, inputs });
+
+        if (!parsed.ok) {
+          return { ok: false, reason: 'invalid_graph', issues: parsed.issues };
+        }
+
+        return {
+          ok: true,
+          revision: await supersedeWith(repositories, revision, parsed.graph, input.note),
+        };
+      });
+    },
+
+    async declareOutput(input) {
+      return withTransaction(database, async (repositories) => {
+        const revision = await repositories.sopGraphRevisions.findById(input.revisionId);
+
+        if (revision === null) {
+          return { ok: false, reason: 'not_found' };
+        }
+
+        if (!isEditableState(revision.state)) {
+          return { ok: false, reason: 'not_editable', state: revision.state };
+        }
+
+        if (revision.graph.outputs.some((declared) => declared.name === input.name)) {
+          return { ok: false, reason: 'duplicate_output', outputName: input.name };
+        }
+
+        const outputs = [
+          ...revision.graph.outputs,
+          {
+            name: input.name,
+            label: input.label,
+            ...(input.description === undefined ? {} : { description: input.description }),
+          },
+        ];
+
+        const parsed = parseSopGraphDocument({ ...revision.graph, outputs });
 
         if (!parsed.ok) {
           return { ok: false, reason: 'invalid_graph', issues: parsed.issues };

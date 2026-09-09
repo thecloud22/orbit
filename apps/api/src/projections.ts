@@ -326,6 +326,11 @@ export function toSopReviewView(review: {
       type: declared.type,
       required: declared.required,
     })),
+    outputs: graph.outputs.map((declared) => ({
+      name: declared.name,
+      label: declared.label,
+      description: declared.description ?? null,
+    })),
     assumptions: graph.assumptions.map((assumption) => ({
       id: assumption.id,
       statement: assumption.statement,

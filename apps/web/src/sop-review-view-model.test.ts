@@ -34,6 +34,7 @@ const REVIEW: SopReviewView = {
   description: null,
   steps: [],
   inputs: [],
+  outputs: [],
   assumptions: [],
   clarifications: [],
   unansweredQuestionIds: [],

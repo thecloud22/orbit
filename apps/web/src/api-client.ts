@@ -245,6 +245,25 @@ export async function declareSopInput(
 }
 
 /**
+ * Declaring a new run output, as a new revision. Symmetric to
+ * `declareSopInput`: an outcome step's `returns` names a variable a step
+ * produces, but the compiler also requires that name in the graph's own
+ * `outputs` declaration.
+ */
+export async function declareSopOutput(
+  revisionId: string,
+  output: { readonly name: string; readonly label: string; readonly description?: string },
+  note?: string,
+): Promise<{ revisionId: string; revisionNumber: number }> {
+  return send(`/v1/sop-revisions/${revisionId}/outputs`, 'POST', {
+    name: output.name,
+    label: output.label,
+    ...(output.description === undefined ? {} : { description: output.description }),
+    ...(note === undefined ? {} : { note }),
+  });
+}
+
+/**
  * Adding a step. Like every other write here, it creates the next revision.
  *
  * No id is sent: one is generated on the server, because branches name their

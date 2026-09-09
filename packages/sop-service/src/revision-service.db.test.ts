@@ -508,6 +508,75 @@ describe('SOP revision review', () => {
     });
   });
 
+  describe('declaring an output', () => {
+    it('adds it to the graph and supersedes with a new revision', async () => {
+      const before = revision.graph.outputs.length;
+
+      // `openedDate` is a real gap in the fixture: an extract step produces
+      // it and the "completed" outcome already returns it, but it was never
+      // added to `graph.outputs` -- exactly the state a compiled agent would
+      // fail `UNDECLARED_OUTPUT` on. Declaring it here is the fix a person
+      // would actually reach for.
+      const result = await service().declareOutput({
+        revisionId: revision.id,
+        name: 'openedDate',
+        label: 'Opened date',
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.revision.graph.outputs.length).toBe(before + 1);
+      expect(result.revision.graph.outputs.find((one) => one.name === 'openedDate')).toEqual({
+        name: 'openedDate',
+        label: 'Opened date',
+      });
+      // Editing supersedes, exactly like declareInput -- never mutates the
+      // revision that was current.
+      expect(result.revision.id).not.toBe(revision.id);
+    });
+
+    it('accepts an optional description', async () => {
+      const result = await service().declareOutput({
+        revisionId: revision.id,
+        name: 'openedDate',
+        label: 'Opened date',
+        description: 'When the request was first opened.',
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.revision.graph.outputs.find((one) => one.name === 'openedDate')).toMatchObject({
+        description: 'When the request was first opened.',
+      });
+    });
+
+    it('refuses a name already declared', async () => {
+      const second = await service().declareOutput({
+        revisionId: revision.id,
+        // Already declared by the fixture itself.
+        name: 'status',
+        label: 'Status again',
+      });
+
+      expect(second.ok === false && second.reason).toBe('duplicate_output');
+    });
+
+    it('refuses on a revision that is no longer a draft', async () => {
+      await answerEveryQuestion();
+      await service().transition({ revisionId: revision.id, action: 'submit_for_review' });
+
+      const result = await service().declareOutput({
+        revisionId: revision.id,
+        name: 'openedDate',
+        label: 'Opened date',
+      });
+
+      expect(result.ok === false && result.reason).toBe('not_editable');
+    });
+  });
+
   describe('inserting a step', () => {
     const CLICK = {
       kind: 'click',
