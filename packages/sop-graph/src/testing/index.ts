@@ -6,3 +6,4 @@
  * production code cannot reach them.
  */
 export * from './fixtures';
+export * from './mortgage';

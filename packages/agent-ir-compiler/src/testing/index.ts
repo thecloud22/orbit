@@ -6,3 +6,4 @@
  * `@orbit/sop-graph/testing` and `@orbit/execution-mapping/testing`.
  */
 export * from './library-demo';
+export * from './mortgage-demo';
