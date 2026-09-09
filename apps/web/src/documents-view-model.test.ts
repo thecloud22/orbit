@@ -89,6 +89,39 @@ describe('documentRows', () => {
   it('returns nothing for no documents', () => {
     expect(documentRows([])).toEqual([]);
   });
+
+  it('gives no row a disambiguator when every title is unique', () => {
+    const rows = documentRows([
+      summary({ documentId: 'sopdoc_aaaaaa', title: 'Lib-003' }),
+      summary({ documentId: 'sopdoc_bbbbbb', title: 'Lib-004' }),
+    ]);
+
+    expect(rows.every((row) => row.disambiguator === null)).toBe(true);
+  });
+
+  it('tags every row sharing a title with a short, distinct id', () => {
+    // The real gap this closes: two workflows named the same thing, created
+    // the same day (the date shown alongside a row is day-granular), were
+    // otherwise impossible to tell apart in the list without opening each one.
+    const rows = documentRows([
+      summary({ documentId: 'sopdoc_01aaaaaa', title: 'Lib-004' }),
+      summary({ documentId: 'sopdoc_01bbbbbb', title: 'Lib-004' }),
+      summary({ documentId: 'sopdoc_01cccccc', title: 'Lib-003' }),
+    ]);
+
+    const [first, second, third] = rows;
+    expect(first?.disambiguator).not.toBeNull();
+    expect(second?.disambiguator).not.toBeNull();
+    expect(first?.disambiguator).not.toBe(second?.disambiguator);
+    // Unique title, so untouched even though it sits in the same list.
+    expect(third?.disambiguator).toBeNull();
+  });
+
+  it('does not add a disambiguator for a duplicate document id, only a duplicate title', () => {
+    // toDocumentRow always starts a row's disambiguator at null; documentRows
+    // is the only thing that ever sets it, and only from a title collision.
+    expect(toDocumentRow(summary()).disambiguator).toBeNull();
+  });
 });
 
 describe('the empty state', () => {

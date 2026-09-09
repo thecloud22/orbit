@@ -20,6 +20,18 @@ export interface DocumentRow {
   /** e.g. "26 steps · revision 3". */
   readonly detail: string;
   readonly createdAt: string;
+  /**
+   * A short, stable tag distinguishing this row from another with the same
+   * title, or `null` when the title is unique in the list.
+   *
+   * Set by `documentRows`, never by `toDocumentRow`: telling two rows apart is
+   * a property of the list they sit in, not of either document alone. A title
+   * is whatever a person typed or a recording session was named, and nothing
+   * stops two workflows sharing one -- the date shown alongside a row is only
+   * day-granular, so two same-titled documents made the same day were
+   * otherwise indistinguishable without opening each one.
+   */
+  readonly disambiguator: string | null;
 }
 
 const STATUS_LABELS: Readonly<Record<string, string>> = {
@@ -54,7 +66,19 @@ export function toDocumentRow(summary: SopDocumentSummaryView): DocumentRow {
     tone: status === null ? 'neutral' : (STATUS_TONES[status] ?? 'neutral'),
     detail: `${plural(summary.stepCount, 'step')} · ${plural(summary.revisionCount, 'revision')}`,
     createdAt: formatDate(summary.createdAt),
+    // Whether this collides with a sibling is not this function's to know --
+    // `documentRows` fills it in once every row in the list is in hand.
+    disambiguator: null,
   };
+}
+
+/**
+ * The tail of a document id, uppercased -- opaque, but always different for
+ * two different documents, which a shared title and a same-day creation date
+ * are not guaranteed to be.
+ */
+function shortId(documentId: string): string {
+  return documentId.slice(-6).toUpperCase();
 }
 
 /**
@@ -66,9 +90,20 @@ export function toDocumentRow(summary: SopDocumentSummaryView): DocumentRow {
  * never promised.
  */
 export function documentRows(summaries: readonly SopDocumentSummaryView[]): readonly DocumentRow[] {
-  return [...summaries]
+  const rows = [...summaries]
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     .map(toDocumentRow);
+
+  const titleCounts = new Map<string, number>();
+  for (const row of rows) {
+    titleCounts.set(row.title, (titleCounts.get(row.title) ?? 0) + 1);
+  }
+
+  return rows.map((row) =>
+    (titleCounts.get(row.title) ?? 0) > 1
+      ? { ...row, disambiguator: shortId(row.documentId) }
+      : row,
+  );
 }
 
 /**

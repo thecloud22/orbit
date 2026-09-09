@@ -207,3 +207,44 @@ and database: declared `memberStatus` on a real draft document, confirmed it
 appeared in the review response, and confirmed a second attempt at the same
 name was correctly refused with the exact conflict message the route
 constructs.
+
+---
+
+## 5. Disambiguate identically-titled documents in Studio's document list
+
+**The gap, confirmed by my own testing this session.** While repeatedly
+testing the SOP review/binding flows earlier in this session, I hit the exact
+problem this closes: Studio's document list (`DocumentsPage.tsx`) has
+several documents titled "Lib-004" and several titled "Lib-003" (created
+while iterating on the same test scenario), each row showing only a title, a
+step/revision count, and a day-granular creation date. With two rows reading
+identically, I had to fall back to `curl`-ing the API directly and reading
+raw document ids to tell them apart — exactly the failure mode a real user
+hits the moment they iterate on a workflow more than once under the same
+name, which nothing stops them doing.
+
+**Decision.** Add a `disambiguator: string | null` to `DocumentRow`, set only
+by `documentRows` (never by `toDocumentRow`) — telling two rows apart is a
+property of the list they sit in together, not of either document alone, the
+same reasoning that already put newest-first sorting in `documentRows`
+rather than in the per-row mapper. When a title collides with another row's
+in the same list, both get tagged with the last 6 characters of their
+document id, uppercased (`#R7FPR1`) — opaque, but guaranteed different for
+two different documents, which neither the title nor the day-level date is.
+Unique titles get no tag at all, so the common case stays exactly as
+uncluttered as it already was.
+
+Considered showing the full creation timestamp instead of a document-id
+fragment. Rejected: two documents created seconds apart during the same
+testing session (exactly what produced the real duplicates I hit) would
+still look identical at any reasonable display granularity, whereas the
+document id is guaranteed unique by construction.
+
+**Verification.** 3 new tests in `documents-view-model.test.ts` (no
+disambiguator when titles are unique, distinct tags on colliding rows, an
+unrelated unique title untouched in the same list), mutation-verified by
+short-circuiting the tagging pass and confirming the collision test fails.
+Live-verified against the real running app via Playwright: of the app's 15
+real documents, exactly the two "Lib-004" rows and two "Lib-003" rows shown
+each carried a distinct `#XXXXXX` tag, and none of the eleven uniquely-titled
+rows did.

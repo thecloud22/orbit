@@ -150,11 +150,22 @@ export function DocumentsPage({
                   }}
                 >
                   <span>
-                    <span
-                      className="block text-sm font-medium text-slate-900"
-                      data-testid="document-title"
-                    >
-                      {row.title}
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className="block text-sm font-medium text-slate-900"
+                        data-testid="document-title"
+                      >
+                        {row.title}
+                      </span>
+                      {row.disambiguator !== null && (
+                        <span
+                          className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-500"
+                          data-testid="document-disambiguator"
+                          title="Another workflow shares this title -- this tag tells them apart."
+                        >
+                          #{row.disambiguator}
+                        </span>
+                      )}
                     </span>
                     <span className="block text-xs text-slate-500" data-testid="document-detail">
                       {row.detail} · created {row.createdAt}
