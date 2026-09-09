@@ -4,8 +4,8 @@ import { createSopProvider } from '@orbit/sop-generation';
 
 import { startApi } from './bootstrap';
 import { loadRootEnv, resolveRepositoryArtifactRoot } from './env';
-import { resolveModelBudgets, resolveModelRates } from './model-budget-env';
-import { resolveApiModelSelection } from './model-provider-env';
+import { resolveModelBudgets, resolveModelRates } from '../model/model-budget-env';
+import { resolveApiModelSelection } from '../model/model-provider-env';
 import { summariseModelSelection } from './platform';
 
 /**

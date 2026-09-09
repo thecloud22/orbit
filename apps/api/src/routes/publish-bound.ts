@@ -2,10 +2,10 @@ import { sopDocumentIdSchema } from '@orbit/contracts';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import type { ApiContext } from '../context';
+import type { ApiContext } from '../app/context';
 import { ApiError, badRequest, notFound } from '../errors';
-import { toPublishedAgentVersionView } from '../projections';
-import type { DataEnvelope, PublishedAgentVersionView } from '../views';
+import { toPublishedAgentVersionView } from '../views/projections';
+import type { DataEnvelope, PublishedAgentVersionView } from '../views/views';
 
 /**
  * Publishing a drafted workflow whose every step has been bound, in one action.

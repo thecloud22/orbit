@@ -3,8 +3,8 @@ import { artifactIdSchema } from '@orbit/contracts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 
-import { loadArtifactForRun } from '../artifact-access';
-import type { ApiContext } from '../context';
+import { loadArtifactForRun } from '../views/artifact-access';
+import type { ApiContext } from '../app/context';
 import { artifactStorageError, badRequest } from '../errors';
 import { parseRunId } from './runs';
 

@@ -9,7 +9,7 @@ import {
   type FakeProviderResponse,
 } from '@orbit/sop-generation/testing';
 
-import { startApi } from '../bootstrap';
+import { startApi } from '../app/bootstrap';
 import {
   createFakeRecordingSessionFactory,
   elementCapture,

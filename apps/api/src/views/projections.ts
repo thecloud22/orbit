@@ -23,9 +23,9 @@ import {
 import { describeStep, describeStepById, producedBy, type SopGraph } from '@orbit/sop-graph';
 import type { ArtifactLink, ArtifactMetadata, EventEnvelope } from '@orbit/contracts';
 
-import type { PlatformSnapshot } from './platform';
-import type { BindingSessionState } from './recording/binding-session-registry';
-import type { WalkthroughSessionState } from './recording/walkthrough-session-registry';
+import type { PlatformSnapshot } from '../app/platform';
+import type { BindingSessionState } from '../recording/binding-session-registry';
+import type { WalkthroughSessionState } from '../recording/walkthrough-session-registry';
 import {
   artifactUrl,
   redactPayload,

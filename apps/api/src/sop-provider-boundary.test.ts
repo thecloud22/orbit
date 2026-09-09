@@ -118,13 +118,13 @@ function usesTestOnlySubpath(file: string): boolean {
 }
 
 describe('the fake model provider stays out of the shipped API', () => {
-  const entry = join(SOURCE_ROOT, 'index.ts');
+  const entry = join(SOURCE_ROOT, 'app', 'index.ts');
 
   it('reaches the real composition from the shipped entry point', () => {
     const graph = moduleGraphFrom(entry).map((file) => relative(SOURCE_ROOT, file));
 
-    expect(graph).toContain('bootstrap.ts');
-    expect(graph).toContain('server.ts');
+    expect(graph).toContain('app/bootstrap.ts');
+    expect(graph).toContain('app/server.ts');
     expect(graph).toContain('routes/sop-drafts.ts');
   });
 
@@ -172,7 +172,7 @@ describe('the fake model provider stays out of the shipped API', () => {
 
     // It composes through the same production bootstrap, so an end-to-end run
     // exercises the real routes and persistence.
-    expect(contents).toContain("from '../bootstrap'");
+    expect(contents).toContain("from '../app/bootstrap'");
 
     // And it refuses to serve anything but the test database, so running it by
     // hand against development data exits instead of fabricating business
@@ -199,7 +199,7 @@ describe('no test double reaches production code, wherever it lives', () => {
   }
 
   it('cannot reach src/testing from the shipped entry point, at any depth', () => {
-    const offenders = moduleGraphFrom(join(SOURCE_ROOT, 'index.ts'))
+    const offenders = moduleGraphFrom(join(SOURCE_ROOT, 'app', 'index.ts'))
       .filter(importsTestingModule)
       .map((file) => relative(SOURCE_ROOT, file));
 
@@ -223,6 +223,6 @@ describe('no test double reaches production code, wherever it lives', () => {
 
     expect(existsSync(fake)).toBe(true);
     expect(importsTestingModule(join(SOURCE_ROOT, 'testing', 'e2e-server.ts'))).toBe(true);
-    expect(importsTestingModule(join(SOURCE_ROOT, 'bootstrap.ts'))).toBe(false);
+    expect(importsTestingModule(join(SOURCE_ROOT, 'app', 'bootstrap.ts'))).toBe(false);
   });
 });

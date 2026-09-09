@@ -2,14 +2,14 @@ import { runIdSchema, type RunId } from '@orbit/contracts';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import type { ApiContext } from '../context';
+import type { ApiContext } from '../app/context';
 import { badRequest, notFound } from '../errors';
 import {
   toRunDetailView,
   toRunEventView,
   toRunListItemView,
   toRunSummaryView,
-} from '../projections';
+} from '../views/projections';
 
 /**
  * Read-only run access.

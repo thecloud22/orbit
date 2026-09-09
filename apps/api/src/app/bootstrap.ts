@@ -14,12 +14,12 @@ import {
   rejectBinding,
 } from '@orbit/sop-service';
 
-import { createBindingSessionRegistry } from './recording/binding-session-registry';
+import { createBindingSessionRegistry } from '../recording/binding-session-registry';
 import {
   createPlaywrightRecordingSessionFactory,
   createRecordingSessionRegistry,
-} from './recording/session-registry';
-import { createWalkthroughSessionRegistry } from './recording/walkthrough-session-registry';
+} from '../recording/session-registry';
+import { createWalkthroughSessionRegistry } from '../recording/walkthrough-session-registry';
 import type { FastifyInstance } from 'fastify';
 
 import type { ApiContext } from './context';
@@ -28,10 +28,10 @@ import {
   UNREPORTED_MODEL_SELECTION,
   type ModelSelectionSummary,
 } from './platform';
-import type { RecordingSessionFactory } from './recording/session-registry';
-import { createInProcessRunDispatcher } from './dispatch';
-import { withDuplicateDispatchSuppression } from './dispatch-dedup';
-import { detectOrphanedRuns } from './orphan-runs';
+import type { RecordingSessionFactory } from '../recording/session-registry';
+import { createInProcessRunDispatcher } from '../runs/dispatch';
+import { withDuplicateDispatchSuppression } from '../runs/dispatch-dedup';
+import { detectOrphanedRuns } from '../runs/orphan-runs';
 import { buildServer } from './server';
 
 /**

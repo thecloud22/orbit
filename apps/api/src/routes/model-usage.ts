@@ -2,10 +2,10 @@ import { sopDocumentIdSchema } from '@orbit/contracts';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import type { ApiContext } from '../context';
+import type { ApiContext } from '../app/context';
 import { badRequest } from '../errors';
-import { toModelUsageView } from '../projections';
-import type { DataEnvelope, ModelUsageView } from '../views';
+import { toModelUsageView } from '../views/projections';
+import type { DataEnvelope, ModelUsageView } from '../views/views';
 
 /**
  * What has been spent on models, and how much budget is left.

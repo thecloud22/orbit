@@ -1,7 +1,7 @@
 import { borrowOrHoldBindings, borrowOrHoldGraph } from '@orbit/agent-ir-compiler/testing';
 import { createDatabase, requireDatabaseUrl, withTransaction } from '@orbit/db';
 
-import { loadRootEnv } from '../env';
+import { loadRootEnv } from '../app/env';
 
 /**
  * `pnpm db:seed:library` — puts the branching demo where a person can see it.

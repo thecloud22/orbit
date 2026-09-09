@@ -32,16 +32,16 @@ import {
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { createInProcessRunDispatcher } from './dispatch';
+import { createInProcessRunDispatcher } from '../runs/dispatch';
 import { createPlatformFacts } from './platform';
-import { createBindingSessionRegistry } from './recording/binding-session-registry';
-import { createWalkthroughSessionRegistry } from './recording/walkthrough-session-registry';
-import { createRecordingSessionRegistry } from './recording/session-registry';
+import { createBindingSessionRegistry } from '../recording/binding-session-registry';
+import { createWalkthroughSessionRegistry } from '../recording/walkthrough-session-registry';
+import { createRecordingSessionRegistry } from '../recording/session-registry';
 import {
   createFakeRecordingSessionFactory,
   elementCapture,
   type FakeRecordingSessionFactory,
-} from './testing/fake-recording-session';
+} from '../testing/fake-recording-session';
 import { buildServer } from './server';
 
 /**

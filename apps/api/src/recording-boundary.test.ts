@@ -94,7 +94,7 @@ function allSourceFiles(directory: string): readonly string[] {
 }
 
 describe('the run-dispatch path cannot reach the recorder', () => {
-  const dispatch = join(SOURCE_ROOT, 'dispatch.ts');
+  const dispatch = join(SOURCE_ROOT, 'runs', 'dispatch.ts');
 
   it('has a dispatch entry point to scan', () => {
     expect(existsSync(dispatch)).toBe(true);

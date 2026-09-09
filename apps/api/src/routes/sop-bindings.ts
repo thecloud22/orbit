@@ -2,10 +2,10 @@ import { sopDocumentIdSchema } from '@orbit/contracts';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import type { ApiContext } from '../context';
+import type { ApiContext } from '../app/context';
 import { badRequest, notFound } from '../errors';
-import { toSopBindingsView } from '../projections';
-import type { DataEnvelope, SopBindingsView } from '../views';
+import { toSopBindingsView } from '../views/projections';
+import type { DataEnvelope, SopBindingsView } from '../views/views';
 
 /**
  * Execution Binding visibility, read-only.

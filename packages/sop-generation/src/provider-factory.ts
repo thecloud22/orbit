@@ -13,8 +13,8 @@ import { createUnconfiguredSopProvider, type LLMProvider } from './provider';
  * and how that reads to the person who has to fix it.
  *
  * **Nothing here reads `process.env`.** Library code takes configuration; entry
- * points read environments. `apps/api/src/model-provider-env.ts` is the entry
- * point's half, exactly as `model-budget-env.ts` is for budgets.
+ * points read environments. `apps/api/src/model/model-provider-env.ts` is the
+ * entry point's half, exactly as `model-budget-env.ts` is for budgets.
  *
  * **No test double is reachable from here.** The deterministic fake still lives
  * behind `@orbit/sop-generation/testing` and this factory has no import path to

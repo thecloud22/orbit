@@ -2,8 +2,8 @@ import { newRunId } from '@orbit/contracts';
 import { describe, expect, it } from 'vitest';
 
 import { buildServer } from './server';
-import { agentVersionRecord, SEEDED_AGENT_VERSION_ID } from './testing/fixtures';
-import { createStubContext, type StubContextOptions } from './testing/stub-context';
+import { agentVersionRecord, SEEDED_AGENT_VERSION_ID } from '../testing/fixtures';
+import { createStubContext, type StubContextOptions } from '../testing/stub-context';
 
 /**
  * The HTTP surface with no database and no browser.

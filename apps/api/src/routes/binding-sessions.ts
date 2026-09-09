@@ -2,10 +2,10 @@ import { sopDocumentIdSchema } from '@orbit/contracts';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import type { ApiContext } from '../context';
+import type { ApiContext } from '../app/context';
 import { ApiError, badRequest, notFound } from '../errors';
-import { toBindingSessionView, toSavedBindingView } from '../projections';
-import type { BindingSessionView, DataEnvelope, SavedBindingView } from '../views';
+import { toBindingSessionView, toSavedBindingView } from '../views/projections';
+import type { BindingSessionView, DataEnvelope, SavedBindingView } from '../views/views';
 import { assertOpenableTarget } from './browser-target';
 
 /**

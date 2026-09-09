@@ -14,11 +14,11 @@ import type {
 } from '@orbit/sop-service';
 
 import type { PlatformFacts } from './platform';
-import type { BindingSessionRegistry } from './recording/binding-session-registry';
-import type { RecordingSessionRegistry } from './recording/session-registry';
-import type { WalkthroughSessionRegistry } from './recording/walkthrough-session-registry';
+import type { BindingSessionRegistry } from '../recording/binding-session-registry';
+import type { RecordingSessionRegistry } from '../recording/session-registry';
+import type { WalkthroughSessionRegistry } from '../recording/walkthrough-session-registry';
 
-import type { RunDispatcher } from './dispatch';
+import type { RunDispatcher } from '../runs/dispatch';
 
 /**
  * Everything the routes are allowed to touch.

@@ -3,9 +3,9 @@ import type { ModelUsageTotals } from '@orbit/db';
 import type { CreateSopDraftResult } from '@orbit/sop-service';
 import { describe, expect, it } from 'vitest';
 
-import { buildServer } from '../server';
+import { buildServer } from '../app/server';
 import { createStubContext } from '../testing/stub-context';
-import type { ModelUsageView } from '../views';
+import type { ModelUsageView } from '../views/views';
 
 /**
  * The spend readout, and the refusal it exists to warn about.

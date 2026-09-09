@@ -3,10 +3,10 @@ import { isRuntimeError, prepareExecution } from '@orbit/runtime';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import type { ApiContext } from '../context';
+import type { ApiContext } from '../app/context';
 import { badRequest, invalidInput, notFound } from '../errors';
-import { toAgentVersionView } from '../projections';
-import type { AgentArchiveActionView, CreateRunResultView, DataEnvelope } from '../views';
+import { toAgentVersionView } from '../views/projections';
+import type { AgentArchiveActionView, CreateRunResultView, DataEnvelope } from '../views/views';
 
 /**
  * The Phase 1 development actor.

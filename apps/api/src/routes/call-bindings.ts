@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 
-import type { ApiContext } from '../context';
+import type { ApiContext } from '../app/context';
 import { badRequest, notFound } from '../errors';
 
 /**

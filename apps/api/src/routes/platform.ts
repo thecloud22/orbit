@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 
-import type { ApiContext } from '../context';
-import { toPlatformView } from '../projections';
-import type { DataEnvelope, PlatformView } from '../views';
+import type { ApiContext } from '../app/context';
+import { toPlatformView } from '../views/projections';
+import type { DataEnvelope, PlatformView } from '../views/views';
 
 /**
  * What this deployment is: read, never written.

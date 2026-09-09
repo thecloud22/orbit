@@ -13,7 +13,7 @@ import { escalationReviewGraph } from '@orbit/sop-graph/testing';
 import type { SopStep } from '@orbit/sop-graph';
 import { describe, expect, it } from 'vitest';
 
-import { buildServer } from '../server';
+import { buildServer } from '../app/server';
 import { createStubContext } from '../testing/stub-context';
 
 /**

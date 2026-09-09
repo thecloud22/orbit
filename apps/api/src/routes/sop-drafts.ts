@@ -3,10 +3,10 @@ import type { SopGraphIssue } from '@orbit/sop-graph';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import type { ApiContext } from '../context';
+import type { ApiContext } from '../app/context';
 import { ApiError, badRequest, internalError, notFound } from '../errors';
-import { toSopDraftView } from '../projections';
-import type { DataEnvelope, SopDraftView } from '../views';
+import { toSopDraftView } from '../views/projections';
+import type { DataEnvelope, SopDraftView } from '../views/views';
 
 /**
  * The free-text SOP input surface (sub-phase 2.2).

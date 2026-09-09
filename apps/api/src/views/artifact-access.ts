@@ -1,7 +1,7 @@
 import type { ArtifactId, ArtifactLink, ArtifactMetadata, RunId } from '@orbit/contracts';
 
-import type { ApiContext } from './context';
-import { notFound } from './errors';
+import type { ApiContext } from '../app/context';
+import { notFound } from '../errors';
 
 /**
  * Artifact access control for Phase 1.

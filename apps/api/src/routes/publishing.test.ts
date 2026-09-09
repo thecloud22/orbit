@@ -2,7 +2,7 @@ import type { AgentVersionRecord } from '@orbit/db';
 import type { PublishResult } from '@orbit/sop-service';
 import { describe, expect, it } from 'vitest';
 
-import { buildServer } from '../server';
+import { buildServer } from '../app/server';
 import { agentVersionRecord } from '../testing/fixtures';
 import { createStubContext } from '../testing/stub-context';
 

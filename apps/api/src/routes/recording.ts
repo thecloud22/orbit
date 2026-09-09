@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import type { ApiContext } from '../context';
+import type { ApiContext } from '../app/context';
 import { ApiError, badRequest, notFound } from '../errors';
 import { assertOpenableTarget } from './browser-target';
-import type { DataEnvelope } from '../views';
+import type { DataEnvelope } from '../views/views';
 import type { RecordingSessionState } from '../recording/session-registry';
 
 /**

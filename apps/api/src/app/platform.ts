@@ -1,7 +1,7 @@
 import { inspectDatabase, type DatabaseCheck, type Executor, type RunRepository } from '@orbit/db';
 import type { ModelResolution } from '@orbit/model-provider';
 
-import { detectOrphanedRuns, type OrphanedRun } from './orphan-runs';
+import { detectOrphanedRuns, type OrphanedRun } from '../runs/orphan-runs';
 
 /**
  * Read-only facts about the deployment this API process is.

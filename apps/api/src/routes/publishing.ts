@@ -2,10 +2,10 @@ import { agentIrCandidateIdSchema } from '@orbit/contracts';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import type { ApiContext } from '../context';
+import type { ApiContext } from '../app/context';
 import { badRequest, notFound } from '../errors';
-import { toPublishedAgentVersionView } from '../projections';
-import type { DataEnvelope, PublishedAgentVersionView } from '../views';
+import { toPublishedAgentVersionView } from '../views/projections';
+import type { DataEnvelope, PublishedAgentVersionView } from '../views/views';
 
 /**
  * Publishing an approved candidate as a runnable Agent Version.

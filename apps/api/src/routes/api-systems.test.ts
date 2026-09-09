@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { apiSystemIdSchema } from '@orbit/contracts';
 
-import { buildServer } from '../server';
+import { buildServer } from '../app/server';
 import { createStubContext } from '../testing/stub-context';
 
 /**

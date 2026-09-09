@@ -2,10 +2,10 @@ import { bindingRecoveryProposalIdSchema, sopDocumentIdSchema } from '@orbit/con
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import type { ApiContext } from '../context';
+import type { ApiContext } from '../app/context';
 import { ApiError, badRequest, notFound } from '../errors';
-import { toRecoveryProposalView } from '../projections';
-import type { DataEnvelope, RecoveryProposalsView, RecoveryProposalView } from '../views';
+import { toRecoveryProposalView } from '../views/projections';
+import type { DataEnvelope, RecoveryProposalsView, RecoveryProposalView } from '../views/views';
 
 /**
  * Recovery proposals, and the one action that resolves them (ADR-033).

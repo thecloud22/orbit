@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { ModelResolution } from '@orbit/model-provider';
 
-import { summariseModelSelection, type PlatformSnapshot } from '../platform';
-import { buildServer } from '../server';
+import { summariseModelSelection, type PlatformSnapshot } from '../app/platform';
+import { buildServer } from '../app/server';
 import { createStubContext } from '../testing/stub-context';
 
 function snapshot(overrides: Partial<PlatformSnapshot> = {}): PlatformSnapshot {

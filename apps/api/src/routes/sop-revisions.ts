@@ -9,10 +9,10 @@ import { SOP_REVISION_ACTIONS } from '@orbit/sop-service';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import type { ApiContext } from '../context';
+import type { ApiContext } from '../app/context';
 import { ApiError, badRequest, notFound } from '../errors';
-import { toSopDocumentSummaryView, toSopReviewView } from '../projections';
-import type { DataEnvelope, SopDocumentSummaryView, SopReviewView } from '../views';
+import { toSopDocumentSummaryView, toSopReviewView } from '../views/projections';
+import type { DataEnvelope, SopDocumentSummaryView, SopReviewView } from '../views/views';
 
 /**
  * Reviewing, editing and deciding on a SOP Graph revision (sub-phase 2.3).

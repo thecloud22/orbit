@@ -4,7 +4,7 @@ import type {
   WalkthroughSessionRegistry,
   WalkthroughSessionState,
 } from '../recording/walkthrough-session-registry';
-import { buildServer } from '../server';
+import { buildServer } from '../app/server';
 import { createStubContext } from '../testing/stub-context';
 
 /**

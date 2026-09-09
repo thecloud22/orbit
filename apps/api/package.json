@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/app/index.ts",
+    "start": "tsx src/app/index.ts",
     "typecheck": "tsc --noEmit",
     "start:e2e": "tsx src/testing/e2e-server.ts",
     "seed:library": "tsx src/testing/seed-library-demo.ts"
@@ -43,8 +43,8 @@
   },
   "exports": {
     "./views": {
-      "types": "./src/views.ts",
-      "default": "./src/views.ts"
+      "types": "./src/views/views.ts",
+      "default": "./src/views/views.ts"
     },
     "./testing/stack-ports": {
       "types": "./src/testing/stack-ports.ts",

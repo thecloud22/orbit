@@ -31,9 +31,9 @@ import type { BindingSessionRegistry } from '../recording/binding-session-regist
 import type { WalkthroughSessionRegistry } from '../recording/walkthrough-session-registry';
 import type { RecordingSessionRegistry } from '../recording/session-registry';
 
-import type { ApiContext, BindingReviewService } from '../context';
-import type { PlatformFacts } from '../platform';
-import type { RunDispatcher } from '../dispatch';
+import type { ApiContext, BindingReviewService } from '../app/context';
+import type { PlatformFacts } from '../app/platform';
+import type { RunDispatcher } from '../runs/dispatch';
 
 /**
  * A context whose every member throws unless a test stubbed it.

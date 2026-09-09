@@ -2,10 +2,10 @@ import { agentIrCandidateIdSchema, sopDocumentIdSchema } from '@orbit/contracts'
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import type { ApiContext } from '../context';
+import type { ApiContext } from '../app/context';
 import { badRequest, notFound } from '../errors';
-import { toCandidateActionView } from '../projections';
-import type { CandidateActionView, DataEnvelope } from '../views';
+import { toCandidateActionView } from '../views/projections';
+import type { CandidateActionView, DataEnvelope } from '../views/views';
 
 /**
  * Turning a reviewed workflow into a candidate agent, and approving it.
