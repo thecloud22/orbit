@@ -11,14 +11,14 @@
  */
 export const PACKAGE_NAME = '@orbit/sop-service' as const;
 
-export * from './binding-service';
-export * from './candidate-service';
-export * from './demonstration-service';
-export * from './draft-service';
-export * from './publish-bound-document-service';
-export * from './publish-pipeline';
-export * from './publish-recording-service';
-export * from './publish-service';
-export * from './recording-service';
-export * from './recovery-service';
-export * from './revision-service';
+export * from './binding/binding-service';
+export * from './drafting/candidate-service';
+export * from './recording/demonstration-service';
+export * from './drafting/draft-service';
+export * from './publishing/publish-bound-document-service';
+export * from './publishing/publish-pipeline';
+export * from './publishing/publish-recording-service';
+export * from './publishing/publish-service';
+export * from './recording/recording-service';
+export * from './binding/recovery-service';
+export * from './revision/revision-service';

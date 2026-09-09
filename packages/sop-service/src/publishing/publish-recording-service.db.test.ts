@@ -10,12 +10,12 @@ import {
 import type { RecordedEntry } from '@orbit/sop-recording';
 import { describe, expect, it } from 'vitest';
 
-import { createSopCandidateService } from './candidate-service';
-import { createSopDraftService } from './draft-service';
+import { createSopCandidateService } from '../drafting/candidate-service';
+import { createSopDraftService } from '../drafting/draft-service';
 import { createPublishRecordingService } from './publish-recording-service';
 import { createSopPublishService } from './publish-service';
-import { createSopRecordingService } from './recording-service';
-import { createSopRevisionService } from './revision-service';
+import { createSopRecordingService } from '../recording/recording-service';
+import { createSopRevisionService } from '../revision/revision-service';
 
 /**
  * The one-click path from a recording to a running agent.

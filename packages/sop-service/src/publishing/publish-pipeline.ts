@@ -2,9 +2,9 @@ import type { CompileRefusal } from '@orbit/agent-ir-compiler';
 import type { SopDocumentId } from '@orbit/contracts';
 import type { AgentVersionRecord, OrbitDatabase, SopGraphRevisionRecord } from '@orbit/db';
 
-import { createSopCandidateService } from './candidate-service';
+import { createSopCandidateService } from '../drafting/candidate-service';
 import { createSopPublishService } from './publish-service';
-import { createSopRevisionService } from './revision-service';
+import { createSopRevisionService } from '../revision/revision-service';
 
 /**
  * Approve the revision if it still needs it, compile, approve the candidate,

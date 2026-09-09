@@ -7,8 +7,8 @@ import type { RecordedEntry } from '@orbit/sop-recording';
 import { describe, expect, it } from 'vitest';
 
 import { createSopCandidateService } from './candidate-service';
-import { createSopRecordingService } from './recording-service';
-import { createSopRevisionService } from './revision-service';
+import { createSopRecordingService } from '../recording/recording-service';
+import { createSopRevisionService } from '../revision/revision-service';
 
 /**
  * Compiling a recorded workflow into a candidate agent, against real

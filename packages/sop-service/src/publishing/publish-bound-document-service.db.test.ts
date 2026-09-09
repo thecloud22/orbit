@@ -5,11 +5,11 @@ import { buttonFingerprint, fieldFingerprint } from '@orbit/execution-mapping/te
 import { SOP_GRAPH_SCHEMA_VERSION, type SopGraph, type SopStep } from '@orbit/sop-graph';
 import { describe, expect, it } from 'vitest';
 
-import { createBinding } from './binding-service';
-import { createSopCandidateService } from './candidate-service';
+import { createBinding } from '../binding/binding-service';
+import { createSopCandidateService } from '../drafting/candidate-service';
 import { createPublishBoundDocumentService } from './publish-bound-document-service';
 import { createSopPublishService } from './publish-service';
-import { createSopRevisionService } from './revision-service';
+import { createSopRevisionService } from '../revision/revision-service';
 
 /**
  * The one-click path from a drafted, fully bound workflow to a running agent.

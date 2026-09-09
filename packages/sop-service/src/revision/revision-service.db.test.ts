@@ -19,8 +19,8 @@ import {
 import { describeStep, type SopStep } from '@orbit/sop-graph';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { createBinding, declaredNames } from './binding-service';
-import { createSopDraftService } from './draft-service';
+import { createBinding, declaredNames } from '../binding/binding-service';
+import { createSopDraftService } from '../drafting/draft-service';
 import {
   availableActionsFor,
   createSopRevisionService,

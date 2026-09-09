@@ -12,7 +12,7 @@ import {
 import { isBindingUsable } from '@orbit/execution-mapping';
 import type { SopGraph } from '@orbit/sop-graph';
 
-import { declaredNames } from './binding-service';
+import { declaredNames } from '../binding/binding-service';
 import { createPublishPipeline } from './publish-pipeline';
 
 /**

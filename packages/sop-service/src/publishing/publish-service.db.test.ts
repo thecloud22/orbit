@@ -7,7 +7,7 @@ import { buttonFingerprint, fieldFingerprint } from '@orbit/execution-mapping/te
 import type { RecordedEntry } from '@orbit/sop-recording';
 import { describe, expect, it } from 'vitest';
 
-import { createSopCandidateService } from './candidate-service';
+import { createSopCandidateService } from '../drafting/candidate-service';
 import {
   assertOnlyPublicationFieldsChanged,
   createSopPublishService,
@@ -15,8 +15,8 @@ import {
   publishedDocumentFor,
   PublishTransformationError,
 } from './publish-service';
-import { createSopRecordingService } from './recording-service';
-import { createSopRevisionService } from './revision-service';
+import { createSopRecordingService } from '../recording/recording-service';
+import { createSopRevisionService } from '../revision/revision-service';
 
 /**
  * Publishing an approved candidate, against real persistence.

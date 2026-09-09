@@ -26,7 +26,7 @@ import {
   type SopStepDraft,
 } from '@orbit/sop-graph';
 
-import { defaultValueSourceFor } from './binding-service';
+import { defaultValueSourceFor } from '../binding/binding-service';
 
 /**
  * Reviewing a revision: reading it, editing it, reordering it, answering what

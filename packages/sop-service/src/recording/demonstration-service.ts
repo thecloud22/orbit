@@ -21,7 +21,7 @@ import {
   defaultValueSourceFor,
   type BindingCapture,
   type BindingChoice,
-} from './binding-service';
+} from '../binding/binding-service';
 
 /**
  * One walkthrough, turned into proposals a person reviews (ADR-035).

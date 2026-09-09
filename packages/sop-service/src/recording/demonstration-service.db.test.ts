@@ -7,7 +7,7 @@ import { borrowOrHoldGraph } from '@orbit/sop-graph/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { proposeBindingsFromWalkthrough, type StepProposal } from './demonstration-service';
-import { acceptRecoveryProposal } from './recovery-service';
+import { acceptRecoveryProposal } from '../binding/recovery-service';
 
 /**
  * One walkthrough against real persistence (ADR-035).
