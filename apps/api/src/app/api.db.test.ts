@@ -21,6 +21,7 @@ import {
   approveBinding,
   createSopCandidateService,
   createSopDraftService,
+  createSopRuleService,
   createPublishBoundDocumentService,
   createRecoveryProposalService,
   createPublishRecordingService,
@@ -94,6 +95,10 @@ describe('Orbit API over real persistence', () => {
         // A deterministic provider, so the draft route is exercised over real
         // persistence with no network call and no model.
         sopDraftService: createSopDraftService({
+          database: getDatabase().db,
+          provider: createFakeSopProvider({ respond: () => respondWith(validSopGraphProposal()) }),
+        }),
+        sopRuleService: createSopRuleService({
           database: getDatabase().db,
           provider: createFakeSopProvider({ respond: () => respondWith(validSopGraphProposal()) }),
         }),

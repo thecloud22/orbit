@@ -6,6 +6,7 @@ import {
   approveBinding,
   createSopCandidateService,
   createSopDraftService,
+  createSopRuleService,
   createPublishBoundDocumentService,
   createRecoveryProposalService,
   createPublishRecordingService,
@@ -141,6 +142,14 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
         provider: options.sopProvider,
         ...(options.modelBudgets === undefined ? {} : { budgets: options.modelBudgets }),
         ...(options.modelRates === undefined ? {} : { rates: options.modelRates }),
+      }),
+      // The same provider drafting uses. A rule is a smaller question asked of
+      // the same model with the same credentials, and a second provider would
+      // be a second thing to configure for no gain.
+      sopRuleService: createSopRuleService({
+        database: handle.db,
+        provider: options.sopProvider,
+        ...(options.modelBudgets === undefined ? {} : { budgets: options.modelBudgets }),
       }),
       sopRevisionService: createSopRevisionService({ database: handle.db }),
       bindingReview: {

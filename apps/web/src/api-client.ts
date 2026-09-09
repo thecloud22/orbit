@@ -270,6 +270,23 @@ export async function declareSopOutput(
  * No id is sent: one is generated on the server, because branches name their
  * targets by it and the step editor refuses to change one.
  */
+/**
+ * Drafts one written business rule into a decision step (ADR-040).
+ *
+ * Returns a proposal and where it would go. Nothing is written: adding it is
+ * `insertSopStep`, called after a person has read what came back.
+ */
+export async function draftRule(
+  documentId: string,
+  ruleText: string,
+): Promise<{
+  step: Record<string, unknown>;
+  insertAfterStepId: string;
+  insertAtIndex: number;
+}> {
+  return send('/v1/rule-drafts', 'POST', { documentId, ruleText });
+}
+
 export async function insertSopStep(
   revisionId: string,
   index: number,

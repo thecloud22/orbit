@@ -731,7 +731,13 @@ export function SopReviewPage({
         </ol>
       </section>
 
-      <SopRulesPanel steps={review.steps} />
+      <SopRulesPanel
+        documentId={documentId}
+        editable={review.editable}
+        onAdded={() => void load()}
+        revisionId={review.revisionId}
+        steps={review.steps}
+      />
 
       <SopBindingPanel
         bindings={bindings}

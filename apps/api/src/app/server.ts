@@ -20,6 +20,7 @@ import { registerApiSystemRoutes } from '../routes/api-systems';
 import { registerCallBindingRoutes } from '../routes/call-bindings';
 import { registerExecutionBindingRoutes } from '../routes/execution-bindings';
 import { registerPlatformRoutes } from '../routes/platform';
+import { registerRuleDraftRoutes } from '../routes/rule-drafts';
 import { registerSopDraftRoutes } from '../routes/sop-drafts';
 import { registerSopRevisionRoutes } from '../routes/sop-revisions';
 
@@ -55,6 +56,7 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
   registerExecutionBindingRoutes(app, options.context);
   registerArtifactRoutes(app, options.context);
   registerSopDraftRoutes(app, options.context);
+  registerRuleDraftRoutes(app, options.context);
   registerModelUsageRoutes(app, options.context);
   registerPlatformRoutes(app, options.context);
   registerSopRevisionRoutes(app, options.context);

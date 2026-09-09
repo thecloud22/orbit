@@ -29,3 +29,4 @@ export * from './proposal';
 export * from './provider';
 export * from './provider-factory';
 export * from './structured-response';
+export * from './rule';

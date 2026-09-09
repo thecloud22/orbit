@@ -22,3 +22,4 @@ export * from './publishing/publish-service';
 export * from './recording/recording-service';
 export * from './binding/recovery-service';
 export * from './revision/revision-service';
+export * from './drafting/rule-service';

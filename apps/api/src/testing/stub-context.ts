@@ -23,6 +23,7 @@ import type {
   RecoveryProposalService,
   SopCandidateService,
   SopDraftService,
+  SopRuleService,
   SopPublishService,
   SopRevisionService,
 } from '@orbit/sop-service';
@@ -77,6 +78,7 @@ export interface StubContextOptions {
   readonly artifactService?: Partial<ArtifactService>;
   readonly dispatcher?: Partial<RunDispatcher>;
   readonly sopDraftService?: Partial<SopDraftService>;
+  readonly sopRuleService?: Partial<SopRuleService>;
   readonly sopRevisionService?: Partial<SopRevisionService>;
   readonly sopCandidateService?: Partial<SopCandidateService>;
   readonly sopPublishService?: Partial<SopPublishService>;
@@ -125,6 +127,7 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
     artifactService: stubbed('artifactService', options.artifactService ?? {}),
     dispatcher: stubbed('dispatcher', options.dispatcher ?? {}),
     sopDraftService: stubbed('sopDraftService', options.sopDraftService ?? {}),
+    sopRuleService: stubbed('sopRuleService', options.sopRuleService ?? {}),
     sopRevisionService: stubbed('sopRevisionService', options.sopRevisionService ?? {}),
     sopCandidateService: stubbed('sopCandidateService', options.sopCandidateService ?? {}),
     sopPublishService: stubbed('sopPublishService', options.sopPublishService ?? {}),

@@ -169,6 +169,9 @@ describe('generateSopGraph', () => {
       generateSopGraphProposal() {
         return Promise.reject(new TypeError('cannot read properties of undefined'));
       },
+      draftRuleDecision() {
+        return Promise.reject(new TypeError('not reached by this test'));
+      },
     };
 
     await expect(generateSopGraph({ provider: broken, sourceText: SOURCE_TEXT })).rejects.toThrow(

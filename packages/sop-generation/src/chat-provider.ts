@@ -1,11 +1,19 @@
 import { createChatModel, usageOf, type ModelSelection } from '@orbit/model-provider';
 
 import { sopGraphProposalSchema, type SopGraphProposal } from './proposal';
-import { buildGenerationMessage, SOP_GENERATION_SYSTEM_PROMPT } from './prompt';
+import {
+  buildGenerationMessage,
+  buildRuleDraftingMessage,
+  RULE_DRAFTING_SYSTEM_PROMPT,
+  SOP_GENERATION_SYSTEM_PROMPT,
+} from './prompt';
+import { ruleProposalSchema, type RuleProposal } from './rule';
 import { unvalidatedArguments } from './structured-response';
 import {
   SopProviderError,
   type LLMProvider,
+  type RuleDraftingRequest,
+  type RuleProposalResponse,
   type SopGraphProposalRequest,
   type SopGraphProposalResponse,
 } from './provider';
@@ -37,6 +45,7 @@ export function createChatSopProvider(
   });
 
   const call = chat.bindSchema<SopGraphProposal>(sopGraphProposalSchema, 'sop_graph_proposal');
+  const draftRule = chat.bindSchema<RuleProposal>(ruleProposalSchema, 'rule_decision_proposal');
 
   return {
     descriptor: chat.descriptor,
@@ -65,6 +74,24 @@ export function createChatSopProvider(
           error instanceof Error
             ? `The model provider could not generate a proposal: ${error.message}`
             : 'The model provider could not generate a proposal.',
+          { provider: chat.descriptor.provider, cause: error },
+        );
+      }
+    },
+
+    async draftRuleDecision(request: RuleDraftingRequest): Promise<RuleProposalResponse> {
+      try {
+        const response = await draftRule.invoke([
+          { role: 'system', content: RULE_DRAFTING_SYSTEM_PROMPT },
+          { role: 'user', content: buildRuleDraftingMessage(request) },
+        ]);
+
+        return { proposal: unvalidatedArguments(response), usage: usageOf(response.raw) };
+      } catch (error) {
+        throw new SopProviderError(
+          error instanceof Error
+            ? `The model provider could not draft this rule: ${error.message}`
+            : 'The model provider could not draft this rule.',
           { provider: chat.descriptor.provider, cause: error },
         );
       }

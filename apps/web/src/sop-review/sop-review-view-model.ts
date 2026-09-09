@@ -735,3 +735,51 @@ function describeStoredComparison(value: unknown): string | null {
 
   return describeComparison({ left, operator: operator as never, right });
 }
+
+/**
+ * A proposed rule step as the lines a person reads before accepting it.
+ *
+ * Written against the raw step draft rather than a typed one, because that is
+ * what the API returns and what will be posted straight back — showing anything
+ * derived from a different object would risk describing something other than
+ * what gets added.
+ *
+ * The comparison line comes from `describeComparison`, the same function the
+ * compiler and the run evidence use, so what a person accepts here is worded
+ * identically to what the timeline reports afterwards.
+ */
+export function describeProposedRule(
+  step: Record<string, unknown>,
+  insertAfterStepId: string,
+): readonly string[] {
+  const lines: string[] = [];
+  const question = typeof step['question'] === 'string' ? step['question'] : null;
+
+  if (question !== null) {
+    lines.push(question);
+  }
+
+  const comparison = describeStoredComparison(step['comparison']);
+
+  if (comparison !== null) {
+    lines.push(`Compare: ${comparison}`);
+  }
+
+  if (step['resolution'] === 'judged') {
+    lines.push('Decided by a model reading the page, because no threshold settles it.');
+  }
+
+  const branches = Array.isArray(step['branches']) ? (step['branches'] as unknown[]) : [];
+
+  for (const branch of branches) {
+    const entry = branch as { when?: unknown; nextStepId?: unknown };
+
+    if (typeof entry.when === 'string' && typeof entry.nextStepId === 'string') {
+      lines.push(`${entry.when} → ${entry.nextStepId}`);
+    }
+  }
+
+  lines.push(`Checked after: ${insertAfterStepId}`);
+
+  return lines;
+}

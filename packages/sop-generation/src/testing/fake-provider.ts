@@ -2,6 +2,8 @@ import type { ModelCallUsage } from '@orbit/model-budget';
 import type {
   LLMProvider,
   ProviderDescriptor,
+  RuleDraftingRequest,
+  RuleProposalResponse,
   SopGraphProposalRequest,
   SopGraphProposalResponse,
 } from '../provider';
@@ -45,6 +47,8 @@ export interface FakeSopProvider extends LLMProvider {
   /** Every request, in order. A repair is `requests[1]`. */
   readonly requests: readonly SopGraphProposalRequest[];
   readonly callCount: number;
+  /** Every rule-drafting request, in order, kept separately from generation. */
+  readonly ruleRequests: readonly RuleDraftingRequest[];
 }
 
 export interface FakeSopProviderOptions {
@@ -55,6 +59,15 @@ export interface FakeSopProviderOptions {
    */
   readonly respond: (request: SopGraphProposalRequest, callIndex: number) => FakeProviderResponse;
   readonly descriptor?: ProviderDescriptor;
+  /**
+   * How to answer a rule-drafting call. Optional, because most tests here are
+   * about generation and a fake that demanded a rule script would make every
+   * one of them say something about a feature they do not use.
+   */
+  readonly respondToRule?: (
+    request: RuleDraftingRequest,
+    callIndex: number,
+  ) => FakeProviderResponse;
 }
 
 /** Turns an ordered list into a `respond` function; extra calls fail loudly. */
@@ -76,6 +89,7 @@ export function respondInOrder(
 
 export function createFakeSopProvider(options: FakeSopProviderOptions): FakeSopProvider {
   const requests: SopGraphProposalRequest[] = [];
+  const ruleRequests: RuleDraftingRequest[] = [];
 
   return {
     descriptor: options.descriptor ?? { provider: 'fake', model: 'fake-model' },
@@ -86,6 +100,32 @@ export function createFakeSopProvider(options: FakeSopProviderOptions): FakeSopP
 
     get callCount() {
       return requests.length;
+    },
+
+    get ruleRequests() {
+      return ruleRequests;
+    },
+
+    draftRuleDecision(request: RuleDraftingRequest): Promise<RuleProposalResponse> {
+      const callIndex = ruleRequests.length;
+      ruleRequests.push(request);
+
+      if (options.respondToRule === undefined) {
+        return Promise.reject(
+          new SopProviderError('This fake provider was not scripted to draft a rule.', {
+            provider: 'fake',
+          }),
+        );
+      }
+
+      const response = options.respondToRule(request, callIndex);
+
+      return response.kind === 'throw'
+        ? Promise.reject(new SopProviderError(response.message, { provider: 'fake' }))
+        : Promise.resolve({
+            proposal: response.raw,
+            usage: response.usage === undefined ? FAKE_CALL_USAGE : response.usage,
+          });
     },
 
     generateSopGraphProposal(request: SopGraphProposalRequest): Promise<SopGraphProposalResponse> {

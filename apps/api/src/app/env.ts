@@ -15,7 +15,14 @@ import {
  * already-exported variable always wins so CI can supply its own.
  */
 
-const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+// Four levels, because this file sits at `apps/api/src/app/`. It was three
+// while it lived at `apps/api/src/`, and moving it one directory deeper
+// silently redirected every artifact into `apps/data/` -- inside the repository
+// and outside the `/data/` ignore rule, which is the exact failure the comment
+// below was written to prevent. A path derived from a file's own location is a
+// path that breaks when the file moves and nothing fails, so `env.test.ts`
+// now asserts this resolves to the repository root.
+const REPOSITORY_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 
 export function loadRootEnv(): void {
   try {

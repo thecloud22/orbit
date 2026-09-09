@@ -67,10 +67,39 @@ export interface SopGraphProposalResponse {
   readonly usage: ModelCallUsage | null;
 }
 
+/** What a rule-drafting call produced, and what it cost. Same pairing, same reason. */
+export interface RuleProposalResponse {
+  /** The model's structured output, unvalidated. */
+  readonly proposal: unknown;
+  readonly usage: ModelCallUsage | null;
+}
+
 export interface LLMProvider {
   readonly descriptor: ProviderDescriptor;
   /** Returns the model's structured output and its token usage. Throws SopProviderError. */
   generateSopGraphProposal(request: SopGraphProposalRequest): Promise<SopGraphProposalResponse>;
+  /**
+   * Drafts one business rule into a decision step (ADR-040).
+   *
+   * On this port rather than its own, because it is the same boundary answering
+   * a second question with the same credentials, the same failure type, and the
+   * same "returns what the model produced, validates nothing" contract. A
+   * second provider interface would mean a second factory, a second set of
+   * environment variables to resolve, and a second thing to keep in step.
+   */
+  draftRuleDecision(request: RuleDraftingRequest): Promise<RuleProposalResponse>;
+}
+
+/** The rule, and the closed lists the model may draw names from. */
+export interface RuleDraftingRequest {
+  readonly ruleText: string;
+  readonly availableValues: readonly { readonly name: string; readonly readAtStepId: string }[];
+  readonly inputs: readonly string[];
+  readonly steps: readonly {
+    readonly id: string;
+    readonly kind: string;
+    readonly summary: string;
+  }[];
 }
 
 /**
@@ -85,6 +114,9 @@ export function createUnconfiguredSopProvider(reason: string): LLMProvider {
   return {
     descriptor: { provider: 'unconfigured', model: 'none' },
     generateSopGraphProposal(): Promise<SopGraphProposalResponse> {
+      return Promise.reject(new SopProviderError(reason, { provider: 'unconfigured' }));
+    },
+    draftRuleDecision(): Promise<RuleProposalResponse> {
       return Promise.reject(new SopProviderError(reason, { provider: 'unconfigured' }));
     },
   };

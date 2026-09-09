@@ -9,6 +9,7 @@ import type {
   ReviewBindingResult,
   SopCandidateService,
   SopDraftService,
+  SopRuleService,
   SopPublishService,
   SopRevisionService,
 } from '@orbit/sop-service';
@@ -40,6 +41,8 @@ export interface ApiContext {
    * shipped entry point knowing that one exists.
    */
   readonly sopDraftService: SopDraftService;
+  /** Drafts one business rule into a decision step for review (ADR-040). */
+  readonly sopRuleService: SopRuleService;
   /** Review, editing, reorder, clarification and lifecycle (sub-phase 2.3). */
   readonly sopRevisionService: SopRevisionService;
   /** Compiling an approved revision into candidate Agent IR, and approving it (sub-phase 2.5). */

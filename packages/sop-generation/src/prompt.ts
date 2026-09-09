@@ -73,3 +73,74 @@ ${issues}
 
 Fix every issue listed. Keep everything that was already correct. Do not drop steps, inputs, assumptions, or clarification questions that were not the subject of an issue.`;
 }
+
+/**
+ * The rule-drafting prompt (ADR-040).
+ *
+ * Versioned separately from generation, and for the same reason: it is recorded
+ * with what it produced, and "which prompt drafted this rule?" has to stay
+ * answerable after the text moves on.
+ *
+ * The whole prompt is about *not* inventing. The model is handed the values the
+ * workflow reads and the steps it contains, and every name it returns is looked
+ * up against those lists before anything is assembled — so the instruction to
+ * copy names exactly is a courtesy that makes refusals rarer, not the thing
+ * keeping the output safe.
+ */
+export const RULE_DRAFTING_PROMPT_VERSION = 'rule-decision-drafting@1';
+
+export const RULE_DRAFTING_SYSTEM_PROMPT = `You turn one written business rule into a decision step for an existing workflow.
+
+You are given the rule, the values the workflow already reads, and the steps it already contains. Your job is to say what should be compared, and where each answer leads.
+
+CHOOSE THE RESOLUTION HONESTLY.
+- "computed" when the rule is a threshold or an exact match against a value the workflow reads: "over 80%", "below 620", "not in zone X". This is the common case and it costs nothing to run.
+- "judged" only when the condition genuinely requires reading prose and forming an opinion: "income that needs two years of returns to stand up". Never choose judged for something a number settles.
+
+NEVER INVENT A VALUE. The value being tested must be copied exactly from the list of values the workflow reads. If the rule is about a figure that is not on that list, still say which value it would need — do not substitute a different one, and do not try to derive it from two others. There is no arithmetic available to you: no ratios, no sums, no percentages of anything.
+
+OPERATORS ARE EXACT. "exceeds 43%" and "over 80%" are gt, not gte. "at least 620" is gte. "below 620" is lt. "is not X" is neq. Read the rule's wording literally — a threshold written one way and applied the other is a rule quietly changed.
+
+THRESHOLDS ARE BARE. Write 80, not "80%". Write 806500, not "$806,500". The value the workflow reads may be rendered with a percent sign or a currency symbol; the threshold you write should not be.
+
+ONE CONDITION ONLY. There is no "and" and no "or". If the rule has two conditions, write the decision for the first one and route it so a second rule can follow.
+
+ROUTE TO REAL STEPS. Both destinations, and the step to insert after, must be exact ids copied from the steps you were given. Place the rule after every step that reads a value it uses — a rule cannot test a figure the run has not read yet.
+
+RESTATE, DO NOT REINTERPRET. The question should be the rule as a yes-or-no question in the business's own words. Do not broaden it, narrow it, or add a condition nobody wrote.`;
+
+/** The one message: the rule, and the closed lists it may draw names from. */
+export function buildRuleDraftingMessage(input: {
+  readonly ruleText: string;
+  readonly availableValues: readonly { readonly name: string; readonly readAtStepId: string }[];
+  readonly inputs: readonly string[];
+  readonly steps: readonly {
+    readonly id: string;
+    readonly kind: string;
+    readonly summary: string;
+  }[];
+}): string {
+  const values =
+    input.availableValues.length === 0
+      ? '(none — this workflow reads no values yet)'
+      : input.availableValues
+          .map((value) => `- ${value.name} (read at step "${value.readAtStepId}")`)
+          .join('\n');
+
+  const inputs =
+    input.inputs.length === 0 ? '(none)' : input.inputs.map((name) => `- ${name}`).join('\n');
+
+  const steps = input.steps.map((step) => `- ${step.id} [${step.kind}] ${step.summary}`).join('\n');
+
+  return `THE RULE
+${input.ruleText}
+
+VALUES THIS WORKFLOW READS, in the order they are read
+${values}
+
+RUN INPUTS, available at every step
+${inputs}
+
+STEPS IN THIS WORKFLOW, in order
+${steps}`;
+}
