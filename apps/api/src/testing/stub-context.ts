@@ -22,6 +22,7 @@ import type {
   PublishRecordingService,
   RecoveryProposalService,
   SopCandidateService,
+  SopDiscardService,
   SopDraftService,
   SopRuleService,
   SopPublishService,
@@ -79,6 +80,7 @@ export interface StubContextOptions {
   readonly dispatcher?: Partial<RunDispatcher>;
   readonly sopDraftService?: Partial<SopDraftService>;
   readonly sopRuleService?: Partial<SopRuleService>;
+  readonly sopDiscardService?: Partial<SopDiscardService>;
   readonly sopRevisionService?: Partial<SopRevisionService>;
   readonly sopCandidateService?: Partial<SopCandidateService>;
   readonly sopPublishService?: Partial<SopPublishService>;
@@ -128,6 +130,7 @@ export function createStubContext(options: StubContextOptions = {}): ApiContext 
     dispatcher: stubbed('dispatcher', options.dispatcher ?? {}),
     sopDraftService: stubbed('sopDraftService', options.sopDraftService ?? {}),
     sopRuleService: stubbed('sopRuleService', options.sopRuleService ?? {}),
+    sopDiscardService: stubbed('sopDiscardService', options.sopDiscardService ?? {}),
     sopRevisionService: stubbed('sopRevisionService', options.sopRevisionService ?? {}),
     sopCandidateService: stubbed('sopCandidateService', options.sopCandidateService ?? {}),
     sopPublishService: stubbed('sopPublishService', options.sopPublishService ?? {}),

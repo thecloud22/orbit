@@ -1,0 +1,1 @@
+ALTER TABLE "sop_documents" ADD COLUMN "discarded_at" timestamp with time zone;

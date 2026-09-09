@@ -174,6 +174,47 @@ export function registerSopRevisionRoutes(app: FastifyInstance, context: ApiCont
   });
 
   /**
+   * Retiring a workflow that is not going anywhere.
+   *
+   * A POST rather than a DELETE, and deliberately: nothing is deleted. The
+   * document keeps its id and its revisions and leaves the authoring list
+   * (ADR-026's reasoning, applied to a document). A DELETE would promise
+   * removal this does not perform.
+   */
+  app.post<{ Params: { documentId: string } }>(
+    '/v1/sop-documents/:documentId/discard',
+    async (request, reply) => {
+      const { documentId } = parseParams(
+        z.object({ documentId: sopDocumentIdSchema }),
+        request.params,
+        'document id',
+      );
+
+      const result = await context.sopDiscardService.discard(documentId);
+
+      if (!result.ok) {
+        if (result.reason === 'not_found') {
+          throw notFound(`SOP document "${documentId}" does not exist.`);
+        }
+
+        if (result.reason === 'already_discarded') {
+          throw conflict('This workflow has already been discarded.');
+        }
+
+        // 409 rather than 403: nothing about the caller is wrong, and the same
+        // request would succeed on a workflow that is not running. The message
+        // names the version and the actual next step, because "you cannot"
+        // without "here is what you can" is where a person gets stuck.
+        throw conflict(
+          `This workflow is published and running as version ${result.agentVersion}, so discarding it would leave a live agent with no source. Archive the agent instead.`,
+        );
+      }
+
+      return reply.code(204).send();
+    },
+  );
+
+  /**
    * A new editable revision of a workflow that has stopped being editable.
    *
    * Under the document rather than under the revision, because the caller is

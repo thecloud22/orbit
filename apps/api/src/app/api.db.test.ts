@@ -20,6 +20,7 @@ import { SOP_GRAPH_SCHEMA_VERSION, type SopGraph } from '@orbit/sop-graph';
 import {
   approveBinding,
   createSopCandidateService,
+  createSopDiscardService,
   createSopDraftService,
   createSopRuleService,
   createPublishBoundDocumentService,
@@ -102,6 +103,7 @@ describe('Orbit API over real persistence', () => {
           database: getDatabase().db,
           provider: createFakeSopProvider({ respond: () => respondWith(validSopGraphProposal()) }),
         }),
+        sopDiscardService: createSopDiscardService({ database: getDatabase().db }),
         sopRevisionService: createSopRevisionService({ database: getDatabase().db }),
         bindingReview: {
           approve: (id, note) => approveBinding(getDatabase().db, id, note),

@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createBinding } from '../binding/binding-service';
 import { createSopCandidateService } from '../drafting/candidate-service';
+import { createSopDiscardService } from '../drafting/discard-service';
 import { createPublishBoundDocumentService } from './publish-bound-document-service';
 import { createSopPublishService } from './publish-service';
 import { createSopRevisionService } from '../revision/revision-service';
@@ -148,6 +149,29 @@ describe('publishing a fully bound drafted workflow in one action', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.agentVersion.lifecycleStatus).toBe('published');
+  });
+
+  it('cannot be discarded once it is running, and the refusal names the version', async () => {
+    // The rule lives in the discard service and is tested here, where a
+    // genuinely published document already exists. Faking one would test the
+    // fake: the whole point is that a *live* agent's source cannot vanish.
+    const drafted = await draftedDocument(ALL_BOUND);
+    const published = await service().publish(drafted.document.id);
+    expect(published.ok).toBe(true);
+
+    const discarded = await createSopDiscardService({ database: getDatabase().db }).discard(
+      drafted.document.id,
+    );
+
+    expect(discarded.ok).toBe(false);
+    if (discarded.ok || discarded.reason !== 'published') return;
+
+    expect(discarded.reason).toBe('published');
+    expect(discarded.agentVersion).toBe('0.1.0');
+
+    // And it is still listed, because refusing has to mean nothing happened.
+    const listed = await createRepositories(getDatabase().db).sopDocuments.list();
+    expect(listed.map((document) => document.id)).toContain(drafted.document.id);
   });
 
   it('produces exactly what the manual, four-step path would have', async () => {

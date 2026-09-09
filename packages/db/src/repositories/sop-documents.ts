@@ -1,5 +1,5 @@
 import { newSopDocumentId, type SopDocumentId } from '@orbit/contracts';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, isNull } from 'drizzle-orm';
 
 import type { Executor } from '../client';
 import { RecordNotFoundError } from '../errors';
@@ -46,7 +46,17 @@ export interface SopDocumentSummary extends SopDocumentRecord {
 export interface SopDocumentRepository {
   create(input: CreateSopDocumentInput): Promise<SopDocumentRecord>;
   findById(id: SopDocumentId): Promise<SopDocumentRecord | null>;
+  /** Documents still being worked on. A discarded one is not one of them. */
   list(): Promise<readonly SopDocumentRecord[]>;
+  /**
+   * Retires a document from the authoring list.
+   *
+   * A timestamp, never a delete: revisions and bindings point at this row, and
+   * "what was this workflow written from?" has to stay answerable. Returns null
+   * when there is no such document, so a caller can tell "already gone" from
+   * "never existed".
+   */
+  discard(id: SopDocumentId): Promise<SopDocumentRecord | null>;
   /** The document plus its derived current status. */
   summarize(id: SopDocumentId): Promise<SopDocumentSummary | null>;
   setRecoveryEnabled(id: SopDocumentId, enabled: boolean): Promise<SopDocumentRecord>;
@@ -80,8 +90,26 @@ export function createSopDocumentRepository(executor: Executor): SopDocumentRepo
     },
 
     async list() {
-      const rows = await executor.select().from(sopDocuments).orderBy(desc(sopDocuments.createdAt));
+      // Filtered here rather than at each call site, so a discarded document
+      // cannot reappear in one list because somebody forgot the clause.
+      // `findById` deliberately still returns it: a link someone kept should
+      // open the document and say it was discarded, not report it missing.
+      const rows = await executor
+        .select()
+        .from(sopDocuments)
+        .where(isNull(sopDocuments.discardedAt))
+        .orderBy(desc(sopDocuments.createdAt));
       return rows.map(toSopDocumentRecord);
+    },
+
+    async discard(id) {
+      const [row] = await executor
+        .update(sopDocuments)
+        .set({ discardedAt: new Date(), updatedAt: new Date() })
+        .where(eq(sopDocuments.id, id))
+        .returning();
+
+      return row === undefined ? null : toSopDocumentRecord(row);
     },
 
     async setRecoveryEnabled(id, enabled) {

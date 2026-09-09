@@ -8,6 +8,7 @@ import type {
   RecoveryProposalService,
   ReviewBindingResult,
   SopCandidateService,
+  SopDiscardService,
   SopDraftService,
   SopRuleService,
   SopPublishService,
@@ -43,6 +44,8 @@ export interface ApiContext {
   readonly sopDraftService: SopDraftService;
   /** Drafts one business rule into a decision step for review (ADR-040). */
   readonly sopRuleService: SopRuleService;
+  /** Retires a workflow from the authoring list without deleting it. */
+  readonly sopDiscardService: SopDiscardService;
   /** Review, editing, reorder, clarification and lifecycle (sub-phase 2.3). */
   readonly sopRevisionService: SopRevisionService;
   /** Compiling an approved revision into candidate Agent IR, and approving it (sub-phase 2.5). */

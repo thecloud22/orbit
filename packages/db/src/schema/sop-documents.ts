@@ -1,7 +1,7 @@
 import type { SopDocumentId } from '@orbit/contracts';
 import { boolean, pgTable, text } from 'drizzle-orm/pg-core';
 
-import { createdAt, opaqueId, updatedAt } from './columns';
+import { createdAt, opaqueId, timestamptz, updatedAt } from './columns';
 
 /**
  * The authoring container for one SOP.
@@ -35,6 +35,21 @@ export const sopDocuments = pgTable('sop_documents', {
    * expressed in the IR at all rather than read live.
    */
   recoveryEnabled: boolean('recovery_enabled').notNull().default(false),
+  /**
+   * When this document was discarded, retiring it from the authoring list.
+   *
+   * A timestamp rather than a delete, and it follows `agents.archivedAt` for
+   * the same reasons (ADR-026). A document is the source a revision was written
+   * from and a binding was captured against; deleting the row would leave those
+   * pointing at nothing, and "what was this workflow written from?" is a
+   * question Phase 2 must always be able to answer.
+   *
+   * There is deliberately no lifecycle column beside it. Discarding is a
+   * statement about the document — "stop showing me this" — where every other
+   * state belongs to a revision, which is why this one can live here without
+   * the two ever disagreeing.
+   */
+  discardedAt: timestamptz('discarded_at'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

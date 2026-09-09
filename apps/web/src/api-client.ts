@@ -208,6 +208,14 @@ async function send<T>(url: string, method: 'POST' | 'PATCH', body: unknown): Pr
     throw await toApiError(response);
   }
 
+  // A route with nothing to return says so with 204, and parsing a body that is
+  // not there throws — which would turn a success into "the API could not be
+  // reached", the least accurate thing it is possible to say about a request
+  // that worked. `T` is `void` at those call sites.
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return ((await response.json()) as DataEnvelope<T>).data;
 }
 
@@ -315,6 +323,16 @@ export async function reviseSopDocument(
   return send(`/v1/sop-documents/${documentId}/revisions`, 'POST', {
     ...(note === undefined ? {} : { note }),
   });
+}
+
+/**
+ * Retires a workflow from the authoring list (never deletes it).
+ *
+ * Refused for a published workflow, because its versions are running and a
+ * run's evidence traces back through the document it was compiled from.
+ */
+export async function discardSopDocument(documentId: string): Promise<void> {
+  await send(`/v1/sop-documents/${documentId}/discard`, 'POST', {});
 }
 
 export async function reorderSopStep(

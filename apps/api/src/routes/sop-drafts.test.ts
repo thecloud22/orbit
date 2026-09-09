@@ -24,6 +24,7 @@ function draftResult(graph: SopGraph = escalationReviewGraph()): CreateSopDraftR
     title: graph.title,
     sourceText: 'Sign in and look up the request.',
     recoveryEnabled: false,
+    discardedAt: null,
     createdAt: new Date('2026-09-05T10:00:00.000Z'),
     updatedAt: new Date('2026-09-05T10:00:00.000Z'),
   };

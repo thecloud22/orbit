@@ -5,6 +5,7 @@ import type { LLMProvider, ModelBudgets, ModelRates } from '@orbit/sop-generatio
 import {
   approveBinding,
   createSopCandidateService,
+  createSopDiscardService,
   createSopDraftService,
   createSopRuleService,
   createPublishBoundDocumentService,
@@ -151,6 +152,7 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
         provider: options.sopProvider,
         ...(options.modelBudgets === undefined ? {} : { budgets: options.modelBudgets }),
       }),
+      sopDiscardService: createSopDiscardService({ database: handle.db }),
       sopRevisionService: createSopRevisionService({ database: handle.db }),
       bindingReview: {
         approve: (id, note) => approveBinding(handle.db, id, note),

@@ -7,6 +7,7 @@ import {
   ApiRequestError,
   approveBinding as approveExecutionBinding,
   declareSopInput,
+  discardSopDocument,
   editSopStep,
   acceptRecoveryProposal,
   dismissRecoveryProposal,
@@ -76,6 +77,8 @@ export interface SopReviewPageProps {
   /** The open walkthrough, from the URL, for the same reason (ADR-035). */
   readonly walkthroughSessionId: string | null;
   readonly onWalkthroughSessionChange: (sessionId: string | null) => void;
+  /** Called after a workflow is discarded, since this page no longer has one. */
+  readonly onDiscarded: () => void;
 }
 
 /**
@@ -93,6 +96,7 @@ export function SopReviewPage({
   onBindingSessionChange,
   walkthroughSessionId,
   onWalkthroughSessionChange,
+  onDiscarded,
 }: SopReviewPageProps) {
   const [review, setReview] = useState<SopReviewView | null>(null);
   const [bindings, setBindings] = useState<SopBindingsView | null>(null);
@@ -129,6 +133,8 @@ export function SopReviewPage({
   const [isStartingWalkthrough, setIsStartingWalkthrough] = useState(false);
   /** The "are you sure" step in front of revising (ADR-036). */
   const [isConfirmingRevise, setIsConfirmingRevise] = useState(false);
+  /** The "are you sure" step in front of discarding, for the same reason. */
+  const [isConfirmingDiscard, setIsConfirmingDiscard] = useState(false);
   /**
    * Whether the authoring surfaces are open on a published document.
    *
@@ -1018,7 +1024,131 @@ export function SopReviewPage({
           {authoring}
         </div>
       )}
+
+      {/*
+        Last on the page, quiet, and absent once something is running.
+        Discarding is not a step in the workflow a person came here to do, and a
+        control that retires a document does not belong beside the ones that
+        build it. On a published document it is not offered at all: the server
+        would refuse it, and an offer that cannot be accepted is worse than no
+        offer -- the way to retire something live is to archive the agent.
+      */}
+      {phase !== 'published' && (
+        <DiscardWorkflow
+          busy={busy}
+          isConfirming={isConfirmingDiscard}
+          onCancel={() => setIsConfirmingDiscard(false)}
+          onConfirm={() => {
+            setIsConfirmingDiscard(false);
+            // Deliberately not through `act`, which reloads the review after
+            // every action. This is the one action after which there is no
+            // review to reload: the document has left the list, and refetching
+            // it would re-render the page somebody is being navigated away
+            // from. Failure still lands in the same place, because a refusal
+            // here -- "this workflow is published" -- is exactly the kind of
+            // thing the failure notice exists to say.
+            void (async () => {
+              setBusy(true);
+              setFailure(null);
+
+              try {
+                await discardSopDocument(documentId);
+                onDiscarded();
+              } catch (caught) {
+                setFailure(
+                  describeReviewFailure(
+                    caught instanceof ApiRequestError
+                      ? caught
+                      : new ApiRequestError({
+                          status: 0,
+                          message: 'The API could not be reached.',
+                        }),
+                  ),
+                );
+              } finally {
+                setBusy(false);
+              }
+            })();
+          }}
+          onStart={() => setIsConfirmingDiscard(true)}
+          title={review.title}
+        />
+      )}
     </section>
+  );
+}
+
+/**
+ * Discarding a workflow, with the sentence that makes it safe to click.
+ *
+ * The fear a person has here is that this deletes their work, and it does not:
+ * the document keeps its revisions and its recordings, and it can be reached
+ * again from a link. Saying so is the whole reason this is two clicks rather
+ * than one -- and the reason the confirmation leads with what *is* kept rather
+ * than with a warning.
+ */
+function DiscardWorkflow({
+  title,
+  busy,
+  isConfirming,
+  onStart,
+  onCancel,
+  onConfirm,
+}: {
+  readonly title: string;
+  readonly busy: boolean;
+  readonly isConfirming: boolean;
+  readonly onStart: () => void;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}) {
+  if (!isConfirming) {
+    return (
+      <div className="mt-2 border-t border-slate-200 pt-4">
+        <button
+          className="text-xs text-slate-500 underline transition-colors hover:text-rose-700 disabled:text-slate-300"
+          data-testid="sop-discard-start"
+          disabled={busy}
+          onClick={onStart}
+          type="button"
+        >
+          Discard this workflow
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="mt-2 rounded-md border border-rose-300 bg-rose-50 p-4"
+      data-testid="sop-discard-confirm"
+    >
+      <p className="text-sm font-semibold text-rose-900">Discard “{title}”?</p>
+      <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-sm text-rose-900">
+        <li>It leaves Studio’s list. Nothing is deleted — every revision and recording is kept.</li>
+        <li>A link to it still opens it, so this can be undone by anyone who kept one.</li>
+        <li>Nothing that has been published is affected, and no run is touched.</li>
+      </ul>
+      <div className="mt-3 flex gap-2">
+        <button
+          className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-rose-500 disabled:bg-slate-300"
+          data-testid="sop-discard-confirm-button"
+          disabled={busy}
+          onClick={onConfirm}
+          type="button"
+        >
+          Discard it
+        </button>
+        <button
+          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm"
+          data-testid="sop-discard-cancel"
+          onClick={onCancel}
+          type="button"
+        >
+          Keep it
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -317,6 +317,7 @@ export function App() {
                     },
               );
             }}
+            onDiscarded={() => navigate({ kind: 'documents' })}
             onOpenAgent={(agentVersionId) => {
               navigate({ kind: 'agents', agentVersionId });
             }}

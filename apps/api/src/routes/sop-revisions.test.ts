@@ -26,6 +26,7 @@ function review(overrides: Partial<RevisionReview> = {}): RevisionReview {
     title: graph.title,
     sourceText: 'Sign in and review the escalation.',
     recoveryEnabled: false,
+    discardedAt: null,
     createdAt: new Date('2026-09-06T09:00:00.000Z'),
     updatedAt: new Date('2026-09-06T09:00:00.000Z'),
   };
