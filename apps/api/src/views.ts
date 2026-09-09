@@ -296,7 +296,12 @@ export interface SopReviewStepView {
   readonly position: number;
   readonly canMoveUp: boolean;
   readonly canMoveDown: boolean;
-  /** Variables this step makes available, in reviewer-facing form. */
+  /**
+   * Variable names this step makes available, exactly as they appear in
+   * `${variables.name}` and in an `outcome` step's own `returns[].name` --
+   * raw, not prettified, so a client can offer one back as a value (a picker
+   * for what an outcome step returns) rather than only display it.
+   */
   readonly produces: readonly string[];
   /** The step exactly as stored, so the editor round-trips it without loss. */
   readonly step: Record<string, unknown>;

@@ -47,6 +47,7 @@ import { SopStepEditor } from './SopStepEditor';
 import { SopStepInserter } from './SopStepInserter';
 import {
   describeReviewFailure,
+  describeVariable,
   issuesWithoutRecovery,
   publishBlockedReason,
   reviewLead,
@@ -391,6 +392,7 @@ export function SopReviewPage({
       <li data-testid={`sop-step-insert-slot-${String(index)}`}>
         {insertingAt === index ? (
           <SopStepInserter
+            availableVariables={availableVariables}
             index={index}
             isSaving={busy}
             onCancel={() => setInsertingAt(null)}
@@ -417,6 +419,12 @@ export function SopReviewPage({
   // section deciding for itself whether it is relevant (ADR-036).
   const phase = reviewPhase(review, bindings);
   const lead = reviewLead(review, bindings);
+
+  // Every variable some step in the workflow already produces, for the
+  // `returns` picker on an outcome step: what a declared output actually
+  // connects to, rather than a name typed by hand that has to match one
+  // exactly.
+  const availableVariables = [...new Set(review.steps.flatMap((step) => step.produces))];
 
   /**
    * Published, but this revision is not what was published.
@@ -537,7 +545,7 @@ export function SopReviewPage({
                     </p>
                     {step.produces.length > 0 && (
                       <p className="mt-1 text-xs text-slate-500">
-                        Produces: {step.produces.join(', ')}
+                        Produces: {step.produces.map(describeVariable).join(', ')}
                       </p>
                     )}
                   </div>
@@ -580,6 +588,7 @@ export function SopReviewPage({
 
                 {editingStepId === step.id && (
                   <SopStepEditor
+                    availableVariables={availableVariables}
                     isSaving={busy}
                     onCancel={() => setEditingStepId(null)}
                     onSave={(edited, note) =>

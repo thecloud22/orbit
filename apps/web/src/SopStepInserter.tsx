@@ -16,6 +16,8 @@ export interface SopStepInserterProps {
   readonly isSaving: boolean;
   readonly onInsert: (step: Record<string, unknown>, note: string | undefined) => void;
   readonly onCancel: () => void;
+  /** Every variable name some step in this workflow produces, for the `returns` picker. */
+  readonly availableVariables?: readonly string[];
 }
 
 /**
@@ -43,7 +45,13 @@ export interface SopStepInserterProps {
  * the insert would break the workflow; a second validator in the browser would
  * be a second thing to keep in step with `validateSopGraph`.
  */
-export function SopStepInserter({ index, isSaving, onInsert, onCancel }: SopStepInserterProps) {
+export function SopStepInserter({
+  index,
+  isSaving,
+  onInsert,
+  onCancel,
+  availableVariables,
+}: SopStepInserterProps) {
   const [kind, setKind] = useState<string>(EDITABLE_STEP_KINDS[0] ?? 'navigate');
   const [apiSystems, setApiSystems] = useState<readonly string[]>([]);
 
@@ -116,6 +124,7 @@ export function SopStepInserter({ index, isSaving, onInsert, onCancel }: SopStep
             spec={spec}
             stepId={`insert-${String(index)}`}
             value={values[spec.name]}
+            {...(availableVariables === undefined ? {} : { availableVariables })}
           />
         ))}
       </div>

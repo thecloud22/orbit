@@ -20,13 +20,7 @@ import {
   validateBindingAgainstStep,
   type ExecutionBinding,
 } from '@orbit/execution-mapping';
-import {
-  describeStep,
-  describeStepById,
-  describeVariable,
-  producedBy,
-  type SopGraph,
-} from '@orbit/sop-graph';
+import { describeStep, describeStepById, producedBy, type SopGraph } from '@orbit/sop-graph';
 import type { ArtifactLink, ArtifactMetadata, EventEnvelope } from '@orbit/contracts';
 
 import type { PlatformSnapshot } from './platform';
@@ -306,9 +300,11 @@ export function toSopReviewView(review: {
     // move past either end of the list; the control is simply not offered.
     canMoveUp: review.editable && index > 0,
     canMoveDown: review.editable && index < lastIndex,
-    // `describeVariable` turns `assignedTeam` into `Assigned Team`, so the
-    // review view names values the way the person who wrote the SOP does.
-    produces: producedBy(step).map(describeVariable),
+    // Raw identifiers, not `describeVariable`'s prettified form: the client
+    // uses this to offer a variable back as a value (a picker for what an
+    // outcome step returns), which needs the exact name `${variables.x}` and
+    // `returns[].name` use. Presentation formatting is the client's own job.
+    produces: producedBy(step),
     step: step as unknown as Record<string, unknown>,
   }));
 

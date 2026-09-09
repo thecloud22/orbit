@@ -517,6 +517,21 @@ export function stepKindLabel(kind: string): string {
 }
 
 /**
+ * Turns `assignedTeam` into `Assigned team`, the way a person who wrote the
+ * SOP would read it.
+ *
+ * The server's own `@orbit/sop-graph` has the same function, but `produces`
+ * now carries raw identifiers rather than a prettified string (a client
+ * offering one back as a value — a picker for what an outcome step returns —
+ * needs the exact name), so display formatting moved here, to the one place
+ * that still wants it.
+ */
+export function describeVariable(name: string): string {
+  const spaced = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/**
  * Drops empty optional values before the step is sent.
  *
  * The graph schema is strict and several fields are `.min(1).optional()`, so an

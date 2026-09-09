@@ -2,13 +2,20 @@ import { useState, type FormEvent } from 'react';
 
 import type { SopReviewStepView } from '@orbit/api/views';
 
-import { fieldsForStepKind, pruneEmptyFields, type StepFieldSpec } from './sop-review-view-model';
+import {
+  describeVariable,
+  fieldsForStepKind,
+  pruneEmptyFields,
+  type StepFieldSpec,
+} from './sop-review-view-model';
 
 export interface SopStepEditorProps {
   readonly step: SopReviewStepView;
   readonly isSaving: boolean;
   readonly onSave: (step: Record<string, unknown>, note: string | undefined) => void;
   readonly onCancel: () => void;
+  /** Every variable name some step in this workflow produces, for the `returns` picker. */
+  readonly availableVariables?: readonly string[];
 }
 
 type Row = Record<string, unknown>;
@@ -24,7 +31,13 @@ type Row = Record<string, unknown>;
  * with the real issues if it would break the workflow; a second validator in
  * the browser would be a second thing to keep in step with `validateSopGraph`.
  */
-export function SopStepEditor({ step, isSaving, onSave, onCancel }: SopStepEditorProps) {
+export function SopStepEditor({
+  step,
+  isSaving,
+  onSave,
+  onCancel,
+  availableVariables,
+}: SopStepEditorProps) {
   const [values, setValues] = useState<Record<string, unknown>>(() => ({ ...step.step }));
   const [note, setNote] = useState('');
   const specs = fieldsForStepKind(step.kind);
@@ -64,6 +77,7 @@ export function SopStepEditor({ step, isSaving, onSave, onCancel }: SopStepEdito
             value={values[spec.name]}
             onChange={set}
             stepId={step.id}
+            {...(availableVariables === undefined ? {} : { availableVariables })}
           />
         ))}
       </div>
@@ -116,11 +130,19 @@ export function StepField({
   value,
   onChange,
   stepId,
+  availableVariables,
 }: {
   readonly spec: StepFieldSpec;
   readonly value: unknown;
   readonly onChange: (name: string, value: unknown) => void;
   readonly stepId: string;
+  /**
+   * Variable names some other step in this workflow already produces --
+   * an `extract`'s fields, a `call`'s response reads, a `decision`'s branch
+   * outcomes. Used only by the `returns` field kind, to offer a picker
+   * instead of a free-text box a person had to get exactly right by typing.
+   */
+  readonly availableVariables?: readonly string[];
 }) {
   const id = `${stepId}-${spec.name}`;
   const label = (
@@ -221,7 +243,14 @@ export function StepField({
     );
   }
 
-  return <RowsField spec={spec} value={value} onChange={onChange} />;
+  return (
+    <RowsField
+      onChange={onChange}
+      spec={spec}
+      value={value}
+      {...(availableVariables === undefined ? {} : { availableVariables })}
+    />
+  );
 }
 
 /** The three array-shaped fields: branches, extract fields, and outcome returns. */
@@ -229,13 +258,20 @@ function RowsField({
   spec,
   value,
   onChange,
+  availableVariables,
 }: {
   readonly spec: StepFieldSpec;
   readonly value: unknown;
   readonly onChange: (name: string, value: unknown) => void;
+  readonly availableVariables?: readonly string[];
 }) {
   const rows: Row[] = Array.isArray(value) ? (value as Row[]) : [];
 
+  // `returns` is the one row shape naming a variable that must already exist
+  // -- the server refuses a name no step produces (UNDECLARED_OUTCOME_RETURN)
+  // -- so it gets a picker rather than a free-text box a person had to type
+  // exactly right. The other two name things that do not exist yet (a new
+  // branch condition, a new field to extract), where nothing to pick from.
   const columns =
     spec.kind === 'branches'
       ? [
@@ -249,7 +285,7 @@ function RowsField({
             { key: 'required', label: 'Required', type: 'boolean' as const },
           ]
         : [
-            { key: 'name', label: 'Name', type: 'text' as const },
+            { key: 'name', label: 'Variable', type: 'variableSelect' as const },
             { key: 'optional', label: 'May be absent', type: 'boolean' as const },
           ];
 
@@ -274,13 +310,32 @@ function RowsField({
                   />
                   {column.label}
                 </label>
+              ) : column.type === 'variableSelect' && (availableVariables ?? []).length > 0 ? (
+                <select
+                  aria-label={column.label}
+                  className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+                  key={column.key}
+                  onChange={(event) => update(index, column.key, event.target.value)}
+                  value={typeof row[column.key] === 'string' ? (row[column.key] as string) : ''}
+                >
+                  <option value="">Choose a variable</option>
+                  {(availableVariables ?? []).map((name) => (
+                    <option key={name} value={name}>
+                      {describeVariable(name)}
+                    </option>
+                  ))}
+                </select>
               ) : (
                 <input
                   aria-label={column.label}
                   className="rounded-md border border-slate-300 px-2 py-1 text-sm"
                   key={column.key}
                   onChange={(event) => update(index, column.key, event.target.value)}
-                  placeholder={column.label}
+                  placeholder={
+                    column.type === 'variableSelect'
+                      ? 'No steps produce a variable yet'
+                      : column.label
+                  }
                   value={typeof row[column.key] === 'string' ? (row[column.key] as string) : ''}
                 />
               ),

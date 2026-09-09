@@ -11,6 +11,7 @@ import {
   EDITABLE_STEP_KINDS,
   STEP_KIND_LABELS,
   describeReviewFailure,
+  describeVariable,
   fieldsForStepKind,
   pruneEmptyFields,
   publishBlockedReason,
@@ -525,5 +526,16 @@ describe('step kind labels', () => {
 
   it('falls back to the identifier rather than to nothing', () => {
     expect(stepKindLabel('not_a_kind')).toBe('not_a_kind');
+  });
+});
+
+describe('describeVariable', () => {
+  it('splits camelCase into words, capitalising only the leading letter', () => {
+    expect(describeVariable('assignedTeam')).toBe('Assigned Team');
+    expect(describeVariable('onCallEngineer')).toBe('On Call Engineer');
+  });
+
+  it('leaves an already-lowercase single word alone but capitalised', () => {
+    expect(describeVariable('status')).toBe('Status');
   });
 });
