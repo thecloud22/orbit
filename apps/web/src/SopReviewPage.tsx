@@ -390,17 +390,6 @@ export function SopReviewPage({
     review.publication.agentVersionId !== null &&
     review.publication.compiledFromRevisionId !== review.revisionId;
 
-  // `ready` means "never published, fully bound" by construction --
-  // `reviewPhase` returns `published` first whenever an agent version exists,
-  // so there is no other case this phase covers. Recording binds every step
-  // the instant it finishes, before a person has looked at what was captured,
-  // so a document could read `ready` from the moment it lands here -- while
-  // someone is still adding inputs or fixing a step's value. Leading the page
-  // with "Ready to publish" at that point reads as a push to finish before
-  // they have decided they are. `hasUnpublishedRevision` is the opposite case
-  // and keeps leading: a document that already went through one full publish
-  // cycle and has since diverged genuinely does have one clear next action.
-  const leadsWithPublish = hasUnpublishedRevision;
   const collapsesAuthoring = phase === 'published' && !hasUnpublishedRevision;
 
   const publishPanel = (
@@ -533,8 +522,6 @@ export function SopReviewPage({
           {insertSlot(review.steps.length)}
         </ol>
       </section>
-
-      {!leadsWithPublish && publishPanel}
 
       <SopBindingPanel
         bindings={bindings}
@@ -731,7 +718,17 @@ export function SopReviewPage({
         />
       )}
 
-      {leadsWithPublish && publishPanel}
+      {/*
+        One fixed position, always -- not something that leads the page in one
+        state and hides among the steps in another. Editing a step used to
+        bring this back to the top of the page each time, which read as "you
+        just finished one edit, publish now?" on every single save. Publishing
+        is a decision made once, when a person is done with however many edits
+        they meant to make; `SopPublishPanel` already says plainly whether
+        there is anything to publish right now (`publicationStage`), so moving
+        it around based on phase was never required for that to be clear.
+      */}
+      {publishPanel}
 
       {bindingFailure !== null && (
         <section
