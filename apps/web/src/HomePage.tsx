@@ -4,6 +4,7 @@ import type { ModelUsageView, SopDraftView } from '@orbit/api/views';
 
 import { ApiErrorNotice } from './ApiErrorNotice';
 import { ApiRequestError, listAgentVersions, listRuns, listSopDocuments } from './api-client';
+import { CreateWorkflowSection } from './CreateWorkflowSection';
 import {
   plural,
   recentRuns,
@@ -13,11 +14,8 @@ import {
   type HomeData,
 } from './home-view-model';
 import type { View } from './navigation';
-import { RecordWorkflowForm } from './RecordWorkflowForm';
 import { STATUS_BADGE_CLASSES } from './run-view-model';
-import { summarizeModelSpend, type SopDraftFailure } from './sop-draft-view-model';
-import { SopDraftForm } from './SopDraftForm';
-import { SopDraftPanel } from './SopDraftPanel';
+import type { SopDraftFailure } from './sop-draft-view-model';
 
 export interface HomePageProps {
   readonly onNavigate: (view: View) => void;
@@ -71,83 +69,18 @@ export function HomePage({
         publishedAgents={summary?.publishedAgents ?? 0}
       />
 
-      <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-slate-900">
-            {summary?.isFresh === true ? 'Start with your first workflow' : 'Create a workflow'}
-          </h2>
-          <p className="mt-1 text-sm text-slate-600">
-            {/*
-              Two ways in, named as peers rather than one being the other's
-              fallback: one is faster when you can describe the task, the other
-              is exact when you would rather just do it once.
-            */}
-            Two ways in. Neither is the fallback for the other — describing is faster, showing is
-            exact.
-          </p>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <article
-            className="flex flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-indigo-300"
-            data-testid="record-own-card"
-          >
-            <StepBadge>1st way</StepBadge>
-            <h3 className="mt-2 text-sm font-semibold text-slate-900">Record yourself doing it</h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Do the task once in a real browser. Orbit writes down every step and the exact element
-              you acted on, so it knows where as well as what.
-            </p>
-            <div className="mt-4">
-              <RecordWorkflowForm isStarting={isStartingRecording} onStart={onStartRecording} />
-            </div>
-          </article>
-
-          <article
-            className="flex flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-indigo-300"
-            data-testid="guided-path-card"
-          >
-            <StepBadge>2nd way</StepBadge>
-            <h3 className="mt-2 text-sm font-semibold text-slate-900">
-              Describe it in your own words
-            </h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Write the procedure the way you would explain it to a new colleague. Orbit reads it
-              and proposes a structured workflow you can review and correct.
-            </p>
-            <div className="mt-4">
-              <SopDraftForm
-                isGenerating={isGeneratingDraft}
-                onGenerate={onGenerate}
-                spend={summarizeModelSpend(modelUsage)}
-              />
-            </div>
-          </article>
-        </div>
-
-        {recordingError !== null && (
-          <ApiErrorNotice
-            error={recordingError}
-            testId="recording-start-error"
-            title="The recording could not be started"
-          />
-        )}
-
-        {draft !== null && (
-          <div>
-            <button
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium transition-colors hover:border-indigo-400 hover:text-indigo-700"
-              data-testid="open-draft-review"
-              onClick={() => onNavigate({ kind: 'review', documentId: draft.documentId })}
-              type="button"
-            >
-              Review and edit this draft
-            </button>
-          </div>
-        )}
-
-        <SopDraftPanel draft={draft} failure={draftFailure} />
-      </section>
+      <CreateWorkflowSection
+        draft={draft}
+        draftFailure={draftFailure}
+        isGeneratingDraft={isGeneratingDraft}
+        isStartingRecording={isStartingRecording}
+        modelUsage={modelUsage}
+        onGenerate={onGenerate}
+        onNavigate={onNavigate}
+        onStartRecording={onStartRecording}
+        recordingError={recordingError}
+        title={summary?.isFresh === true ? 'Start with your first workflow' : 'Create a workflow'}
+      />
 
       {failure !== null && (
         <ApiErrorNotice
@@ -373,14 +306,6 @@ function Hero({
         )}
       </div>
     </section>
-  );
-}
-
-function StepBadge({ children }: { readonly children: React.ReactNode }) {
-  return (
-    <span className="w-fit rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
-      {children}
-    </span>
   );
 }
 

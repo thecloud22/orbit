@@ -324,7 +324,17 @@ export function App() {
           />
         </>
       ) : view.kind === 'documents' ? (
-        <DocumentsPage onOpen={navigate} />
+        <DocumentsPage
+          draft={draft}
+          draftFailure={draftFailure}
+          isGeneratingDraft={isGeneratingDraft}
+          isStartingRecording={isStartingRecording}
+          modelUsage={modelUsage}
+          onGenerate={(sourceText) => void generateDraft(sourceText)}
+          onOpen={navigate}
+          onStartRecording={(title, startUrl) => void beginRecording(title, startUrl)}
+          recordingError={recordingError}
+        />
       ) : view.kind === 'agents' ? (
         <AgentsPage
           agentVersions={agentVersions}
