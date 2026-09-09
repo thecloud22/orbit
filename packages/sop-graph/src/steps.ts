@@ -289,35 +289,133 @@ export const sopStepDraftSchema = z.discriminatedUnion('kind', [
 ]);
 export type SopStepDraft = z.infer<typeof sopStepDraftSchema>;
 
+/** The longest a derived id gets before it stops being easier to read than a number. */
+const MAX_SLUG_LENGTH = 40;
+
+/**
+ * Turns a label a person wrote into something that satisfies the id grammar.
+ *
+ * Returns null when nothing usable survives — an empty label, or one made
+ * entirely of punctuation — so a caller falls back rather than producing `_` or
+ * an id that starts with a digit.
+ *
+ * Truncation cuts back to the last word boundary rather than mid-word, because
+ * the entire reason for deriving an id from words is that somebody reads it
+ * afterwards, and `attach_the_mortgage_insurance_conditio` is worse than a
+ * number would have been.
+ */
+export function slugForStepId(label: string): string | null {
+  const slug = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  if (slug === '' || !/^[a-z]/.test(slug)) {
+    return null;
+  }
+
+  if (slug.length <= MAX_SLUG_LENGTH) {
+    return slug;
+  }
+
+  const cut = slug.slice(0, MAX_SLUG_LENGTH);
+  const boundary = cut.lastIndexOf('_');
+
+  return (boundary > 0 ? cut.slice(0, boundary) : cut).replace(/_+$/, '');
+}
+
+/**
+ * The words a step is named after, when it has any.
+ *
+ * A decision is named after its question and everything else after its purpose,
+ * which is the same field `describeStep` shows a reviewer. That is the point:
+ * the id and the label a person reads come from one sentence, so they cannot
+ * describe different things.
+ */
+function labelForStepId(step: SopStepDraft): string | null {
+  if (step.kind === 'decision') {
+    return step.question;
+  }
+
+  if (step.kind === 'outcome' || step.kind === 'manual_review') {
+    return step.purpose ?? step.message;
+  }
+
+  return step.purpose;
+}
+
 /**
  * A readable, unique id for a newly inserted step.
  *
  * Generated, never asked for. A step id is workflow-local naming rather than a
- * persisted entity id, but branches name their targets by it and the step
- * editor refuses to change one, so a person choosing badly here is a mistake
- * they cannot undo. The same reasoning made `agentIdForDocument` derived rather
- * than entered (ADR-024).
+ * persisted entity id, but branches name their targets by it, bindings key on
+ * it, and published Agent IR carries it in `sourceSopStepIds` — so it cannot be
+ * changed afterwards, and a person choosing badly here would be making a
+ * mistake they could not undo. The same reasoning made `agentIdForDocument`
+ * derived rather than entered (ADR-024).
  *
- * Named after the kind and numbered from the count of that kind, so a graph
- * reads as `click_1`, `click_2`. The suffix is a *starting guess* and the loop
+ * Derived from what the step is *for*, when the draft says: a decision asking
+ * "Is debt-to-income above the limit?" becomes
+ * `is_debt_to_income_above_the_limit` rather than `decision_2`. Nobody is asked
+ * to name anything — the sentence is one they were already writing — and it
+ * matches what the recorder has always done with the label on an element, so
+ * both ways into a workflow now produce ids of the same quality.
+ *
+ * Falls back to the kind, numbered from the count of that kind, when there is
+ * no usable label. The suffix is a *starting guess* in both paths and the loop
  * is what guarantees uniqueness: a step called `click_2` may already exist
  * because an earlier one was deleted, or because a person wrote that name by
  * hand in a fixture.
  */
-export function generateStepId(existingIds: Iterable<string>, kind: SopStepKind): string {
+export function generateStepId(
+  existingIds: Iterable<string>,
+  step: SopStepKind | SopStepDraft,
+): string {
   const taken = new Set(existingIds);
+  const kind = typeof step === 'string' ? step : step.kind;
+  const slug = typeof step === 'string' ? null : slugForStepId(labelForStepId(step) ?? '');
 
-  let suffix = 1;
+  // A derived name wants the bare words when they are free -- `check_the_floor`,
+  // not `check_the_floor_1`. The numbered fallback always numbers, because
+  // `click` on its own says nothing a reader can use.
+  if (slug !== null) {
+    return firstFree(taken, slug, taken.has(slug) ? 2 : null);
+  }
+
+  return firstFree(taken, kind, countOf(taken, kind) + 1);
+}
+
+/** How many ids already look like they were numbered off this base. */
+function countOf(taken: ReadonlySet<string>, base: string): number {
+  let count = 0;
+
   for (const id of taken) {
-    if (id === kind || id.startsWith(`${kind}_`)) {
-      suffix += 1;
+    if (id === base || id.startsWith(`${base}_`)) {
+      count += 1;
     }
   }
 
-  let candidate = `${kind}_${String(suffix)}`;
+  return count;
+}
+
+/**
+ * `base` when `suffix` is null, otherwise `base_2`, `base_3` — whichever is free.
+ *
+ * The starting suffix is a *guess* in both paths and the loop is what guarantees
+ * uniqueness: a step called `click_2` may already exist because an earlier one
+ * was deleted, or because somebody wrote that name by hand in a fixture.
+ */
+function firstFree(taken: ReadonlySet<string>, base: string, suffix: number | null): string {
+  if (suffix === null) {
+    return base;
+  }
+
+  let next = Math.max(suffix, 1);
+  let candidate = `${base}_${String(next)}`;
+
   while (taken.has(candidate)) {
-    suffix += 1;
-    candidate = `${kind}_${String(suffix)}`;
+    next += 1;
+    candidate = `${base}_${String(next)}`;
   }
 
   return candidate;

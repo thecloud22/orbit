@@ -665,7 +665,20 @@ export interface WorkflowRule {
   /** How the comparison reads, for a computed decision. */
   readonly comparison: string | null;
   /** Where each branch leads, in the author's own words. */
-  readonly branches: readonly { readonly when: string; readonly nextStepId: string }[];
+  readonly branches: readonly {
+    readonly when: string;
+    readonly nextStepId: string;
+    /**
+     * What that step is, when this workflow has one by that id.
+     *
+     * A branch stores an id because that is what the graph resolves, but an id
+     * is the least useful half of it to read: "Refer the file to a senior
+     * underwriter" says what happens where `escalate_file` only says where.
+     * Null when nothing matches, which is a dangling branch worth seeing as
+     * one rather than dressing up.
+     */
+    readonly nextStepSummary: string | null;
+  }[];
 }
 
 const RESOLUTIONS = ['demonstrated', 'judged', 'computed'] as const;
@@ -679,6 +692,8 @@ const RESOLUTIONS = ['demonstrated', 'judged', 'computed'] as const;
  * unwritten rules as having none.
  */
 export function workflowRules(steps: readonly SopReviewStepView[]): readonly WorkflowRule[] {
+  const summaries = new Map(steps.map((step) => [step.id, step.summary]));
+
   return steps.flatMap((step) => {
     if (step.kind !== 'decision') {
       return [];
@@ -702,7 +717,13 @@ export function workflowRules(steps: readonly SopReviewStepView[]): readonly Wor
         branches: branches.flatMap((branch) => {
           const entry = branch as { when?: unknown; nextStepId?: unknown };
           return typeof entry.when === 'string' && typeof entry.nextStepId === 'string'
-            ? [{ when: entry.when, nextStepId: entry.nextStepId }]
+            ? [
+                {
+                  when: entry.when,
+                  nextStepId: entry.nextStepId,
+                  nextStepSummary: summaries.get(entry.nextStepId) ?? null,
+                },
+              ]
             : [];
         }),
       },

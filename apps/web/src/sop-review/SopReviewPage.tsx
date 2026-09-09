@@ -414,6 +414,7 @@ export function SopReviewPage({
       <li data-testid={`sop-step-insert-slot-${String(index)}`}>
         {insertingAt === index ? (
           <SopStepInserter
+            availableSteps={availableSteps}
             availableVariables={availableVariables}
             index={index}
             isSaving={busy}
@@ -447,6 +448,11 @@ export function SopReviewPage({
   // connects to, rather than a name typed by hand that has to match one
   // exactly.
   const availableVariables = [...new Set(review.steps.flatMap((step) => step.produces))];
+
+  // Every step a branch may be routed at, labelled by what it does. A branch
+  // target was free text, where a typo produced an unresolvable branch nobody
+  // saw until the compiler refused to publish it.
+  const availableSteps = review.steps.map((step) => ({ id: step.id, summary: step.summary }));
 
   // Sections a step can be dragged onto: every group already in use, in the
   // order it first appears, followed by one created but still empty.
@@ -721,6 +727,7 @@ export function SopReviewPage({
 
                 {editingStepId === step.id && (
                   <SopStepEditor
+                    availableSteps={availableSteps}
                     availableVariables={availableVariables}
                     isSaving={busy}
                     onCancel={() => setEditingStepId(null)}

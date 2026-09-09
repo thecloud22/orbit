@@ -16,6 +16,14 @@ export interface SopStepEditorProps {
   readonly onCancel: () => void;
   /** Every variable name some step in this workflow produces, for the `returns` picker. */
   readonly availableVariables?: readonly string[];
+  /**
+   * Every step a branch can be routed at, for the "Go to step" picker.
+   *
+   * A branch target used to be a free-text box, where a typo produced an
+   * unresolvable branch nobody saw until the compiler refused to publish.
+   * There is a closed list of legal answers and this is it.
+   */
+  readonly availableSteps?: readonly { readonly id: string; readonly summary: string }[];
 }
 
 type Row = Record<string, unknown>;
@@ -37,6 +45,7 @@ export function SopStepEditor({
   onSave,
   onCancel,
   availableVariables,
+  availableSteps,
 }: SopStepEditorProps) {
   const [values, setValues] = useState<Record<string, unknown>>(() => ({ ...step.step }));
   const [note, setNote] = useState('');
@@ -78,6 +87,7 @@ export function SopStepEditor({
             onChange={set}
             stepId={step.id}
             {...(availableVariables === undefined ? {} : { availableVariables })}
+            {...(availableSteps === undefined ? {} : { availableSteps })}
           />
         ))}
       </div>
@@ -131,6 +141,7 @@ export function StepField({
   onChange,
   stepId,
   availableVariables,
+  availableSteps,
 }: {
   readonly spec: StepFieldSpec;
   readonly value: unknown;
@@ -143,6 +154,14 @@ export function StepField({
    * instead of a free-text box a person had to get exactly right by typing.
    */
   readonly availableVariables?: readonly string[];
+  /**
+   * Every step a branch can be routed at, for the "Go to step" picker.
+   *
+   * A branch target used to be a free-text box, where a typo produced an
+   * unresolvable branch nobody saw until the compiler refused to publish.
+   * There is a closed list of legal answers and this is it.
+   */
+  readonly availableSteps?: readonly { readonly id: string; readonly summary: string }[];
 }) {
   const id = `${stepId}-${spec.name}`;
   const label = (
@@ -260,6 +279,7 @@ export function StepField({
       spec={spec}
       value={value}
       {...(availableVariables === undefined ? {} : { availableVariables })}
+      {...(availableSteps === undefined ? {} : { availableSteps })}
     />
   );
 }
@@ -368,11 +388,20 @@ function RowsField({
   value,
   onChange,
   availableVariables,
+  availableSteps,
 }: {
   readonly spec: StepFieldSpec;
   readonly value: unknown;
   readonly onChange: (name: string, value: unknown) => void;
   readonly availableVariables?: readonly string[];
+  /**
+   * Every step a branch can be routed at, for the "Go to step" picker.
+   *
+   * A branch target used to be a free-text box, where a typo produced an
+   * unresolvable branch nobody saw until the compiler refused to publish.
+   * There is a closed list of legal answers and this is it.
+   */
+  readonly availableSteps?: readonly { readonly id: string; readonly summary: string }[];
 }) {
   const rows: Row[] = Array.isArray(value) ? (value as Row[]) : [];
 
@@ -385,7 +414,7 @@ function RowsField({
     spec.kind === 'branches'
       ? [
           { key: 'when', label: 'When', type: 'text' as const },
-          { key: 'nextStepId', label: 'Go to step', type: 'text' as const },
+          { key: 'nextStepId', label: 'Go to step', type: 'stepSelect' as const },
           // Only a computed decision requires one, but it is shown on every
           // decision rather than appearing when the resolution changes: a
           // control that comes and goes while someone is filling the form in
@@ -428,6 +457,24 @@ function RowsField({
                   />
                   {column.label}
                 </label>
+              ) : column.type === 'stepSelect' && (availableSteps ?? []).length > 0 ? (
+                <select
+                  aria-label={column.label}
+                  className="max-w-64 rounded-md border border-slate-300 px-2 py-1 text-sm"
+                  key={column.key}
+                  onChange={(event) => update(index, column.key, event.target.value)}
+                  value={typeof row[column.key] === 'string' ? (row[column.key] as string) : ''}
+                >
+                  <option value="">Choose a step</option>
+                  {(availableSteps ?? []).map((step) => (
+                    // Labelled by what the step does, valued by its id: the id
+                    // is what a branch resolves and the summary is what tells
+                    // somebody whether it is the right one.
+                    <option key={step.id} value={step.id}>
+                      {step.summary}
+                    </option>
+                  ))}
+                </select>
               ) : column.type === 'variableSelect' && (availableVariables ?? []).length > 0 ? (
                 <select
                   aria-label={column.label}
@@ -452,7 +499,9 @@ function RowsField({
                   placeholder={
                     column.type === 'variableSelect'
                       ? 'No steps produce a variable yet'
-                      : column.label
+                      : column.type === 'stepSelect'
+                        ? 'No other step to branch to yet'
+                        : column.label
                   }
                   value={typeof row[column.key] === 'string' ? (row[column.key] as string) : ''}
                 />

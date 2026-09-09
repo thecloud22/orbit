@@ -750,12 +750,16 @@ export function createSopRevisionService(options: SopRevisionServiceOptions): So
           };
         }
 
-        // Generated, not supplied: see `generateStepId`. Uniqueness is checked
-        // against the graph's own ids, so the result always satisfies the id
-        // grammar and never collides with a branch target.
+        // Generated, not supplied: see `generateStepId`. The whole draft is
+        // passed rather than its kind, so the id is derived from what the step
+        // says it is for -- a decision asking "Is debt-to-income above the
+        // limit?" becomes `is_debt_to_income_above_the_limit` rather than
+        // `decision_2`. Uniqueness is checked against the graph's own ids, so
+        // the result always satisfies the id grammar and never collides with a
+        // branch target.
         const stepId = generateStepId(
           previous.map((step) => step.id),
-          input.step.kind,
+          input.step,
         );
         const step = { ...input.step, id: stepId } as SopStep;
 

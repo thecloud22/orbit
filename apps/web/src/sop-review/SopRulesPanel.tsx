@@ -107,7 +107,14 @@ export function SopRulesPanel({
             <ul className="mt-2 flex flex-col gap-0.5">
               {rule.branches.map((branch) => (
                 <li className="text-xs text-slate-500" key={`${branch.when}-${branch.nextStepId}`}>
-                  {branch.when} → <span className="font-mono">{branch.nextStepId}</span>
+                  {branch.when} →{' '}
+                  {branch.nextStepSummary === null ? (
+                    // No such step. Shown as the bare id, because a dangling
+                    // branch is a real problem and reading like one is the point.
+                    <span className="font-mono text-rose-700">{branch.nextStepId}</span>
+                  ) : (
+                    <span className="text-slate-700">{branch.nextStepSummary}</span>
+                  )}
                 </li>
               ))}
             </ul>

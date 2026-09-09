@@ -8,6 +8,7 @@ import { withoutFocusClicks } from './normalize';
 import {
   SOP_GRAPH_SCHEMA_VERSION,
   parseSopGraphDocument,
+  slugForStepId,
   type SopGraph,
   type SopGraphIssue,
   type SopStep,
@@ -78,13 +79,12 @@ export const DEFAULT_OUTCOME_NAME = 'completed';
  * did the same thing twice and the numbering should say so.
  */
 function stepId(prefix: string, label: string | null, taken: Set<string>): string {
-  const slug = (label ?? '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 40);
-
-  const base = slug === '' ? prefix : `${prefix}_${slug}`;
+  // Slugged by @orbit/sop-graph rather than here, so a step recorded in a
+  // browser and one added in Studio are named by the same rules. The prefix
+  // stays local: it is the *action* performed, which is richer than the step
+  // kind an editor has to work from.
+  const slug = slugForStepId(label ?? '');
+  const base = slug === null ? prefix : `${prefix}_${slug}`;
   const safe = /^[a-z]/.test(base) ? base : `step_${base}`;
 
   if (!taken.has(safe)) {

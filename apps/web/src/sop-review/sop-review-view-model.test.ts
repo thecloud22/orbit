@@ -652,9 +652,31 @@ describe('workflowRules', () => {
       // so the sentence a reviewer approves is the sentence the run reports.
       comparison: 'Loan To Value is more than 80',
     });
+    // Unresolved, because this workflow has no `add_pmi` step to resolve to.
     expect(rule?.branches).toEqual([
-      { when: 'above 80%', nextStepId: 'add_pmi' },
-      { when: 'at or below', nextStepId: 'approve' },
+      { when: 'above 80%', nextStepId: 'add_pmi', nextStepSummary: null },
+      { when: 'at or below', nextStepId: 'approve', nextStepSummary: null },
+    ]);
+  });
+
+  it('resolves a branch target to what that step actually does', () => {
+    // An id is the least useful half of a branch to read. The panel shows the
+    // summary when there is one, and the bare id when there is not, because a
+    // dangling branch is a real problem worth seeing as one.
+    const [rule] = workflowRules([
+      decision('check_pmi', {
+        question: 'Is loan-to-value above the threshold?',
+        branches: [
+          { when: 'above 80%', nextStepId: 'add_pmi' },
+          { when: 'at or below', nextStepId: 'nowhere' },
+        ],
+      }),
+      reviewStep('add_pmi', null),
+    ]);
+
+    expect(rule?.branches).toEqual([
+      { when: 'above 80%', nextStepId: 'add_pmi', nextStepSummary: 'Step add_pmi' },
+      { when: 'at or below', nextStepId: 'nowhere', nextStepSummary: null },
     ]);
   });
 

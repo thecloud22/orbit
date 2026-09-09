@@ -18,6 +18,8 @@ export interface SopStepInserterProps {
   readonly onCancel: () => void;
   /** Every variable name some step in this workflow produces, for the `returns` picker. */
   readonly availableVariables?: readonly string[];
+  /** Every step a branch can be routed at, for the "Go to step" picker. */
+  readonly availableSteps?: readonly { readonly id: string; readonly summary: string }[];
 }
 
 /**
@@ -51,6 +53,7 @@ export function SopStepInserter({
   onInsert,
   onCancel,
   availableVariables,
+  availableSteps,
 }: SopStepInserterProps) {
   const [kind, setKind] = useState<string>(EDITABLE_STEP_KINDS[0] ?? 'navigate');
   const [apiSystems, setApiSystems] = useState<readonly string[]>([]);
@@ -125,6 +128,7 @@ export function SopStepInserter({
             stepId={`insert-${String(index)}`}
             value={values[spec.name]}
             {...(availableVariables === undefined ? {} : { availableVariables })}
+            {...(availableSteps === undefined ? {} : { availableSteps })}
           />
         ))}
       </div>
