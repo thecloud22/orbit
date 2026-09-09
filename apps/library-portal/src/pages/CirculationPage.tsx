@@ -1,14 +1,14 @@
 import { AlertTriangle, CheckCircle2, Search, UserCheck } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 
-import { Layout } from './components/Layout';
+import { Layout } from '../components/Layout';
 import {
   describeEligibilityReason,
   evaluateEligibility,
   findMember,
   MEMBERS,
   type Member,
-} from './data/members';
+} from '../data/members';
 
 const STANDING_BADGE = {
   eligible:

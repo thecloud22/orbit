@@ -1,7 +1,7 @@
 import { MapPin, Phone } from 'lucide-react';
 
-import { Layout } from './components/Layout';
-import { BRANCHES } from './data/branches';
+import { Layout } from '../components/Layout';
+import { BRANCHES } from '../data/branches';
 
 export function HoursPage() {
   return (

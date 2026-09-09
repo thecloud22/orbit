@@ -1,8 +1,8 @@
 import { Building2, Calendar, LayoutGrid, Library, MapPin, Search, Users } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 
-import { Layout } from './components/Layout';
-import { CATALOG } from './data/catalog';
+import { Layout } from '../components/Layout';
+import { CATALOG } from '../data/catalog';
 
 const QUICK_LINKS: ReadonlyArray<{
   readonly href: string;

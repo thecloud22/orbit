@@ -1,9 +1,9 @@
-import { CatalogPage } from './CatalogPage';
-import { CirculationPage } from './CirculationPage';
-import { Layout } from './components/Layout';
-import { EventsPage } from './EventsPage';
-import { HomePage } from './HomePage';
-import { HoursPage } from './HoursPage';
+import { CatalogPage } from '../pages/CatalogPage';
+import { CirculationPage } from '../pages/CirculationPage';
+import { Layout } from '../components/Layout';
+import { EventsPage } from '../pages/EventsPage';
+import { HomePage } from '../pages/HomePage';
+import { HoursPage } from '../pages/HoursPage';
 
 /**
  * Minimal pathname switch, matching the Phase 1 demo portal's App.tsx.

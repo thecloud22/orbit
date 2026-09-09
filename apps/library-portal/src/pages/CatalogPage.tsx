@@ -1,16 +1,16 @@
 import { Bookmark, BookPlus, Search } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 
-import { driftedTestId } from './demo-drift';
-import { Layout } from './components/Layout';
+import { driftedTestId } from '../server/demo-drift';
+import { Layout } from '../components/Layout';
 import {
   searchCatalog,
   type CatalogCategory,
   type CatalogItem,
   type CatalogStatus,
-} from './data/catalog';
-import { describeEligibilityReason, evaluateEligibility, findMember } from './data/members';
-import { paginate, totalPages } from './data/pagination';
+} from '../data/catalog';
+import { describeEligibilityReason, evaluateEligibility, findMember } from '../data/members';
+import { paginate, totalPages } from '../data/pagination';
 
 const PAGE_SIZE = 10;
 const LOAN_PERIOD_DAYS = 21;

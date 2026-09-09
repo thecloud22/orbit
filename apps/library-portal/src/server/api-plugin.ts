@@ -1,6 +1,6 @@
 import type { Connect, Plugin } from 'vite';
 
-import { CATALOG } from './data/catalog';
+import { CATALOG } from '../data/catalog';
 
 /**
  * A small read-only JSON API over the same catalog the pages render.

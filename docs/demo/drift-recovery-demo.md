@@ -19,7 +19,7 @@ http://localhost:3020/catalog?drift=1  catalog-search-submit   (drifted)
 Only the attribute moves. The role stays `button`, the accessible name stays "Search", the
 visible label stays "Search" — which is what makes a confident, deterministic diagnosis possible
 at all. There is nothing to revert: the portal in this repository is never a drifted portal.
-The switch lives in `apps/library-portal/src/demo-drift.ts` and is pinned by three tests in
+The switch lives in `apps/library-portal/src/server/demo-drift.ts` and is pinned by three tests in
 `apps/library-portal/tests/library.spec.ts`.
 
 ## Run it

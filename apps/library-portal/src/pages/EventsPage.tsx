@@ -1,9 +1,9 @@
 import { CalendarDays, Clock, MapPin, UserPlus, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 
-import { Layout } from './components/Layout';
-import { EVENTS, searchEventsByDate, type EventCategory, type LibraryEvent } from './data/events';
-import { describeEligibilityReason, evaluateEligibility, findMember } from './data/members';
+import { Layout } from '../components/Layout';
+import { EVENTS, searchEventsByDate, type EventCategory, type LibraryEvent } from '../data/events';
+import { describeEligibilityReason, evaluateEligibility, findMember } from '../data/members';
 
 type CategoryFilter = 'All' | EventCategory;
 

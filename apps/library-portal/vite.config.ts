@@ -2,7 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
-import { libraryApiPlugin } from './src/api-plugin';
+import { libraryApiPlugin } from './src/server/api-plugin';
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), libraryApiPlugin()],
