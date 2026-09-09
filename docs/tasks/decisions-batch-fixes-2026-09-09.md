@@ -348,3 +348,63 @@ requests produced two different run ids; after it, the same experiment
 produced one run id both times, that run executed and succeeded exactly
 once, and a request with different inputs still dispatched its own separate
 run.
+
+---
+
+## 8. A named, typed error for a second sitting on an already-open session
+
+**The gap, worse than it looked.** `binding-sessions.ts` and
+`walkthrough-sessions.ts` both already refused a second concurrent session
+on the same workflow with a 409 -- but neither went through `ApiError`. Both
+sent a bare `reply.code(409).send({data: {sessionId}})`: a success-shaped
+envelope on an error status, with no `error` field at all. `api-client.ts`'s
+own header comment states the contract this violates: "Every non-2xx
+response is turned into an `ApiRequestError` carrying the server's typed
+code." `toApiError()` looks for `body.error`, finds nothing, and falls back
+to a generic `"The request failed with status 409."` -- so the specific
+detail these two routes existed to carry (which session id is already open)
+was silently discarded on every single refusal since either route shipped.
+
+The client-side damage was real but partly masked: `describeBindingSessionFailure`
+and `describeWalkthroughFailure` both matched on bare `error.status === 409`
+rather than reading anything from the body, so the existing UI copy
+("This workflow already has a binding session open") kept working by
+accident. What was lost was the session id itself, and the fragility of
+keying behavior off a status code with no corresponding *reason* -- any
+other 409 this route ever grew for an unrelated cause would have been
+silently mis-classified as the same conflict.
+
+**Decision.** Added `SESSION_ALREADY_OPEN` to the error taxonomy and made
+both routes `throw new ApiError({code: 'SESSION_ALREADY_OPEN', statusCode: 409, ...})`
+with the existing session id carried in `details` (`ErrorDetail` is a closed
+`{field, message}` shape, so it rides as `{field: 'sessionId', message: sessionId}`
+rather than a bespoke payload). Updated both client view models to key off
+`error.code` instead of `error.status`, and added `existingSessionId` to
+both `BindingFailure` and `WalkthroughFailure` so the data that was being
+silently dropped is now actually available to a caller -- not wired into a
+"resume that session" affordance, which would be a separate, larger feature
+this task did not ask for.
+
+**Recording sessions excluded, deliberately, after checking.** The task
+named "binding/walkthrough/recording" together, but recording sessions have
+no analogous concept: each one creates a brand-new workflow with no existing
+document to collide on, so there is no shared target for two sessions to
+race over the way binding/walkthrough sessions do. Confirmed by reading
+`session-registry.db.test.ts`: several existing tests deliberately open two
+or more concurrent recording sessions in the same test and assert both
+succeed (e.g. "closes every browser when the process shuts down" starts two
+sessions back-to-back with no refusal expected). Forcing a "one at a time"
+rule here would not be filling a gap -- it would be reverting tested,
+intentional behavior.
+
+**Verification.** Both route test files had a test hard-coded to the old
+`response.json().data.sessionId` shape; both updated to assert
+`error.code === 'SESSION_ALREADY_OPEN'` and the session id in `error.details`
+instead. Added a negative test to each client view model confirming an
+unrelated 409 (no `code`) is *not* misread as a session conflict, mutation-
+verified by reverting the code-based check and confirming it fails. Live-
+verified end-to-end against the real running API: opened a binding session,
+confirmed a second attempt for the same document returns the new typed
+`{error: {code: 'SESSION_ALREADY_OPEN', details: [{field: 'sessionId', ...}]}}`
+envelope carrying the real open session's id, then cancelled it and
+confirmed a fresh session opens normally afterward.

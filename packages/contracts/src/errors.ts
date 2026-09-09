@@ -18,6 +18,17 @@ export const errorCodeSchema = z.enum([
    * says 404) but wrong in the body a caller might branch on.
    */
   'NOT_FOUND',
+  /**
+   * A second sitting attempted on a binding or walkthrough session that is
+   * already open for the same workflow. Two browsers on one workflow would
+   * race each other's captures with no way to tell which window a person was
+   * looking at, so the second attempt is refused rather than silently reused.
+   * Added after the refusal was found reporting a bare `{data: {sessionId}}`
+   * body on a 409 with no `error` envelope at all -- a caller's typed-error
+   * parser saw nothing to parse and fell back to a generic message, silently
+   * losing the very session id the response existed to carry.
+   */
+  'SESSION_ALREADY_OPEN',
   'BROWSER_TIMEOUT',
   'LOCATOR_NOT_FOUND',
   'ASSERTION_FAILED',

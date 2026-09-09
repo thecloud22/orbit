@@ -145,7 +145,11 @@ describe('POST /v1/walkthrough-sessions', () => {
     });
 
     expect(response.statusCode).toBe(409);
-    expect(response.json().data.sessionId).toBe('walk_existing');
+    expect(response.json().error.code).toBe('SESSION_ALREADY_OPEN');
+    expect(response.json().error.details).toContainEqual({
+      field: 'sessionId',
+      message: 'walk_existing',
+    });
 
     await app.close();
   });

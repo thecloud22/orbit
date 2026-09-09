@@ -266,12 +266,29 @@ describe('describeBindingSessionFailure', () => {
   });
 
   it('names the window already open when a second session is refused', () => {
+    // Keyed on the code, not the bare status: SESSION_ALREADY_OPEN is what the
+    // server actually sends, and this must not fire for some other, unrelated
+    // 409 that happens to share the status line.
     const failure = describeBindingSessionFailure(
-      new ApiRequestError({ status: 409, message: 'conflict' }),
+      new ApiRequestError({
+        status: 409,
+        code: 'SESSION_ALREADY_OPEN',
+        message: 'A binding session is already open for this workflow.',
+        details: [{ field: 'sessionId', message: 'bind_existing' }],
+      }),
     );
 
     expect(failure.kind).toBe('in_use');
     expect(failure.message).toContain('already open');
+    expect(failure.existingSessionId).toBe('bind_existing');
+  });
+
+  it('does not treat an unrelated 409 as a session conflict', () => {
+    const failure = describeBindingSessionFailure(
+      new ApiRequestError({ status: 409, message: 'Some other conflict.' }),
+    );
+
+    expect(failure.kind).not.toBe('in_use');
   });
 });
 

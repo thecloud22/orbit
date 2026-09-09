@@ -197,6 +197,8 @@ export interface BindingFailure {
   /** True when the browser is still open, so the reader knows not to start over. */
   readonly sessionSurvived: boolean;
   readonly issues: readonly string[];
+  /** The session already open, for `kind === 'in_use'`. `null` otherwise. */
+  readonly existingSessionId: string | null;
 }
 
 /**
@@ -213,13 +215,15 @@ export function describeBindingSessionFailure(error: ApiRequestError): BindingFa
       message: error.message,
       sessionSurvived: false,
       issues: [],
+      existingSessionId: null,
     };
   }
 
   if (error.status === 410) {
-    // Distinct from 409: 409 means a window is still open for this workflow,
-    // 410 means the one that was open has been closed. Opposite problems, and
-    // telling someone to close a window they already closed would be absurd.
+    // Distinct from SESSION_ALREADY_OPEN: that means a window is still open
+    // for this workflow, this means the one that was open has been closed.
+    // Opposite problems, and telling someone to close a window they already
+    // closed would be absurd.
     return {
       kind: 'gone',
       title: 'The recording browser was closed',
@@ -227,10 +231,11 @@ export function describeBindingSessionFailure(error: ApiRequestError): BindingFa
         'That window is gone, so this session cannot continue. Start binding again to open a new one.',
       sessionSurvived: false,
       issues: [],
+      existingSessionId: null,
     };
   }
 
-  if (error.status === 409) {
+  if (error.code === 'SESSION_ALREADY_OPEN') {
     return {
       kind: 'in_use',
       title: 'This workflow already has a binding session open',
@@ -238,6 +243,8 @@ export function describeBindingSessionFailure(error: ApiRequestError): BindingFa
         'Finish or discard the browser window already open for this workflow before starting another.',
       sessionSurvived: true,
       issues: [],
+      existingSessionId:
+        error.details.find((detail) => detail.field === 'sessionId')?.message ?? null,
     };
   }
 
@@ -248,6 +255,7 @@ export function describeBindingSessionFailure(error: ApiRequestError): BindingFa
       message: error.message,
       sessionSurvived: true,
       issues: error.details.map((detail) => detail.message),
+      existingSessionId: null,
     };
   }
 
@@ -257,6 +265,7 @@ export function describeBindingSessionFailure(error: ApiRequestError): BindingFa
     message: error.message,
     sessionSurvived: true,
     issues: error.details.map((detail) => detail.message),
+    existingSessionId: null,
   };
 }
 

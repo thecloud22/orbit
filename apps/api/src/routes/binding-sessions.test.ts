@@ -167,7 +167,11 @@ describe('POST /v1/binding-sessions', () => {
     });
 
     expect(response.statusCode).toBe(409);
-    expect(response.json().data.sessionId).toBe('bind_existing');
+    expect(response.json().error.code).toBe('SESSION_ALREADY_OPEN');
+    expect(response.json().error.details).toContainEqual({
+      field: 'sessionId',
+      message: 'bind_existing',
+    });
 
     await app.close();
   });

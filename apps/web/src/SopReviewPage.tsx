@@ -296,6 +296,7 @@ export function SopReviewPage({
         // that does not exist.
         sessionSurvived: false,
         issues: [],
+        existingSessionId: described.existingSessionId,
       });
     } finally {
       setIsStartingWalkthrough(false);

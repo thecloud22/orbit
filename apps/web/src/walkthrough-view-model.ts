@@ -185,6 +185,8 @@ export interface WalkthroughFailure {
   readonly kind: 'gone' | 'conflict' | 'refused' | 'unknown';
   readonly title: string;
   readonly message: string;
+  /** The session already open, for `kind === 'conflict'`. `null` otherwise. */
+  readonly existingSessionId: string | null;
 }
 
 /**
@@ -201,6 +203,7 @@ export function describeWalkthroughFailure(error: ApiRequestError): WalkthroughF
       kind: 'gone',
       title: 'That browser window is gone',
       message: error.message,
+      existingSessionId: null,
     };
   }
 
@@ -210,26 +213,35 @@ export function describeWalkthroughFailure(error: ApiRequestError): WalkthroughF
       title: 'This walkthrough is no longer open',
       message:
         'Orbit stopped holding it — the API restarted, or it sat untouched too long. Anything it already proposed is still saved against the workflow.',
+      existingSessionId: null,
     };
   }
 
-  if (error.status === 409) {
+  if (error.code === 'SESSION_ALREADY_OPEN') {
     return {
       kind: 'conflict',
       title: 'A walkthrough is already open for this workflow',
       message:
         'Finish or cancel the one that is open before starting another. Two browsers on one workflow would race each other.',
+      existingSessionId:
+        error.details.find((detail) => detail.field === 'sessionId')?.message ?? null,
     };
   }
 
   if (error.status === 400 || error.status === 422) {
-    return { kind: 'refused', title: 'That could not be done', message: error.message };
+    return {
+      kind: 'refused',
+      title: 'That could not be done',
+      message: error.message,
+      existingSessionId: null,
+    };
   }
 
   return {
     kind: 'unknown',
     title: 'The walkthrough could not be reached',
     message: error.message,
+    existingSessionId: null,
   };
 }
 

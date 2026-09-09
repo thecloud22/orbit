@@ -91,12 +91,16 @@ export function registerWalkthroughSessionRoutes(app: FastifyInstance, context: 
         case 'session_exists':
           // 409 rather than silently reusing it: two browsers open on one
           // workflow would race each other's captures with no way to tell which
-          // window a person was looking at.
-          return reply.code(409).send({
-            data: { sessionId: result.sessionId },
-          } satisfies DataEnvelope<{
-            readonly sessionId: string;
-          }>);
+          // window a person was looking at. A typed error rather than a bare
+          // `{data: {sessionId}}` body -- the latter has no `error` envelope
+          // for a caller's typed-error parser to find, so the session id it
+          // carried was silently lost on every prior refusal.
+          throw new ApiError({
+            code: 'SESSION_ALREADY_OPEN',
+            statusCode: 409,
+            message: 'A walkthrough session is already open for this workflow.',
+            details: [{ field: 'sessionId', message: result.sessionId }],
+          });
       }
     }
 

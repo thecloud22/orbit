@@ -223,11 +223,28 @@ describe('what went wrong', () => {
   });
 
   it('distinguishes a second walkthrough from a failure', () => {
+    // Keyed on the code, not the bare status: SESSION_ALREADY_OPEN is what the
+    // server actually sends, and this must not fire for some other, unrelated
+    // 409 that happens to share the status line.
     const failure = describeWalkthroughFailure(
-      new ApiRequestError({ status: 409, message: 'Already open.' }),
+      new ApiRequestError({
+        status: 409,
+        code: 'SESSION_ALREADY_OPEN',
+        message: 'Already open.',
+        details: [{ field: 'sessionId', message: 'walk_existing' }],
+      }),
     );
 
     expect(failure.kind).toBe('conflict');
+    expect(failure.existingSessionId).toBe('walk_existing');
+  });
+
+  it('does not treat an unrelated 409 as a session conflict', () => {
+    const failure = describeWalkthroughFailure(
+      new ApiRequestError({ status: 409, message: 'Some other conflict.' }),
+    );
+
+    expect(failure.kind).not.toBe('conflict');
   });
 
   it('passes a refusal through in the server’s own words', () => {
