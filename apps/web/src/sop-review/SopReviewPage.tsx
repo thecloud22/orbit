@@ -49,6 +49,7 @@ import {
   describeReviewFailure,
   describeVariable,
   issuesWithoutRecovery,
+  pruneEmptyFields,
   publishBlockedReason,
   reviewLead,
   reviewPhase,
@@ -102,6 +103,19 @@ export function SopReviewPage({
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   /** The position an "Add a step" form is open at, or null when none is. */
   const [insertingAt, setInsertingAt] = useState<number | null>(null);
+  /** The step currently being dragged onto a section, for drop-target styling. */
+  const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
+  /** A name typed into "New section" before any step has been dropped onto it. */
+  const [newSectionName, setNewSectionName] = useState('');
+  /**
+   * Section names created but not yet holding a step.
+   *
+   * A group only exists today as a label on a step, so a brand-new section has
+   * nowhere to live until the first step is dropped onto it. Once that happens
+   * the name is derived from the steps themselves like every other section, and
+   * is dropped from here to avoid saying the same section twice.
+   */
+  const [pendingSections, setPendingSections] = useState<readonly string[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isPublishingRecording, setIsPublishingRecording] = useState(false);
   const [publishRecordingFailure, setPublishRecordingFailure] = useState<CompileFailure | null>(
@@ -427,6 +441,29 @@ export function SopReviewPage({
   // exactly.
   const availableVariables = [...new Set(review.steps.flatMap((step) => step.produces))];
 
+  // Sections a step can be dragged onto: every group already in use, in the
+  // order it first appears, followed by one created but still empty.
+  const usedSections = [
+    ...new Set(review.steps.map((step) => step.group).filter((group) => group !== null)),
+  ];
+  const knownSections = [
+    ...usedSections,
+    ...pendingSections.filter((name) => !usedSections.includes(name)),
+  ];
+
+  const { steps } = review;
+
+  function moveStepToSection(stepId: string, section: string | null) {
+    const target = steps.find((step) => step.id === stepId);
+    if (!target) {
+      return;
+    }
+
+    const edited = pruneEmptyFields({ ...target.step, group: section ?? '' });
+    void act(() => editSopStep(revisionId, stepId, edited, undefined));
+    setPendingSections((current) => current.filter((name) => name !== section));
+  }
+
   /**
    * Published, but this revision is not what was published.
    *
@@ -529,6 +566,78 @@ export function SopReviewPage({
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="text-sm font-semibold text-slate-900">Steps</h3>
+
+        {review.editable && (
+          <div className="mt-2 flex flex-wrap items-center gap-2" data-testid="sop-review-sections">
+            <span className="text-xs text-slate-500">Sections — drag a step onto one:</span>
+            {knownSections.map((name) => (
+              <div
+                className={`rounded-md border border-dashed px-2 py-1 text-xs ${
+                  draggedStepId !== null
+                    ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                    : 'border-slate-300 text-slate-600'
+                }`}
+                data-testid={`sop-section-drop-${name}`}
+                key={name}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const stepId = event.dataTransfer.getData('text/plain');
+                  if (stepId) {
+                    moveStepToSection(stepId, name);
+                  }
+                }}
+              >
+                {name}
+              </div>
+            ))}
+            <div
+              className={`rounded-md border border-dashed px-2 py-1 text-xs ${
+                draggedStepId !== null
+                  ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                  : 'border-slate-300 text-slate-500'
+              }`}
+              data-testid="sop-section-drop-none"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                const stepId = event.dataTransfer.getData('text/plain');
+                if (stepId) {
+                  moveStepToSection(stepId, null);
+                }
+              }}
+            >
+              No section
+            </div>
+            <form
+              className="flex items-center gap-1"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const name = newSectionName.trim();
+                if (name !== '' && !knownSections.includes(name)) {
+                  setPendingSections((current) => [...current, name]);
+                }
+                setNewSectionName('');
+              }}
+            >
+              <input
+                className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                data-testid="sop-new-section-name"
+                onChange={(event) => setNewSectionName(event.target.value)}
+                placeholder="New section name"
+                value={newSectionName}
+              />
+              <button
+                className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                data-testid="sop-new-section-create"
+                type="submit"
+              >
+                Create
+              </button>
+            </form>
+          </div>
+        )}
+
         <ol className="mt-2 flex flex-col gap-2" data-testid="sop-review-steps">
           {stepsWithHeadings(review.steps).map(({ step, headingBefore }, position) => (
             <Fragment key={step.id}>
@@ -542,8 +651,16 @@ export function SopReviewPage({
                 </li>
               )}
               <li
-                className="rounded-md border border-slate-200 p-3 transition-colors hover:border-slate-300"
+                className={`rounded-md border p-3 transition-colors hover:border-slate-300 ${
+                  draggedStepId === step.id ? 'border-indigo-300 opacity-50' : 'border-slate-200'
+                }`}
                 data-testid="sop-review-step"
+                draggable={review.editable}
+                onDragEnd={() => setDraggedStepId(null)}
+                onDragStart={(event) => {
+                  event.dataTransfer.setData('text/plain', step.id);
+                  setDraggedStepId(step.id);
+                }}
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
