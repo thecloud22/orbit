@@ -26,6 +26,8 @@ import {
   type SopStepDraft,
 } from '@orbit/sop-graph';
 
+import { defaultValueSourceFor } from './binding-service';
+
 /**
  * Reviewing a revision: reading it, editing it, reordering it, answering what
  * the model asked, and moving it through its lifecycle.
@@ -387,14 +389,16 @@ function toClarifications(
  * Whether an edit to a `fill` step changed nothing but its value.
  *
  * Deliberately narrow, and deliberately not generalised to other step kinds.
- * A `fill` step's binding names an element (`fieldHint`); its `value` is
- * resolved at run time -- a literal, or `${inputs.x}`/`${variables.x}` -- and
- * says nothing about which element that is. Hashing the whole step for
- * staleness is otherwise correct (`stepChecksum`'s own contract, unchanged
- * here), but it means turning a recorded literal into a declared input --
- * the very capability sub-phase 2.16 added -- always looked identical to
- * changing which element the step acts on, and always demanded the same
- * fresh browser demonstration to fix.
+ * A `fill` step's binding names an element (`fieldHint`) *and* carries a
+ * `valueSource` derived from `value` at binding time (`defaultValueSourceFor`)
+ * -- so a value-only edit does not leave the binding untouched, it leaves the
+ * *element* untouched. The element is what a human had to point a browser at
+ * to prove; the value source is a pure function of text already sitting in
+ * the graph. Hashing the whole step for staleness is otherwise correct
+ * (`stepChecksum`'s own contract, unchanged here), but it means turning a
+ * recorded literal into a declared input -- the very capability sub-phase
+ * 2.16 added -- always looked identical to changing which element the step
+ * acts on, and always demanded the same fresh browser demonstration to fix.
  *
  * `click` and `extract` steps have no field like this to exclude, and a
  * `decision` binding covers several elements at once rather than one; both
@@ -558,15 +562,30 @@ export function createSopRevisionService(options: SopRevisionServiceOptions): So
           // binding already carries was given against exactly the content
           // this edit is about to replace, so nothing is being inferred about
           // a state nobody actually looked at.
+          // `valueSource` is not element metadata -- it is what the runtime
+          // actually types into the field, derived from `value` at binding
+          // time (`defaultValueSourceFor`). Carrying it forward unchanged
+          // would keep executing the *old* value (e.g. a recorded literal)
+          // forever, silently, even though the graph now says something
+          // else. Only `target` -- the element a human actually pointed a
+          // browser at -- is untouched by this edit and safe to carry as-is.
+          const nextValueSource =
+            current !== null && current.binding.body.kind === 'fill'
+              ? defaultValueSourceFor(input.step)
+              : null;
+
           if (
             current !== null &&
             current.state === 'approved' &&
-            current.binding.stepSha256 === stepChecksum(previousStep)
+            current.binding.body.kind === 'fill' &&
+            current.binding.stepSha256 === stepChecksum(previousStep) &&
+            nextValueSource !== null
           ) {
             const carried = await repositories.executionBindings.create({
               documentId: revision.documentId,
               binding: {
                 ...current.binding,
+                body: { ...current.binding.body, valueSource: nextValueSource },
                 stepSha256: stepChecksum(input.step),
                 capturedAgainstRevisionId: nextRevision.id,
               },
@@ -576,7 +595,8 @@ export function createSopRevisionService(options: SopRevisionServiceOptions): So
             await repositories.executionBindings.submitForReview(carried.id);
             await repositories.executionBindings.approve(carried.id, {
               reviewNote:
-                'Carried forward automatically: only the value changed, and a value is resolved at run time, independent of which element this binding names.',
+                'Carried forward automatically: only the value changed. The element is unchanged from ' +
+                'the approved demonstration; the value source was recomputed from the new value.',
             });
           }
         }

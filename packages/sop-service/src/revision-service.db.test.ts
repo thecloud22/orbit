@@ -298,6 +298,53 @@ describe('SOP revision review', () => {
             stepSha256: stepChecksum({ ...step, value: 'a different literal value' } as SopStep),
           }),
         ).toBe(true);
+
+        // The bug this guards against: carrying `body` forward unchanged
+        // would leave `valueSource` at the original binding's `placeholder`
+        // literal forever, so the compiled agent would keep typing
+        // `placeholder` at run time no matter what the graph now says.
+        expect(current?.binding.body.kind).toBe('fill');
+        expect(
+          current?.binding.body.kind === 'fill' ? current.binding.body.valueSource : null,
+        ).toEqual({ kind: 'literal', value: 'a different literal value' });
+      });
+
+      it('recomputes the value source when a recorded literal becomes a declared input reference', async () => {
+        const { step } = await bindLoginId();
+
+        const declared = await service().declareInput({
+          revisionId: revision.id,
+          id: 'loginId',
+          label: 'Login ID',
+          required: true,
+        });
+        expect(declared.ok).toBe(true);
+        if (!declared.ok) return;
+
+        const result = await service().editStep({
+          revisionId: declared.revision.id,
+          stepId: step.id,
+          step: { ...step, value: '${inputs.loginId}' } as SopStep,
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const current = await createRepositories(getDatabase().db).executionBindings.findCurrent(
+          revision.documentId,
+          step.id,
+        );
+
+        // This is the exact scenario that reached a real run: a value edited
+        // from a recorded literal to `${inputs.x}` must change what the
+        // runtime types, not just satisfy the staleness check. Before this
+        // fix, `valueSource` stayed `{ kind: 'literal', value: 'placeholder' }`
+        // and a published agent kept using the stale recorded value forever.
+        expect(current?.state).toBe('approved');
+        expect(current?.binding.body.kind).toBe('fill');
+        expect(
+          current?.binding.body.kind === 'fill' ? current.binding.body.valueSource : null,
+        ).toEqual({ kind: 'sop_variable', name: 'loginId' });
       });
 
       it('still requires a fresh binding when the field being filled changes, not only the value', async () => {
