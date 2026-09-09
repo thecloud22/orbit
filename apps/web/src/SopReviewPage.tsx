@@ -385,7 +385,17 @@ export function SopReviewPage({
     review.publication.agentVersionId !== null &&
     review.publication.compiledFromRevisionId !== review.revisionId;
 
-  const leadsWithPublish = phase === 'ready' || hasUnpublishedRevision;
+  // `ready` means "never published, fully bound" by construction --
+  // `reviewPhase` returns `published` first whenever an agent version exists,
+  // so there is no other case this phase covers. Recording binds every step
+  // the instant it finishes, before a person has looked at what was captured,
+  // so a document could read `ready` from the moment it lands here -- while
+  // someone is still adding inputs or fixing a step's value. Leading the page
+  // with "Ready to publish" at that point reads as a push to finish before
+  // they have decided they are. `hasUnpublishedRevision` is the opposite case
+  // and keeps leading: a document that already went through one full publish
+  // cycle and has since diverged genuinely does have one clear next action.
+  const leadsWithPublish = hasUnpublishedRevision;
   const collapsesAuthoring = phase === 'published' && !hasUnpublishedRevision;
 
   const publishPanel = (
@@ -663,37 +673,47 @@ export function SopReviewPage({
 
       {failure !== null && <FailureNotice failure={failure} />}
 
-      <ReviewLeadCard
-        lead={lead}
-        onOpenAgent={
-          review.publication.agentVersionId === null
-            ? undefined
-            : () => {
-                onOpenAgent(review.publication.agentVersionId!);
-              }
-        }
-        revise={
-          // Offered only where there is something to fork. An editable revision
-          // is already the thing Revise would create, and the server refuses it
-          // as `already_editable` for exactly that reason.
-          review.editable
-            ? undefined
-            : {
-                busy,
-                confirmation: reviseConfirmation(review),
-                isConfirming: isConfirmingRevise,
-                onCancel: () => setIsConfirmingRevise(false),
-                onConfirm: () => {
-                  setIsConfirmingRevise(false);
-                  // Opened because somebody asked for it, which is the one
-                  // thing that overrides "collapsed by default".
-                  setAreAuthoringSurfacesOpen(true);
-                  void act(() => reviseSopDocument(documentId));
-                },
-                onStart: () => setIsConfirmingRevise(true),
-              }
-        }
-      />
+      {/*
+        Skipped for `ready`, not just demoted: `onOpenAgent` and `revise` are
+        both always undefined in that phase anyway (neither an agent version
+        nor a non-editable revision exists yet), so the card would carry
+        nothing but the "Ready to publish" title and body this phase is being
+        kept from leading with. The plain title and revision state in the
+        header above already says what phase this is.
+      */}
+      {phase !== 'ready' && (
+        <ReviewLeadCard
+          lead={lead}
+          onOpenAgent={
+            review.publication.agentVersionId === null
+              ? undefined
+              : () => {
+                  onOpenAgent(review.publication.agentVersionId!);
+                }
+          }
+          revise={
+            // Offered only where there is something to fork. An editable
+            // revision is already the thing Revise would create, and the
+            // server refuses it as `already_editable` for exactly that reason.
+            review.editable
+              ? undefined
+              : {
+                  busy,
+                  confirmation: reviseConfirmation(review),
+                  isConfirming: isConfirmingRevise,
+                  onCancel: () => setIsConfirmingRevise(false),
+                  onConfirm: () => {
+                    setIsConfirmingRevise(false);
+                    // Opened because somebody asked for it, which is the one
+                    // thing that overrides "collapsed by default".
+                    setAreAuthoringSurfacesOpen(true);
+                    void act(() => reviseSopDocument(documentId));
+                  },
+                  onStart: () => setIsConfirmingRevise(true),
+                }
+          }
+        />
+      )}
 
       {leadsWithPublish && publishPanel}
 
