@@ -18,7 +18,16 @@ export type PublicationStage =
   /** Compiled, but not approved, so it cannot be published. */
   | { readonly kind: 'awaiting_approval'; readonly candidateId: string }
   /** Compiled and checked but never approvable — needs a secret Orbit cannot supply. */
-  | { readonly kind: 'cannot_validate'; readonly candidateId: string }
+  | {
+      readonly kind: 'cannot_validate';
+      readonly candidateId: string;
+      /**
+       * The specific reason, naming which input -- e.g. `password` -- rather
+       * than the generic sandbox-state fact. `null` on the rare candidate
+       * that reached this state with nothing recorded about why.
+       */
+      readonly note: string | null;
+    }
   /**
    * Rejected by a reviewer's own decision, most often from `cannot_validate`.
    * Recompiling still supersedes it and starts a fresh candidate, which is
@@ -75,7 +84,11 @@ export function publicationStage(
   }
 
   if (publication.sandboxState === 'cannot_validate') {
-    return { kind: 'cannot_validate', candidateId: publication.candidateId };
+    return {
+      kind: 'cannot_validate',
+      candidateId: publication.candidateId,
+      note: publication.sandboxNote,
+    };
   }
 
   return publication.candidateState === 'approved'
@@ -91,7 +104,14 @@ export function publicationSummary(stage: PublicationStage): string {
     case 'awaiting_approval':
       return 'An agent has been compiled from this workflow and is waiting for technical approval.';
     case 'cannot_validate':
-      return 'This workflow needs a sign-in Orbit cannot perform yet, so it cannot be approved or published.';
+      // The specific reason `assessSandboxReadiness` computed at compile time
+      // -- naming which input Orbit cannot supply -- when the candidate
+      // recorded one. Falls back to the generic fact only for the rare
+      // candidate that reached this state with nothing recorded about why.
+      return (
+        stage.note ??
+        'This workflow needs a sign-in Orbit cannot perform yet, so it cannot be approved or published.'
+      );
     case 'rejected':
       return 'This candidate was rejected. Publishing again compiles a fresh one.';
     case 'publishable':

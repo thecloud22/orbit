@@ -116,6 +116,14 @@ export interface PublicationStatus {
   readonly compiledFromRevisionId: string | null;
   /** Whether that candidate could be checked; `cannot_validate` blocks approval. */
   readonly sandboxState: string | null;
+  /**
+   * The specific reason a `cannot_validate` candidate could not be checked --
+   * e.g. which secret input Orbit has no way to supply -- rather than the
+   * generic fact of the sandbox state alone. Set by `assessSandboxReadiness`
+   * at compile time; `null` for a candidate that was assessed as `ready` or
+   * has not been assessed at all.
+   */
+  readonly sandboxNote: string | null;
   /** Set once the candidate has been published. */
   readonly agentVersionId: string | null;
   readonly agentVersion: string | null;
@@ -379,6 +387,7 @@ async function publicationStatusFor(
       candidateState: null,
       compiledFromRevisionId: null,
       sandboxState: null,
+      sandboxNote: null,
       agentVersionId: null,
       agentVersion: null,
     };
@@ -393,6 +402,7 @@ async function publicationStatusFor(
     candidateState: candidate.state,
     compiledFromRevisionId: candidate.revisionId,
     sandboxState: candidate.sandboxState,
+    sandboxNote: candidate.sandboxNote,
     agentVersionId: published?.id ?? null,
     agentVersion: published?.version ?? null,
   };

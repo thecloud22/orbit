@@ -315,6 +315,12 @@ export interface SopPublicationView {
    */
   readonly compiledFromRevisionId: string | null;
   readonly sandboxState: string | null;
+  /**
+   * The specific reason a `cannot_validate` candidate could not be checked
+   * (e.g. which secret input Orbit cannot supply), so a reviewer sees more
+   * than the generic sandbox-state fact. `null` when there is nothing to say.
+   */
+  readonly sandboxNote: string | null;
   readonly agentVersionId: string | null;
   readonly agentVersion: string | null;
 }

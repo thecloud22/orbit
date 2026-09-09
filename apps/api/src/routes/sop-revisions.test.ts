@@ -66,6 +66,7 @@ function review(overrides: Partial<RevisionReview> = {}): RevisionReview {
       candidateState: null,
       compiledFromRevisionId: null,
       sandboxState: null,
+      sandboxNote: null,
       agentVersionId: null,
       agentVersion: null,
     },

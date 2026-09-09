@@ -16,6 +16,7 @@ function publication(overrides: Partial<SopPublicationView> = {}): SopPublicatio
     candidateState: null,
     compiledFromRevisionId: null,
     sandboxState: null,
+    sandboxNote: null,
     agentVersionId: null,
     agentVersion: null,
     ...overrides,
@@ -48,6 +49,27 @@ describe('publicationStage', () => {
 
     expect(stage.kind).toBe('cannot_validate');
     expect(publicationSummary(stage)).toContain('sign-in');
+  });
+
+  it('names the specific input when the candidate recorded why, instead of the generic story', () => {
+    // The real gap this closes: assessSandboxReadiness computes exactly which
+    // input blocks validation and why, and it used to be discarded between
+    // the compiler and the panel -- every recorded sign-in read as the same
+    // generic "needs a sign-in" sentence regardless of which secret it was.
+    const stage = publicationStage(
+      publication({
+        candidateId: 'aircand_1',
+        candidateState: 'compiled',
+        sandboxState: 'cannot_validate',
+        sandboxNote:
+          'This workflow needs "password", which Orbit cannot supply yet. It was not tried ' +
+          'against a real page, because doing so would mean opening a browser on a sign-in ' +
+          'form with nothing to enter.',
+      }),
+    );
+
+    expect(stage.kind).toBe('cannot_validate');
+    expect(publicationSummary(stage)).toContain('"password"');
   });
 
   it('is rejected once a reviewer closes out a candidate, even one that could be checked', () => {

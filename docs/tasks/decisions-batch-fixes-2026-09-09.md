@@ -248,3 +248,48 @@ Live-verified against the real running app via Playwright: of the app's 15
 real documents, exactly the two "Lib-004" rows and two "Lib-003" rows shown
 each carried a distinct `#XXXXXX` tag, and none of the eleven uniquely-titled
 rows did.
+
+---
+
+## 6. Name the specific refusal for a recorded sign-in's secret input
+
+**The gap.** `assessSandboxReadiness` (`packages/agent-ir-compiler/src/sandbox.ts`)
+already computes exactly the right thing: which secret input(s) block
+validation, named individually, in a real sentence
+(`This workflow needs "password", which Orbit cannot supply yet...`). It is
+stored verbatim as `sandboxNote` on the candidate record
+(`candidate-service.ts` already writes it). None of that ever reached a
+person: `SopPublicationView` — what `SopReviewPage`/`SopPublishPanel`
+actually read — had no `sandboxNote` field at all, so `cannot_validate`
+always rendered the same generic, deliberately-vague sentence Studio's own
+copy already used, regardless of which input, or how many, actually blocked
+it.
+
+**Decision.** Thread the existing field through rather than inventing a new
+mechanism: added `sandboxNote` to `PublicationStatus`
+(`revision-service.ts`, read from `candidate.sandboxNote` already available
+in `publicationStatusFor`), to `SopPublicationView` (`apps/api/src/views.ts`,
+passed straight through since the two shapes are structurally identical),
+and to `PublicationStage`'s `cannot_validate` variant
+(`publication-view-model.ts`) as a `note: string | null`. `publicationSummary`
+now prefers `stage.note` and falls back to the old generic sentence only for
+a candidate that genuinely has nothing recorded (defensive, not expected in
+practice now that `compileDocument` always sets it on refusal).
+
+No new refusal *reason* was needed — `assessSandboxReadiness` already names
+one (`secret_unresolvable`) with the specific message; this was purely a
+plumbing gap between where that message was computed and where a person
+reads it, the same class of gap `declareOutput`'s `SopReviewView.outputs`
+closed a few items above.
+
+**Verification.** New unit test in `publication-view-model.test.ts` (the
+`cannot_validate` stage surfaces a recorded note verbatim, naming the
+specific input), and a new db-integration test in
+`candidate-service.db.test.ts` using the existing `SIGN_IN` recording
+fixture, asserting `SopRevisionService.reviewDocument()`'s
+`publication.sandboxNote` matches `candidate.sandboxNote` exactly — this is
+the real cross-service wiring a person's UI actually depends on, not just
+the view-model's handling of an already-correct input. Both mutation-
+verified: reverting the view-model's `stage.note ??` fallback, and
+separately reverting `publicationStatusFor`'s new field, each broke exactly
+the test written for it.

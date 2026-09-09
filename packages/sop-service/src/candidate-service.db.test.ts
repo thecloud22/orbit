@@ -288,6 +288,25 @@ describe('the separate technical approval', () => {
     expect(result.reason === 'not_ready' && result.sandboxState).toBe('cannot_validate');
   });
 
+  it('carries the specific refusal through to what the review page reads', async () => {
+    // The gap this closes: assessSandboxReadiness computes exactly which
+    // input blocks validation, and it used to stop at the candidate row --
+    // PublicationStatus (what SopReviewPage actually reads) had no field for
+    // it, so a reviewer only ever saw the generic "needs a sign-in" fact
+    // regardless of which secret it was.
+    const { candidate } = await compiled(SIGN_IN);
+
+    const review = await createSopRevisionService({ database: getDatabase().db }).reviewDocument(
+      candidate.documentId,
+    );
+
+    expect(review.ok).toBe(true);
+    if (!review.ok) return;
+
+    expect(review.review.publication.sandboxState).toBe('cannot_validate');
+    expect(review.review.publication.sandboxNote).toBe(candidate.sandboxNote);
+  });
+
   it('lets a reviewer reject what nobody could check', async () => {
     // Rejection has no readiness precondition: refusing something unverifiable
     // is exactly what a reviewer should be able to do.
