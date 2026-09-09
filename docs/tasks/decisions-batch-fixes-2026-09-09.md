@@ -293,3 +293,58 @@ the view-model's handling of an already-correct input. Both mutation-
 verified: reverting the view-model's `stage.note ??` fallback, and
 separately reverting `publicationStatusFor`'s new field, each broke exactly
 the test written for it.
+
+---
+
+## 7. Server-side duplicate-dispatch suppression on run creation
+
+**The gap.** `POST /v1/agent-versions/:agentVersionId/runs` had no protection
+against a duplicate submission at all: a double-click before a button's
+`disabled` state paints, or a client retrying a slow request it never saw a
+response to, would dispatch two full runs — two browser sessions doing the
+same thing, two sets of evidence, for what a person experienced as one
+click.
+
+**Decision.** A short-lived, in-process, in-memory dedup wrapper around
+`RunDispatcher` (`apps/api/src/dispatch-dedup.ts`), keyed by
+`(agentVersionId, trigger.actor, sorted inputs)` with a 5-second default
+window. Deliberately not a durable idempotency-key contract (the kind
+`api-catalog` already defers to Phase 5 for non-idempotent API *calls a
+workflow makes* — a related but distinct concern): the failure mode here is
+seconds long by nature, and a person deliberately rerunning the same inputs
+a minute later must get a real new run, not a stale cached one. Deliberately
+in-process rather than a DB column: Phase 1 has one API process and no queue
+(ADR-011), and CLAUDE.md rules out Redis or a durable queue for this phase —
+a `Map` with a TTL is the whole mechanism, and it disappearing on restart is
+exactly as harmless as any other in-flight run needing reconciliation
+regardless (see item 10 below).
+
+**A real bug found by live-testing the first version.** The initial
+implementation checked the map, then `await`ed the inner dispatch, then
+wrote the map entry — a classic check-then-set race. Dispatched the same
+request twice concurrently against the real running API to confirm the fix
+worked, and it didn't: two genuinely simultaneous requests both arrive
+before either has awaited anything, so both see an empty map and both
+dispatch. Fixed by storing the **pending promise** in the map synchronously,
+before awaiting it, so a concurrent caller awaits the same in-flight
+dispatch rather than starting its own. Also handled the one way the inner
+dispatch can reject (execution failing before a run row exists): the map
+entry is evicted on rejection so a rapid retry after a real failure gets a
+genuine new attempt rather than replaying a stale error for the rest of the
+window.
+
+**Verification.** 9 unit tests against a fake `RunDispatcher`: first-request
+pass-through, in-window suppression, post-window re-dispatch, independent
+keys (different agent version / inputs / input order / actor), the true
+concurrency race (using a dispatcher that stalls until released, reproducing
+the exact shape of the bug found live), and failure-eviction. Mutation-
+verified twice: once for the core suppression check, and once by
+reintroducing the exact check-then-set race that live-testing caught,
+confirming the concurrency test fails against it (as a hang, since the
+un-fixed code lets both stalled calls proceed independently) and passes
+against the fix. Live-verified end-to-end against the real running API
+twice: before the concurrency fix, two truly simultaneous identical
+requests produced two different run ids; after it, the same experiment
+produced one run id both times, that run executed and succeeded exactly
+once, and a request with different inputs still dispatched its own separate
+run.

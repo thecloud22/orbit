@@ -28,6 +28,7 @@ import {
 } from './platform';
 import type { RecordingSessionFactory } from './recording/session-registry';
 import { createInProcessRunDispatcher } from './dispatch';
+import { withDuplicateDispatchSuppression } from './dispatch-dedup';
 import { buildServer } from './server';
 
 /**
@@ -154,16 +155,18 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
         port: options.port,
         modelSelection: options.modelSelection ?? UNREPORTED_MODEL_SELECTION,
       }),
-      dispatcher: createInProcessRunDispatcher({
-        database: handle.db,
-        storage,
-        logger: {
-          debug: (fields, message) => app.log.debug(fields, message),
-          info: (fields, message) => app.log.info(fields, message),
-          warn: (fields, message) => app.log.warn(fields, message),
-        },
-        headless: process.env['ORBIT_BROWSER_HEADED'] !== 'true',
-      }),
+      dispatcher: withDuplicateDispatchSuppression(
+        createInProcessRunDispatcher({
+          database: handle.db,
+          storage,
+          logger: {
+            debug: (fields, message) => app.log.debug(fields, message),
+            info: (fields, message) => app.log.info(fields, message),
+            warn: (fields, message) => app.log.warn(fields, message),
+          },
+          headless: process.env['ORBIT_BROWSER_HEADED'] !== 'true',
+        }),
+      ),
     } satisfies ApiContext,
     ...(options.logLevel === undefined ? {} : { logLevel: options.logLevel }),
   });
