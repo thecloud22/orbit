@@ -305,6 +305,7 @@ export function toSopReviewView(review: {
     // outcome step returns), which needs the exact name `${variables.x}` and
     // `returns[].name` use. Presentation formatting is the client's own job.
     produces: producedBy(step),
+    group: step.group ?? null,
     step: step as unknown as Record<string, unknown>,
   }));
 

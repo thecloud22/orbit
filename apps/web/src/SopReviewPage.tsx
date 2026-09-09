@@ -55,6 +55,7 @@ import {
   reviewProgress,
   reviseConfirmation,
   revisionHeadline,
+  stepsWithHeadings,
   undeclaredInputRefs,
   type ReviewFailure,
   type ReviewLead,
@@ -529,9 +530,17 @@ export function SopReviewPage({
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="text-sm font-semibold text-slate-900">Steps</h3>
         <ol className="mt-2 flex flex-col gap-2" data-testid="sop-review-steps">
-          {review.steps.map((step, position) => (
+          {stepsWithHeadings(review.steps).map(({ step, headingBefore }, position) => (
             <Fragment key={step.id}>
               {insertSlot(position)}
+              {headingBefore !== null && (
+                <li
+                  className="mt-2 text-xs font-semibold tracking-wide text-slate-500 uppercase first:mt-0"
+                  data-testid="sop-review-step-heading"
+                >
+                  {headingBefore}
+                </li>
+              )}
               <li
                 className="rounded-md border border-slate-200 p-3 transition-colors hover:border-slate-300"
                 data-testid="sop-review-step"

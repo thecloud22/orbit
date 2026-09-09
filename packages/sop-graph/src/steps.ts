@@ -23,6 +23,15 @@ const stepBase = {
   id: stepIdSchema,
   /** Why this step exists, in the author's words. Shown to reviewers. */
   purpose: z.string().min(1),
+  /**
+   * A short label grouping this step with its neighbors under one heading in
+   * the reviewer-facing step list, e.g. "Look up the member". Purely
+   * presentational: it does not affect compilation, binding, or execution,
+   * and carries no meaning the compiler or runtime ever reads. Consecutive
+   * steps sharing the same label render under one heading; a step with none
+   * renders on its own, exactly as every step does today.
+   */
+  group: z.string().min(1).optional(),
 };
 
 export const extractFieldSchema = z.strictObject({
@@ -104,6 +113,8 @@ export const decisionStepSchema = z.strictObject({
   kind: z.literal('decision'),
   question: z.string().min(1),
   purpose: z.string().min(1).optional(),
+  /** See `stepBase`'s `group` -- purely presentational. */
+  group: z.string().min(1).optional(),
   usesInputs: z.array(identifierSchema).optional(),
   usesVariables: z.array(identifierSchema).optional(),
   /** Values the decision itself derives, e.g. `isStaleEscalation`. */
@@ -162,6 +173,8 @@ export const outcomeStepSchema = z.strictObject({
   message: z.string().min(1),
   purpose: z.string().min(1).optional(),
   returns: z.array(outcomeReturnSchema).optional(),
+  /** See `stepBase`'s `group` -- purely presentational. */
+  group: z.string().min(1).optional(),
 });
 
 export const manualReviewStepSchema = z.strictObject({
@@ -171,6 +184,8 @@ export const manualReviewStepSchema = z.strictObject({
   message: z.string().min(1),
   purpose: z.string().min(1).optional(),
   handoff: z.string().min(1).optional(),
+  /** See `stepBase`'s `group` -- purely presentational. */
+  group: z.string().min(1).optional(),
 });
 
 export const sopStepSchema = z.discriminatedUnion('kind', [

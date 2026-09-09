@@ -303,6 +303,12 @@ export interface SopReviewStepView {
    * for what an outcome step returns) rather than only display it.
    */
   readonly produces: readonly string[];
+  /**
+   * A short label grouping this step with its neighbors under one heading,
+   * or `null` when the step has none. Purely presentational -- consecutive
+   * steps sharing the same label render under one heading in the step list.
+   */
+  readonly group: string | null;
   /** The step exactly as stored, so the editor round-trips it without loss. */
   readonly step: Record<string, unknown>;
 }

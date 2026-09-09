@@ -302,6 +302,7 @@ describe('suggestedStartUrl', () => {
       canMoveUp: false,
       canMoveDown: true,
       produces: [],
+      group: null,
       step,
     };
   }

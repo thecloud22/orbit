@@ -46,6 +46,7 @@ function reviewStep(overrides: Partial<SopReviewStepView> = {}): SopReviewStepVi
     canMoveUp: false,
     canMoveDown: true,
     produces: [],
+    group: null,
     step: {},
     ...overrides,
   };

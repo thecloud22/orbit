@@ -1,5 +1,5 @@
 import type { SopBindingsView, SopStepBindingView } from '@orbit/api/views';
-import type { SopReviewView } from '@orbit/api/views';
+import type { SopReviewStepView, SopReviewView } from '@orbit/api/views';
 import { describe, expect, it } from 'vitest';
 
 import { SOP_STEP_KINDS } from '@orbit/sop-graph';
@@ -22,6 +22,7 @@ import {
   revisionHeadline,
   stateLabel,
   stepKindLabel,
+  stepsWithHeadings,
 } from './sop-review-view-model';
 
 const REVIEW: SopReviewView = {
@@ -255,7 +256,14 @@ describe('fieldsForStepKind', () => {
 
   it('gives a decision its branches and the values it reads', () => {
     const names = fieldsForStepKind('decision').map((spec) => spec.name);
-    expect(names).toEqual(['question', 'usesInputs', 'usesVariables', 'branches', 'purpose']);
+    expect(names).toEqual([
+      'question',
+      'usesInputs',
+      'usesVariables',
+      'branches',
+      'purpose',
+      'group',
+    ]);
   });
 
   it('gives a fill its value source and the secret marker', () => {
@@ -537,5 +545,55 @@ describe('describeVariable', () => {
 
   it('leaves an already-lowercase single word alone but capitalised', () => {
     expect(describeVariable('status')).toBe('Status');
+  });
+});
+
+function reviewStep(id: string, group: string | null): SopReviewStepView {
+  return {
+    id,
+    kind: 'click',
+    summary: `Step ${id}`,
+    position: 1,
+    canMoveUp: false,
+    canMoveDown: false,
+    produces: [],
+    group,
+    step: {},
+  };
+}
+
+describe('stepsWithHeadings', () => {
+  it('introduces a heading before the first step of a new group', () => {
+    const result = stepsWithHeadings([
+      reviewStep('a', 'Look up the member'),
+      reviewStep('b', null),
+    ]);
+
+    expect(result[0]?.headingBefore).toBe('Look up the member');
+    expect(result[1]?.headingBefore).toBeNull();
+  });
+
+  it('does not repeat a heading across consecutive steps in the same group', () => {
+    const result = stepsWithHeadings([
+      reviewStep('a', 'Look up the member'),
+      reviewStep('b', 'Look up the member'),
+      reviewStep('c', 'Look up the member'),
+    ]);
+
+    expect(result.map((entry) => entry.headingBefore)).toEqual(['Look up the member', null, null]);
+  });
+
+  it('introduces a new heading when the group changes, even back to one seen before', () => {
+    const result = stepsWithHeadings([
+      reviewStep('a', 'Look up the member'),
+      reviewStep('b', 'Confirm eligibility'),
+      reviewStep('c', 'Look up the member'),
+    ]);
+
+    expect(result.map((entry) => entry.headingBefore)).toEqual([
+      'Look up the member',
+      'Confirm eligibility',
+      'Look up the member',
+    ]);
   });
 });

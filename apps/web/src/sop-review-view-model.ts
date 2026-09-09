@@ -1,4 +1,4 @@
-import type { SopBindingsView, SopReviewView } from '@orbit/api/views';
+import type { SopBindingsView, SopReviewStepView, SopReviewView } from '@orbit/api/views';
 
 import type { ApiRequestError } from './api-client';
 import { isBindingRequired, isFullyBoundForPublish } from './sop-binding-view-model';
@@ -371,6 +371,17 @@ const PURPOSE: StepFieldSpec = {
 
 const OPTIONAL_PURPOSE: StepFieldSpec = { ...PURPOSE, required: false };
 
+// Every kind gets this field, the same way every kind gets `purpose`. Free
+// text rather than a picker of existing labels: a person naming a new group
+// has nothing yet to pick from, and typos merely fail to merge two group
+// headings rather than breaking anything a compiler checks.
+const GROUP: StepFieldSpec = {
+  kind: 'text',
+  name: 'group',
+  label: 'Section (groups this step with its neighbors under one heading)',
+  required: false,
+};
+
 const FIELDS_BY_KIND: Readonly<Record<string, readonly StepFieldSpec[]>> = {
   call: [
     {
@@ -381,6 +392,7 @@ const FIELDS_BY_KIND: Readonly<Record<string, readonly StepFieldSpec[]>> = {
     },
     { kind: 'text', name: 'systemHint', label: 'Which system', required: true },
     { kind: 'text', name: 'purpose', label: 'Why this step exists', required: true },
+    GROUP,
   ],
   navigate: [
     {
@@ -391,6 +403,7 @@ const FIELDS_BY_KIND: Readonly<Record<string, readonly StepFieldSpec[]>> = {
     },
     { kind: 'text', name: 'systemHint', label: 'System', required: false },
     PURPOSE,
+    GROUP,
   ],
   fill: [
     {
@@ -407,6 +420,7 @@ const FIELDS_BY_KIND: Readonly<Record<string, readonly StepFieldSpec[]>> = {
     },
     { kind: 'boolean', name: 'sensitive', label: 'This field takes a secret' },
     PURPOSE,
+    GROUP,
   ],
   click: [
     {
@@ -416,6 +430,7 @@ const FIELDS_BY_KIND: Readonly<Record<string, readonly StepFieldSpec[]>> = {
       required: true,
     },
     PURPOSE,
+    GROUP,
   ],
   extract: [
     { kind: 'extractFields', name: 'fields', label: 'Values to collect' },
@@ -426,6 +441,7 @@ const FIELDS_BY_KIND: Readonly<Record<string, readonly StepFieldSpec[]>> = {
       options: ['fail', 'continue_with_note'],
     },
     PURPOSE,
+    GROUP,
   ],
   decision: [
     { kind: 'textarea', name: 'question', label: 'The question being decided', required: true },
@@ -433,12 +449,14 @@ const FIELDS_BY_KIND: Readonly<Record<string, readonly StepFieldSpec[]>> = {
     { kind: 'stringList', name: 'usesVariables', label: 'Variables it reads' },
     { kind: 'branches', name: 'branches', label: 'Branches' },
     OPTIONAL_PURPOSE,
+    GROUP,
   ],
   outcome: [
     { kind: 'text', name: 'outcome', label: 'Outcome name', required: true },
     { kind: 'textarea', name: 'message', label: 'Message', required: true },
     { kind: 'returns', name: 'returns', label: 'Values returned' },
     OPTIONAL_PURPOSE,
+    GROUP,
   ],
   manual_review: [
     { kind: 'text', name: 'reason', label: 'Reason', required: true },
@@ -450,6 +468,7 @@ const FIELDS_BY_KIND: Readonly<Record<string, readonly StepFieldSpec[]>> = {
       required: false,
     },
     OPTIONAL_PURPOSE,
+    GROUP,
   ],
 };
 
@@ -556,4 +575,30 @@ export function pruneEmptyFields(step: Record<string, unknown>): Record<string, 
   }
 
   return pruned;
+}
+
+/** One step, paired with the heading (if any) that introduces it. */
+export interface StepWithHeading {
+  readonly step: SopReviewStepView;
+  readonly headingBefore: string | null;
+}
+
+/**
+ * Pairs each step with the section heading that should render before it.
+ *
+ * A heading appears only when a step's `group` differs from the step before
+ * it — so a run of consecutive steps sharing one label renders under a single
+ * heading, and a step with no `group` renders with none, exactly as every
+ * step does today. Purely a rendering decision: `position` numbering and
+ * every insert slot stay untouched by this, since `group` carries no meaning
+ * the compiler or runtime ever reads.
+ */
+export function stepsWithHeadings(steps: readonly SopReviewStepView[]): readonly StepWithHeading[] {
+  let previousGroup: string | null = null;
+
+  return steps.map((step) => {
+    const headingBefore = step.group !== null && step.group !== previousGroup ? step.group : null;
+    previousGroup = step.group;
+    return { step, headingBefore };
+  });
 }
