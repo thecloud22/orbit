@@ -5,6 +5,7 @@ import type { RecoveryProposalView, SopBindingsView, SopReviewView } from '@orbi
 import {
   answerSopQuestion,
   ApiRequestError,
+  declareSopInput,
   editSopStep,
   acceptRecoveryProposal,
   dismissRecoveryProposal,
@@ -42,11 +43,13 @@ import { SopStepEditor } from './SopStepEditor';
 import { SopStepInserter } from './SopStepInserter';
 import {
   describeReviewFailure,
+  issuesWithoutRecovery,
   publishBlockedReason,
   reviewLead,
   reviewPhase,
   reviseConfirmation,
   stateLabel,
+  undeclaredInputRefs,
   type ReviewFailure,
   type ReviewLead,
   type ReviseConfirmation,
@@ -671,7 +674,16 @@ export function SopReviewPage({
         )}
       </header>
 
-      {failure !== null && <FailureNotice failure={failure} />}
+      {failure !== null && (
+        <FailureNotice
+          failure={failure}
+          onRecovered={() => {
+            setFailure(null);
+            void load();
+          }}
+          revisionId={review.revisionId}
+        />
+      )}
 
       {/*
         Skipped for `ready`, not just demoted: `onOpenAgent` and `revise` are
@@ -950,7 +962,27 @@ function StartWalkthrough({
   );
 }
 
-function FailureNotice({ failure }: { readonly failure: ReviewFailure }) {
+/**
+ * A failed edit, and a way to fix it on the spot where one exists.
+ *
+ * `revisionId`/`onRecovered` are optional because this is also shown before a
+ * revision has loaded at all (an initial fetch failure has nothing to recover
+ * into) -- see the earlier `review === null` render. Everywhere `review` is
+ * loaded, both are passed, and the one recoverable case this page knows about
+ * gets its own fix instead of a code and a JSON path.
+ */
+function FailureNotice({
+  failure,
+  revisionId,
+  onRecovered,
+}: {
+  readonly failure: ReviewFailure;
+  readonly revisionId?: string;
+  readonly onRecovered?: () => void;
+}) {
+  const missingInputs = undeclaredInputRefs(failure);
+  const remainingIssues = issuesWithoutRecovery(failure);
+
   return (
     <section
       className="rounded border border-rose-300 bg-rose-50 p-4"
@@ -962,9 +994,21 @@ function FailureNotice({ failure }: { readonly failure: ReviewFailure }) {
       <p className="mt-1 text-sm text-rose-900" data-testid="sop-review-failure-message">
         {failure.message}
       </p>
-      {failure.issues.length > 0 && (
+
+      {revisionId !== undefined &&
+        onRecovered !== undefined &&
+        missingInputs.map((name) => (
+          <UndeclaredInputFix
+            inputId={name}
+            key={name}
+            onRecovered={onRecovered}
+            revisionId={revisionId}
+          />
+        ))}
+
+      {remainingIssues.length > 0 && (
         <ul className="mt-2 list-disc pl-5 text-xs text-rose-900" data-testid="sop-review-issues">
-          {failure.issues.map((issue) => (
+          {remainingIssues.map((issue) => (
             <li key={`${issue.where}:${issue.message}`}>
               <span className="font-medium">{issue.where}</span>: {issue.message}
             </li>
@@ -972,5 +1016,96 @@ function FailureNotice({ failure }: { readonly failure: ReviewFailure }) {
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * The fix for the one failure this page has hit repeatedly: a step's value
+ * names a run input nobody declared yet.
+ *
+ * Says what is actually true in plain language, pre-fills the exact name the
+ * failed edit already named (removing the one place a person could retype it
+ * wrong), and reloads on success so the step's current text is what they see
+ * next -- still there, ready to save again. This does not resubmit the edit
+ * itself: the value the person typed only exists in the step editor's own open
+ * form, and reaching into another component's state to resend it is more
+ * surprising than asking for one more click on a save button they can already
+ * see.
+ */
+function UndeclaredInputFix({
+  inputId,
+  revisionId,
+  onRecovered,
+}: {
+  readonly inputId: string;
+  readonly revisionId: string;
+  readonly onRecovered: () => void;
+}) {
+  const [label, setLabel] = useState(inputId);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<ApiRequestError | null>(null);
+
+  function declare() {
+    setIsSaving(true);
+    setError(null);
+
+    declareSopInput(revisionId, { id: inputId, label, required: true })
+      .then(() => {
+        onRecovered();
+      })
+      .catch((cause: unknown) => {
+        setError(
+          cause instanceof ApiRequestError
+            ? cause
+            : new ApiRequestError({ status: 0, message: 'The API could not be reached.' }),
+        );
+      })
+      .finally(() => {
+        setIsSaving(false);
+      });
+  }
+
+  return (
+    <div
+      className="mt-3 rounded-md border border-rose-200 bg-white p-3"
+      data-testid={`undeclared-input-fix-${inputId}`}
+    >
+      <p className="text-sm text-slate-900">
+        This step uses{' '}
+        <code className="font-mono text-xs">
+          ${'{inputs.'}
+          {inputId}
+          {'}'}
+        </code>
+        , an input this workflow has not declared yet.
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <label className="text-xs text-slate-600" htmlFor={`undeclared-input-label-${inputId}`}>
+          Label for it
+        </label>
+        <input
+          className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+          data-testid={`undeclared-input-label-${inputId}`}
+          id={`undeclared-input-label-${inputId}`}
+          onChange={(event) => {
+            setLabel(event.target.value);
+          }}
+          value={label}
+        />
+        <button
+          className="rounded-md bg-indigo-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+          data-testid={`undeclared-input-declare-${inputId}`}
+          disabled={isSaving}
+          onClick={declare}
+          type="button"
+        >
+          {isSaving ? 'Declaring…' : 'Declare it'}
+        </button>
+      </div>
+      <p className="mt-1 text-xs text-slate-500">
+        After this, open the step again and save it once more — what you typed is still there.
+      </p>
+      {error !== null && <p className="mt-1 text-xs text-rose-900">{error.message}</p>}
+    </div>
   );
 }

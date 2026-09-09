@@ -176,11 +176,58 @@ export function stateLabel(state: string): string {
 
 export type ReviewFailureKind = 'rejected_change' | 'conflict' | 'request_failed';
 
+export interface ReviewFailureIssue {
+  readonly where: string;
+  readonly message: string;
+}
+
 export interface ReviewFailure {
   readonly kind: ReviewFailureKind;
   readonly title: string;
   readonly message: string;
-  readonly issues: readonly { readonly where: string; readonly message: string }[];
+  readonly issues: readonly ReviewFailureIssue[];
+}
+
+/**
+ * The one issue this page can actually fix on the spot, rather than only name.
+ *
+ * `[UNDECLARED_INPUT_REFERENCE]` is a code the API attaches to `message`
+ * (`toIssueDetails` in `sop-revisions.ts`), and the input's own name is quoted
+ * inside the plain-language sentence @orbit/sop-graph generates for it
+ * (`validate.ts`: `uses the run input "<name>"`). Both ends are this
+ * codebase's own, stable, single-purpose format -- not a third party's free
+ * text -- which is what makes matching against it here reasonable rather than
+ * fragile.
+ *
+ * This was the actual "not clear" complaint: the page already showed the right
+ * information (which input, which step), just as a bracketed code and a JSON
+ * path, with no way to act on it from where it was read. A person hit the same
+ * fix three times running a curl command for them would not have taught them
+ * anything about the fourth.
+ */
+const UNDECLARED_INPUT_PATTERN = /^\[UNDECLARED_INPUT_REFERENCE\] .*uses the run input "([^"]+)"/;
+
+export function undeclaredInputRef(issue: ReviewFailureIssue): string | null {
+  return UNDECLARED_INPUT_PATTERN.exec(issue.message)?.[1] ?? null;
+}
+
+/** Every distinct input name a failed edit named as undeclared, in order. */
+export function undeclaredInputRefs(failure: ReviewFailure): readonly string[] {
+  const seen = new Set<string>();
+
+  for (const issue of failure.issues) {
+    const name = undeclaredInputRef(issue);
+    if (name !== null) {
+      seen.add(name);
+    }
+  }
+
+  return [...seen];
+}
+
+/** Issues the page has a specific recovery for, so they are not also shown as raw text. */
+export function issuesWithoutRecovery(failure: ReviewFailure): readonly ReviewFailureIssue[] {
+  return failure.issues.filter((issue) => undeclaredInputRef(issue) === null);
 }
 
 /**

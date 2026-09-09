@@ -6,6 +6,8 @@ import { SOP_STEP_KINDS } from '@orbit/sop-graph';
 
 import { ApiRequestError } from './api-client';
 import {
+  issuesWithoutRecovery,
+  undeclaredInputRefs,
   EDITABLE_STEP_KINDS,
   STEP_KIND_LABELS,
   describeReviewFailure,
@@ -131,6 +133,78 @@ describe('describeReviewFailure', () => {
     expect(describeReviewFailure(new ApiRequestError({ status: 400, message: 'Bad.' })).kind).toBe(
       'request_failed',
     );
+  });
+});
+
+describe('undeclaredInputRefs', () => {
+  it('finds the name from the real message the API sends', () => {
+    // The exact wire shape: toIssueDetails() prefixes the code, and
+    // @orbit/sop-graph's own sentence quotes the name. Pinned against the real
+    // format rather than a shape invented for the test, since this is the
+    // thing that broke: the information was already there, just unusable.
+    const failure = describeReviewFailure(
+      new ApiRequestError({
+        status: 422,
+        message: 'That edit would make the workflow invalid, so it was not saved.',
+        details: [
+          {
+            field: 'steps.2.value',
+            message:
+              '[UNDECLARED_INPUT_REFERENCE] "Fill "Member ID"" uses the run input "memberId", which this workflow does not declare.',
+          },
+        ],
+      }),
+    );
+
+    expect(undeclaredInputRefs(failure)).toEqual(['memberId']);
+  });
+
+  it('is empty for a failure that names no undeclared input', () => {
+    const failure = describeReviewFailure(
+      new ApiRequestError({
+        status: 422,
+        message: 'That edit would make the workflow invalid, so it was not saved.',
+        details: [{ field: 'steps.1', message: '[STEP_ID_IMMUTABLE] cannot rename a step.' }],
+      }),
+    );
+
+    expect(undeclaredInputRefs(failure)).toEqual([]);
+  });
+
+  it('does not repeat the same input twice', () => {
+    const issue = {
+      field: 'steps.2.value',
+      message:
+        '[UNDECLARED_INPUT_REFERENCE] uses the run input "memberId", which this workflow does not declare.',
+    };
+    const failure = describeReviewFailure(
+      new ApiRequestError({ status: 422, message: 'Invalid.', details: [issue, issue] }),
+    );
+
+    expect(undeclaredInputRefs(failure)).toEqual(['memberId']);
+  });
+});
+
+describe('issuesWithoutRecovery', () => {
+  it('drops an undeclared-input issue, since the page shows a fix for it instead of the raw text', () => {
+    const failure = describeReviewFailure(
+      new ApiRequestError({
+        status: 422,
+        message: 'Invalid.',
+        details: [
+          {
+            field: 'steps.2.value',
+            message:
+              '[UNDECLARED_INPUT_REFERENCE] uses the run input "memberId", which this workflow does not declare.',
+          },
+          { field: 'steps.1', message: '[STEP_ID_IMMUTABLE] cannot rename a step.' },
+        ],
+      }),
+    );
+
+    expect(issuesWithoutRecovery(failure)).toEqual([
+      { where: 'steps.1', message: '[STEP_ID_IMMUTABLE] cannot rename a step.' },
+    ]);
   });
 });
 
