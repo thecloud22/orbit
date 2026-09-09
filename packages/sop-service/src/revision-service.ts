@@ -4,6 +4,7 @@ import {
   isUniqueViolation,
   RecordNotFoundError,
   SOP_REVISION_TRANSITIONS,
+  stepChecksum,
   violatedConstraint,
   withTransaction,
   type OrbitDatabase,
@@ -382,6 +383,37 @@ function toClarifications(
   });
 }
 
+/**
+ * Whether an edit to a `fill` step changed nothing but its value.
+ *
+ * Deliberately narrow, and deliberately not generalised to other step kinds.
+ * A `fill` step's binding names an element (`fieldHint`); its `value` is
+ * resolved at run time -- a literal, or `${inputs.x}`/`${variables.x}` -- and
+ * says nothing about which element that is. Hashing the whole step for
+ * staleness is otherwise correct (`stepChecksum`'s own contract, unchanged
+ * here), but it means turning a recorded literal into a declared input --
+ * the very capability sub-phase 2.16 added -- always looked identical to
+ * changing which element the step acts on, and always demanded the same
+ * fresh browser demonstration to fix.
+ *
+ * `click` and `extract` steps have no field like this to exclude, and a
+ * `decision` binding covers several elements at once rather than one; both
+ * are left to the ordinary whole-step check.
+ */
+export function isValueOnlyFillChange(previous: SopStep, next: SopStep): boolean {
+  if (previous.kind !== 'fill' || next.kind !== 'fill') {
+    return false;
+  }
+
+  return (
+    previous.id === next.id &&
+    previous.purpose === next.purpose &&
+    previous.fieldHint === next.fieldHint &&
+    (previous.sensitive ?? false) === (next.sensitive ?? false)
+    // `value` is the one field this deliberately does not compare.
+  );
+}
+
 export function createSopRevisionService(options: SopRevisionServiceOptions): SopRevisionService {
   const { database } = options;
 
@@ -491,6 +523,7 @@ export function createSopRevisionService(options: SopRevisionServiceOptions): So
           return { ok: false, reason: 'unknown_step', stepId: input.stepId };
         }
 
+        const previousStep = revision.graph.steps[index];
         const steps = [...revision.graph.steps];
         steps[index] = input.step;
 
@@ -504,10 +537,51 @@ export function createSopRevisionService(options: SopRevisionServiceOptions): So
           return { ok: false, reason: 'invalid_graph', issues: parsed.issues };
         }
 
-        return {
-          ok: true,
-          revision: await supersedeWith(repositories, revision, parsed.graph, input.note),
-        };
+        const nextRevision = await supersedeWith(repositories, revision, parsed.graph, input.note);
+
+        // Carries an approved binding forward when the only thing that changed
+        // is a fill step's value -- the case that made declaring a run input
+        // and then referencing it from a recorded step force a fresh browser
+        // demonstration every time, for a reason that had nothing to do with
+        // the element the binding names. See `isValueOnlyFillChange` for the
+        // exact, narrow scope this covers and does not.
+        if (previousStep !== undefined && isValueOnlyFillChange(previousStep, input.step)) {
+          const current = await repositories.executionBindings.findCurrent(
+            revision.documentId,
+            input.stepId,
+          );
+
+          // Both conditions matter. `state === 'approved'` -- a draft or
+          // rejected binding has no human confirmation to carry forward at
+          // all. Matching `stepSha256` against the step *before this edit* --
+          // not the one being saved now -- is what proves the approval this
+          // binding already carries was given against exactly the content
+          // this edit is about to replace, so nothing is being inferred about
+          // a state nobody actually looked at.
+          if (
+            current !== null &&
+            current.state === 'approved' &&
+            current.binding.stepSha256 === stepChecksum(previousStep)
+          ) {
+            const carried = await repositories.executionBindings.create({
+              documentId: revision.documentId,
+              binding: {
+                ...current.binding,
+                stepSha256: stepChecksum(input.step),
+                capturedAgainstRevisionId: nextRevision.id,
+              },
+              parentBindingId: current.id,
+            });
+
+            await repositories.executionBindings.submitForReview(carried.id);
+            await repositories.executionBindings.approve(carried.id, {
+              reviewNote:
+                'Carried forward automatically: only the value changed, and a value is resolved at run time, independent of which element this binding names.',
+            });
+          }
+        }
+
+        return { ok: true, revision: nextRevision };
       });
     },
 

@@ -232,6 +232,150 @@ describe('SOP revision review', () => {
       // before it can be edited.
       expect(result.ok === false && result.reason).toBe('not_editable');
     });
+
+    describe('carrying a binding forward across a value-only fill edit', () => {
+      /** A real, approved binding for the fixture's login-id fill step. */
+      async function bindLoginId() {
+        const step = revision.graph.steps.find((one) => one.id === 'enter_login_id');
+        if (step === undefined || step.kind !== 'fill') {
+          throw new Error('The fixture no longer has the fill step this test binds.');
+        }
+
+        const created = await createBinding({
+          database: getDatabase().db,
+          documentId: revision.documentId,
+          revisionId: revision.id,
+          graph: revision.graph,
+          step,
+          body: {
+            kind: 'fill',
+            target: {
+              selectors: [{ strategy: 'test_id', value: 'login-id-input' }] as SelectorChain,
+              fingerprint: buttonFingerprint(),
+            },
+            valueSource: { kind: 'literal', value: 'placeholder' },
+          },
+          confirmedByDemonstration: { reviewNote: 'Demonstrated against the portal.' },
+        });
+
+        if (!created.ok) {
+          throw new Error(`fixture binding was refused: ${created.reason}`);
+        }
+
+        return { step, bindingId: created.binding.id };
+      }
+
+      it('keeps the binding approved when only the value changes, with no new review needed', async () => {
+        const { step, bindingId } = await bindLoginId();
+
+        const result = await service().editStep({
+          revisionId: revision.id,
+          stepId: step.id,
+          step: { ...step, value: 'a different literal value' } as SopStep,
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const current = await createRepositories(getDatabase().db).executionBindings.findCurrent(
+          revision.documentId,
+          step.id,
+        );
+
+        // A different binding row -- superseding is still how this works --
+        // but already approved, and usable against the step as it now reads.
+        expect(current?.id).not.toBe(bindingId);
+        expect(current?.state).toBe('approved');
+        expect(current?.parentBindingId).toBe(bindingId);
+        expect(current?.binding.stepSha256).toBe(
+          stepChecksum({ ...step, value: 'a different literal value' } as SopStep),
+        );
+        expect(
+          isBindingUsable(current!.binding, {
+            stepId: step.id,
+            kind: step.kind,
+            declaredNames: declaredNames(result.revision.graph),
+            stepSha256: stepChecksum({ ...step, value: 'a different literal value' } as SopStep),
+          }),
+        ).toBe(true);
+      });
+
+      it('still requires a fresh binding when the field being filled changes, not only the value', async () => {
+        const { step, bindingId } = await bindLoginId();
+
+        const result = await service().editStep({
+          revisionId: revision.id,
+          stepId: step.id,
+          step: { ...step, value: 'a different literal value', fieldHint: 'Account ID' } as SopStep,
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        // Untouched: this is exactly the case that must still go stale, since
+        // the element the original binding names may no longer be the right
+        // one at all.
+        const stillCurrent = await createRepositories(
+          getDatabase().db,
+        ).executionBindings.findCurrent(revision.documentId, step.id);
+
+        expect(stillCurrent?.id).toBe(bindingId);
+        expect(
+          isBindingUsable(stillCurrent!.binding, {
+            stepId: step.id,
+            kind: step.kind,
+            declaredNames: declaredNames(result.revision.graph),
+            stepSha256: stepChecksum({
+              ...step,
+              value: 'a different literal value',
+              fieldHint: 'Account ID',
+            } as SopStep),
+          }),
+        ).toBe(false);
+      });
+
+      it('does not carry forward a binding that was never approved', async () => {
+        const step = revision.graph.steps.find((one) => one.id === 'enter_login_id');
+        if (step === undefined || step.kind !== 'fill') throw new Error('fixture missing step');
+
+        const draftBinding = await createBinding({
+          database: getDatabase().db,
+          documentId: revision.documentId,
+          revisionId: revision.id,
+          graph: revision.graph,
+          step,
+          body: {
+            kind: 'fill',
+            target: {
+              selectors: [{ strategy: 'test_id', value: 'login-id-input' }] as SelectorChain,
+              fingerprint: buttonFingerprint(),
+            },
+            valueSource: { kind: 'literal', value: 'placeholder' },
+          },
+          // No `confirmedByDemonstration`: stays in draft, unreviewed.
+        });
+        if (!draftBinding.ok) throw new Error('fixture binding was refused');
+
+        const result = await service().editStep({
+          revisionId: revision.id,
+          stepId: step.id,
+          step: { ...step, value: 'a different literal value' } as SopStep,
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const current = await createRepositories(getDatabase().db).executionBindings.findCurrent(
+          revision.documentId,
+          step.id,
+        );
+
+        // Nothing to carry forward: there was no human approval to extend in
+        // the first place.
+        expect(current?.id).toBe(draftBinding.binding.id);
+        expect(current?.state).toBe('draft');
+      });
+    });
   });
 
   describe('declaring an input', () => {
