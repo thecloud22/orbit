@@ -21,6 +21,7 @@
     "test:fast": "pnpm test && pnpm test:db",
     "test:e2e": "pnpm --filter @orbit/demo-portal test:e2e",
     "test:e2e:library": "pnpm --filter @orbit/library-portal test:e2e",
+    "test:e2e:mortgage": "pnpm --filter @orbit/mortgage-portal test:e2e",
     "test:db": "ORBIT_TEST_SUITE=test:db vitest run --config vitest.db.config.ts",
     "db:migrate": "pnpm --filter @orbit/db migrate",
     "db:check": "pnpm --filter @orbit/db check",
