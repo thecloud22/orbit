@@ -243,6 +243,17 @@ export function StepField({
     );
   }
 
+  if (spec.kind === 'comparison') {
+    return (
+      <ComparisonField
+        onChange={onChange}
+        spec={spec}
+        value={value}
+        {...(availableVariables === undefined ? {} : { availableVariables })}
+      />
+    );
+  }
+
   return (
     <RowsField
       onChange={onChange}
@@ -250,6 +261,104 @@ export function StepField({
       value={value}
       {...(availableVariables === undefined ? {} : { availableVariables })}
     />
+  );
+}
+
+const OPERATOR_LABELS: Readonly<Record<string, string>> = {
+  gt: 'is more than',
+  gte: 'is at least',
+  lt: 'is less than',
+  lte: 'is at most',
+  eq: 'is',
+  neq: 'is not',
+};
+
+/**
+ * The comparison a computed decision resolves by (ADR-040).
+ *
+ * Three controls reading as one sentence, because that is how the rule was
+ * written: "Loan To Value / is more than / 80". The left-hand side is a picker
+ * over the values this workflow actually reads rather than a text box, since a
+ * comparison against a name nothing produces is refused at compile time and
+ * catching it here saves a round trip through a refusal.
+ *
+ * The right-hand side stays free text on purpose: it is usually a literal
+ * threshold, occasionally another variable, and a picker would make the common
+ * case the awkward one.
+ */
+function ComparisonField({
+  spec,
+  value,
+  onChange,
+  availableVariables,
+}: {
+  readonly spec: StepFieldSpec;
+  readonly value: unknown;
+  readonly onChange: (name: string, value: unknown) => void;
+  readonly availableVariables?: readonly string[];
+}) {
+  const comparison = (value ?? {}) as { left?: string; operator?: string; right?: string };
+  const variables = availableVariables ?? [];
+
+  function set(key: 'left' | 'operator' | 'right', next: string) {
+    onChange(spec.name, { ...comparison, [key]: next });
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-medium text-slate-700">{spec.label}</span>
+      <div className="flex flex-wrap items-center gap-2" data-testid={`field-${spec.name}`}>
+        {variables.length > 0 ? (
+          <select
+            aria-label="Value to compare"
+            className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+            onChange={(event) => set('left', event.target.value)}
+            value={comparison.left ?? ''}
+          >
+            <option value="">Choose a value</option>
+            {variables.map((name) => (
+              <option key={name} value={`\${variables.${name}}`}>
+                {describeVariable(name)}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            aria-label="Value to compare"
+            className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+            onChange={(event) => set('left', event.target.value)}
+            placeholder="No steps read a value yet"
+            value={comparison.left ?? ''}
+          />
+        )}
+
+        <select
+          aria-label="Comparison"
+          className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+          onChange={(event) => set('operator', event.target.value)}
+          value={comparison.operator ?? ''}
+        >
+          <option value="">Choose a comparison</option>
+          {Object.entries(OPERATOR_LABELS).map(([operator, label]) => (
+            <option key={operator} value={operator}>
+              {label}
+            </option>
+          ))}
+        </select>
+
+        <input
+          aria-label="Compared against"
+          className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+          onChange={(event) => set('right', event.target.value)}
+          placeholder="A threshold, or ${variables.other}"
+          value={comparison.right ?? ''}
+        />
+      </div>
+      <p className="text-xs text-slate-500">
+        Compares two values this workflow already reads. It cannot work a value out — if the rule is
+        about a figure no step reads, add a step that reads it first.
+      </p>
+    </div>
   );
 }
 
@@ -277,6 +386,15 @@ function RowsField({
       ? [
           { key: 'when', label: 'When', type: 'text' as const },
           { key: 'nextStepId', label: 'Go to step', type: 'text' as const },
+          // Only a computed decision requires one, but it is shown on every
+          // decision rather than appearing when the resolution changes: a
+          // control that comes and goes while someone is filling the form in
+          // is harder to find than one that is simply there and usually empty.
+          {
+            key: 'otherwise',
+            label: 'Taken when the condition does not hold',
+            type: 'boolean' as const,
+          },
         ]
       : spec.kind === 'extractFields'
         ? [

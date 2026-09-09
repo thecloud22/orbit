@@ -23,6 +23,7 @@ import {
   stateLabel,
   stepKindLabel,
   stepsWithHeadings,
+  workflowRules,
 } from './sop-review-view-model';
 
 const REVIEW: SopReviewView = {
@@ -254,16 +255,32 @@ describe('fieldsForStepKind', () => {
     }
   });
 
-  it('gives a decision its branches and the values it reads', () => {
+  it('gives a decision its branches, the values it reads, and how it is resolved', () => {
     const names = fieldsForStepKind('decision').map((spec) => spec.name);
     expect(names).toEqual([
       'question',
+      'ruleText',
+      'resolution',
+      'comparison',
+      'judgement',
       'usesInputs',
       'usesVariables',
       'branches',
       'purpose',
       'group',
     ]);
+  });
+
+  it('offers all three ways a decision can be resolved', () => {
+    // A decision that can be written but not resolved computationally is a
+    // rule nobody can author without an API call, which is how this arrived:
+    // `resolution` was not an editable field at all until ADR-040.
+    const resolution = fieldsForStepKind('decision').find((spec) => spec.name === 'resolution');
+
+    expect(resolution?.kind).toBe('select');
+    if (resolution?.kind !== 'select') return;
+
+    expect(resolution.options).toEqual(['demonstrated', 'judged', 'computed']);
   });
 
   it('gives a fill its value source and the secret marker', () => {
@@ -595,5 +612,93 @@ describe('stepsWithHeadings', () => {
       'Confirm eligibility',
       'Look up the member',
     ]);
+  });
+});
+
+describe('workflowRules', () => {
+  function decision(id: string, step: Record<string, unknown>): SopReviewStepView {
+    return {
+      id,
+      kind: 'decision',
+      summary: (step['question'] as string) ?? id,
+      position: 1,
+      canMoveUp: false,
+      canMoveDown: false,
+      produces: [],
+      group: null,
+      step: { id, kind: 'decision', ...step },
+    };
+  }
+
+  it('reads a computed decision as the rule it was written from', () => {
+    const [rule] = workflowRules([
+      decision('check_pmi', {
+        question: 'Is loan-to-value above the threshold?',
+        ruleText: 'A file over 80% loan-to-value requires mortgage insurance.',
+        resolution: 'computed',
+        comparison: { left: '${variables.loanToValue}', operator: 'gt', right: '80' },
+        branches: [
+          { when: 'above 80%', nextStepId: 'add_pmi' },
+          { when: 'at or below', nextStepId: 'approve', otherwise: true },
+        ],
+      }),
+    ]);
+
+    expect(rule).toMatchObject({
+      stepId: 'check_pmi',
+      ruleText: 'A file over 80% loan-to-value requires mortgage insurance.',
+      resolution: 'computed',
+      // Rendered through the same function the compiler and the evidence use,
+      // so the sentence a reviewer approves is the sentence the run reports.
+      comparison: 'Loan To Value is more than 80',
+    });
+    expect(rule?.branches).toEqual([
+      { when: 'above 80%', nextStepId: 'add_pmi' },
+      { when: 'at or below', nextStepId: 'approve' },
+    ]);
+  });
+
+  it('lists a decision nobody wrote a sentence for, rather than hiding it', () => {
+    // A workflow's branching is its business logic whether or not it was
+    // annotated. Listing only the annotated ones would report a workflow full
+    // of unwritten rules as having none.
+    const [rule] = workflowRules([
+      decision('check_result', {
+        question: 'Did the search find anything?',
+        branches: [
+          { when: 'found', nextStepId: 'read' },
+          { when: 'nothing', nextStepId: 'stop' },
+        ],
+      }),
+    ]);
+
+    expect(rule).toMatchObject({
+      ruleText: null,
+      resolution: 'demonstrated',
+      comparison: null,
+      question: 'Did the search find anything?',
+    });
+  });
+
+  it('ignores every step that is not a decision', () => {
+    const steps: SopReviewStepView[] = [
+      reviewStep('open', null),
+      decision('check', { question: 'A question?', branches: [] }),
+    ];
+
+    expect(workflowRules(steps).map((rule) => rule.stepId)).toEqual(['check']);
+  });
+
+  it('reports no comparison for a half-written one rather than a broken sentence', () => {
+    const [rule] = workflowRules([
+      decision('check', {
+        question: 'A question?',
+        resolution: 'computed',
+        comparison: { left: '${variables.x}', operator: 'gt' },
+        branches: [],
+      }),
+    ]);
+
+    expect(rule?.comparison).toBeNull();
   });
 });

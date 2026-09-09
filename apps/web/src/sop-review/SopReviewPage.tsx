@@ -43,6 +43,7 @@ import {
   WALKTHROUGH_LEAD,
 } from './walkthrough-view-model';
 import { SopPublishPanel } from './SopPublishPanel';
+import { SopRulesPanel } from './SopRulesPanel';
 import { SopStepEditor } from './SopStepEditor';
 import { SopStepInserter } from './SopStepInserter';
 import {
@@ -729,6 +730,8 @@ export function SopReviewPage({
           {insertSlot(review.steps.length)}
         </ol>
       </section>
+
+      <SopRulesPanel steps={review.steps} />
 
       <SopBindingPanel
         bindings={bindings}

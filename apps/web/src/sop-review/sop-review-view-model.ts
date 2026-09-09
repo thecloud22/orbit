@@ -1,4 +1,5 @@
 import type { SopBindingsView, SopReviewStepView, SopReviewView } from '@orbit/api/views';
+import { describeComparison } from '@orbit/sop-graph';
 
 import type { ApiRequestError } from '../api-client';
 import { isBindingRequired, isFullyBoundForPublish } from './sop-binding-view-model';
@@ -360,7 +361,8 @@ export type StepFieldSpec =
   | { readonly kind: 'stringList'; readonly name: string; readonly label: string }
   | { readonly kind: 'branches'; readonly name: string; readonly label: string }
   | { readonly kind: 'extractFields'; readonly name: string; readonly label: string }
-  | { readonly kind: 'returns'; readonly name: string; readonly label: string };
+  | { readonly kind: 'returns'; readonly name: string; readonly label: string }
+  | { readonly kind: 'comparison'; readonly name: string; readonly label: string };
 
 const PURPOSE: StepFieldSpec = {
   kind: 'textarea',
@@ -445,6 +447,25 @@ const FIELDS_BY_KIND: Readonly<Record<string, readonly StepFieldSpec[]>> = {
   ],
   decision: [
     { kind: 'textarea', name: 'question', label: 'The question being decided', required: true },
+    {
+      kind: 'textarea',
+      name: 'ruleText',
+      label: 'The business rule this came from, in the words it was written in',
+      required: false,
+    },
+    {
+      kind: 'select',
+      name: 'resolution',
+      label: 'How this is decided at run time',
+      options: ['demonstrated', 'judged', 'computed'],
+    },
+    { kind: 'comparison', name: 'comparison', label: 'The comparison (for a computed decision)' },
+    {
+      kind: 'textarea',
+      name: 'judgement',
+      label: 'What the model should weigh (for a judged decision)',
+      required: false,
+    },
     { kind: 'stringList', name: 'usesInputs', label: 'Run inputs it reads' },
     { kind: 'stringList', name: 'usesVariables', label: 'Variables it reads' },
     { kind: 'branches', name: 'branches', label: 'Branches' },
@@ -571,10 +592,31 @@ export function pruneEmptyFields(step: Record<string, unknown>): Record<string, 
     if (value === undefined || value === null) {
       continue;
     }
+    // A half-filled comparison is not a comparison. The step form renders three
+    // controls that start empty, so an untouched one arrives as an object of
+    // empty strings -- sending it would be refused by the schema with a message
+    // about a string's minimum length rather than about the field a person can
+    // see. Dropped only when *nothing* has been entered: a partly filled one is
+    // still sent, because "you have not chosen a comparison" is a better answer
+    // than silently discarding what was typed.
+    if (isEmptyObject(value)) {
+      continue;
+    }
     pruned[key] = value;
   }
 
   return pruned;
+}
+
+function isEmptyObject(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  return Object.values(value).every(
+    (entry) =>
+      entry === undefined || entry === null || (typeof entry === 'string' && entry.trim() === ''),
+  );
 }
 
 /** One step, paired with the heading (if any) that introduces it. */
@@ -601,4 +643,95 @@ export function stepsWithHeadings(steps: readonly SopReviewStepView[]): readonly
     previousGroup = step.group;
     return { step, headingBefore };
   });
+}
+
+/**
+ * One business rule this workflow carries, and the step that enforces it.
+ *
+ * A rule is not a separate thing from the workflow -- it *is* a decision step,
+ * authored from a sentence. So this is a view over the steps rather than a
+ * second list that could drift from them, and a decision whose comparison was
+ * quietly edited away from its own rule text shows both, side by side, for a
+ * reviewer to notice.
+ */
+export interface WorkflowRule {
+  readonly stepId: string;
+  readonly position: number;
+  /** The sentence the rule was written in, when it was written as one. */
+  readonly ruleText: string | null;
+  /** The question the step asks, always present. */
+  readonly question: string;
+  readonly resolution: 'demonstrated' | 'judged' | 'computed';
+  /** How the comparison reads, for a computed decision. */
+  readonly comparison: string | null;
+  /** Where each branch leads, in the author's own words. */
+  readonly branches: readonly { readonly when: string; readonly nextStepId: string }[];
+}
+
+const RESOLUTIONS = ['demonstrated', 'judged', 'computed'] as const;
+
+/**
+ * Every decision in the workflow, as the rules they express.
+ *
+ * Includes decisions with no `ruleText`, deliberately. A workflow's branching
+ * *is* its business logic whether or not somebody wrote the sentence down, and
+ * a panel that listed only the annotated ones would report a workflow full of
+ * unwritten rules as having none.
+ */
+export function workflowRules(steps: readonly SopReviewStepView[]): readonly WorkflowRule[] {
+  return steps.flatMap((step) => {
+    if (step.kind !== 'decision') {
+      return [];
+    }
+
+    const raw = step.step;
+    const resolution = raw['resolution'];
+    const comparison = raw['comparison'];
+    const branches = Array.isArray(raw['branches']) ? (raw['branches'] as unknown[]) : [];
+
+    return [
+      {
+        stepId: step.id,
+        position: step.position,
+        ruleText: typeof raw['ruleText'] === 'string' ? raw['ruleText'] : null,
+        question: typeof raw['question'] === 'string' ? raw['question'] : step.summary,
+        resolution: (RESOLUTIONS as readonly string[]).includes(resolution as string)
+          ? (resolution as WorkflowRule['resolution'])
+          : 'demonstrated',
+        comparison: describeStoredComparison(comparison),
+        branches: branches.flatMap((branch) => {
+          const entry = branch as { when?: unknown; nextStepId?: unknown };
+          return typeof entry.when === 'string' && typeof entry.nextStepId === 'string'
+            ? [{ when: entry.when, nextStepId: entry.nextStepId }]
+            : [];
+        }),
+      },
+    ];
+  });
+}
+
+/**
+ * A stored comparison as a sentence, or null when there is not one.
+ *
+ * Reads the raw step JSON rather than a typed comparison, because that is what
+ * the review view carries -- and it is defensive about shape for the same
+ * reason: this renders a revision that may have been written by a version of
+ * the editor this build has never seen.
+ */
+function describeStoredComparison(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+
+  const { left, operator, right } = value as {
+    left?: unknown;
+    operator?: unknown;
+    right?: unknown;
+  };
+
+  if (typeof left !== 'string' || typeof operator !== 'string' || typeof right !== 'string') {
+    return null;
+  }
+
+  return describeComparison({ left, operator: operator as never, right });
 }
