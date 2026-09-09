@@ -79,6 +79,7 @@ real Gemini or Bedrock service.
 | [ADR-037](#adr-037-give-every-execution-surface-its-own-permission-section-addressing-vocabulary-and-evidence-set) | Give every execution surface its own permission section, addressing vocabulary, and evidence set | Accepted |
 | [ADR-038](#adr-038-name-a-credential-in-the-agent-ir-and-resolve-it-at-the-moment-it-is-typed) | Name a credential in the Agent IR, and resolve it at the moment it is typed | Accepted — amends ADR-021 |
 | [ADR-039](#adr-039-let-admin-register-a-contract-but-never-a-secret) | Let Admin register a contract, but never a secret | Accepted — amends ADR-009 |
+| [ADR-040](#adr-040-let-a-decision-resolve-by-comparing-two-values-the-run-already-holds) | Let a decision resolve by comparing two values the run already holds | Accepted — extends ADR-032 |
 
 ---
 
@@ -2025,3 +2026,67 @@ Admin reports whether that variable is set, and nothing more: `serviceDeskToken 
 | Show a masked value in Admin | A mask still means the value was fetched, sent, and rendered. Reporting whether the variable is set answers the real question without moving the secret at all |
 | Put registration in Studio instead | Systems are deployment-wide and shared across workflows; Studio is per document. It would have preserved a rule at the cost of putting the control in the wrong place |
 | Wait for authentication before allowing any write | Publishing a workflow is already a larger authority than registering a contract, and it has been available since Phase 1. Blocking this specifically would be inconsistent rather than safe |
+
+---
+
+## ADR-040: Let a decision resolve by comparing two values the run already holds
+
+**Status:** Accepted — extends ADR-032
+
+**Phase:** 3
+
+### Context
+
+A workflow could branch two ways. `browser.expect_one_of` picks by what is visible on the page, which is exact and free and useless the moment the same meaning arrives in different words. `model.decide` asks a model to classify page text into declared alternatives (ADR-032), which handles the messy case and is the only non-deterministic thing in an execution — it costs money, needs `permissions.model`, and is opt-in per step for exactly that reason.
+
+Neither fits the thing businesses actually write down. An underwriting manual says "if loan-to-value exceeds 80%, require private mortgage insurance" and "if debt-to-income exceeds 43%, refer the file to a senior underwriter". These are not matters of opinion and they are not page states: they are comparisons against published thresholds, and the answer is the same every time for the same file.
+
+Expressed as a demonstrated decision, a threshold is unrepresentable — nobody can point at "over 80%" on a screen, because the screen shows `92.09%` and the rule lives in a manual. Expressed as a judged decision, a lender pays a model call, waits for it, and accepts that a number comparison is now probabilistic. That is a bad trade in every direction, and it would also make judged decisions common enough that nobody scrutinises them, which undermines the one property ADR-032 was protecting.
+
+### Decision
+
+**A decision may resolve by comparing two values the run already holds.** `resolution: 'computed'` on the SOP Graph step, carrying a `comparison` of `{left, operator, right}`; it compiles to a new Agent IR step, `value.compare`.
+
+Four properties define it:
+
+**It touches no surface.** Both operands are literals or `${variables.x}` / `${inputs.y}` references in the grammar the graph already uses (ADR-007). There is no executor, no permission section, no network call, and nothing is read from a page. It is the only branching step whose answer is settled before it is asked.
+
+**It cannot express a value that does not already exist.** There is no ratio operator and no arithmetic. A rule about loan-to-value requires a step that reads loan-to-value, and the compiler refuses the rule until one exists. This is ADR-002's line applied to figures: the system of record computes its own numbers and stands behind them; Orbit reads them. A ratio Orbit derived itself would be a second, unaudited calculator sitting beside the book of record, disagreeing with it in rounding at first and in substance eventually.
+
+**Six operators and no combination.** `gt`, `gte`, `lt`, `lte`, `eq`, `neq`. A rule needing "over 80% *and* a second home" is two decisions in sequence, which is also how it reads to whoever reviews it. The first `and` would make this an expression language, and an expression is a small program nobody reviewed.
+
+**It needs no binding.** Bindability was a property of a step's *kind*; a computed decision makes it a property of the *step*. There is nothing on any screen to demonstrate, so asking for a demonstration would be asking someone to invent a page state with no bearing on the answer — and refusing to publish until they did would make written rules unusable.
+
+### How values are read
+
+Screens render `$806,500` and `92.09%`, not `806500` and `92.09`, so the runtime understands currency symbols, thousands separators, percent signs, and accounting parentheses for negatives.
+
+It understands exactly those and refuses everything else. `1,2,3` is rejected rather than read as `123`; `about 80` is rejected rather than read as `80`. Ordering operators require both sides to be numbers and halt with `COMPARISON_NOT_COMPARABLE` when either is not, because `>` against something that is not a number has no true answer and no false answer, and a runtime that quietly picked one would route a loan on a value nobody could reconstruct afterwards. Equality falls back to trimmed, case-insensitive text, which is what makes "flood zone is not X" expressible without a separate categorical operator.
+
+### Why the "otherwise" branch is marked rather than positional
+
+A comparison answers yes or no, so a computed decision has exactly two branches and exactly one of them must be marked `otherwise`. The alternative — reading the "no" branch off array position — means reordering two branches in review silently inverts a lending decision. The judged decision's required `insufficientEvidence` branch is the same idea for the same reason.
+
+### Consequences
+
+**Judged decisions stay rare, which is what keeps them trustworthy.** Before this, every rule that was not a visible page state had to be a model call. Now the ones that are genuinely arithmetic are arithmetic, and `model.decide` is left for the questions that are actually judgement — whether an income analyst's note describes seasonal self-employment, say. Scrutiny scales when there is less to scrutinise.
+
+**A run's evidence records both resolved operands, not just the outcome.** The branch a run took can be recomputed by hand from the timeline. This is why `${credentials.x}` is refused in a comparison operand: the transparency that makes the step trustworthy would put a secret in an artifact by design.
+
+**No screenshot is captured for the step.** It reads no page, so a screenshot would show whatever happened to be open and imply the comparison came from it.
+
+**Published versions are unaffected.** The step type is additive, `permissions` is untouched, and every existing Agent Version runs byte-for-byte unchanged.
+
+**The compiler now refuses a class of thing it could not previously be asked.** A rule against a figure the workflow never reads produces `uncompilable_comparison` naming the missing value, which is a refusal rather than a fallback on purpose (ADR-021).
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Compile every written rule to a judged decision | Pays a model call and surrenders determinism for a number comparison. Also makes judged steps routine, which erodes the scrutiny ADR-032 depends on |
+| Let a comparison derive values (`ratio`, `sum`) | Orbit becomes a second calculator beside the system of record, and the two disagree eventually. Requiring the figure to be on screen keeps one source of truth |
+| A general expression language for conditions | Exactly what ADR-007 refuses. An expression is a small program, and nobody reviews programs in a workflow diagram |
+| Combine conditions with `and` / `or` | Two decisions in sequence express the same thing and read better in review. The first combinator is the step onto the expression-language path |
+| Infer the "no" branch from position | Reordering two branches would invert a lending decision with no visible change in review |
+| Coerce anything unparseable to a false comparison | A silent wrong branch on a loan file. Halting names the raw text and makes the fix obvious |
+| Treat it as a new step *kind* in the SOP Graph rather than a decision resolution | It is a decision — it asks a question and takes a branch. A separate kind would duplicate branch handling everywhere and split "how does this workflow branch?" across two vocabularies |

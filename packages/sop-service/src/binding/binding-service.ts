@@ -34,7 +34,7 @@ import { classifyValue, type SopGraph, type SopStep } from '@orbit/sop-graph';
  * means offering work that changes nothing, or worse, refusing to offer work a
  * publish then demands.
  */
-export { BINDABLE_KINDS } from '@orbit/agent-ir-compiler';
+export { BINDABLE_KINDS, needsBinding } from '@orbit/agent-ir-compiler';
 
 /**
  * Assembling a capture into a binding, and persisting it.

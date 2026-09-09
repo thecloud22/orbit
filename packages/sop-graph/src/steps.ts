@@ -55,8 +55,55 @@ export const branchSchema = z.strictObject({
    * has to invent a confident answer instead.
    */
   insufficientEvidence: z.boolean().optional(),
+  /**
+   * Marks the branch meaning *the condition did not hold*.
+   *
+   * Required on a computed decision, where exactly one of the two branches must
+   * carry it, and meaningless on the other two resolutions. A comparison
+   * answers yes or no, so which branch is the "no" could have been read off
+   * position -- and a graph where reordering two branches silently inverts a
+   * lending decision is a graph nobody should have to review that carefully.
+   */
+  otherwise: z.boolean().optional(),
 });
 export type Branch = z.infer<typeof branchSchema>;
+
+/**
+ * How two values are compared, as a closed vocabulary.
+ *
+ * Six operators and nothing else -- no arithmetic, no combination, no negation
+ * of a compound. A rule needing "LTV over 80 *and* a second home" is two
+ * decisions in sequence, which is also how it reads to the person reviewing the
+ * workflow. The moment this grows an `and` it has become an expression language,
+ * and the reason ADR-007 refuses one is that an expression is a small program
+ * nobody reviewed.
+ */
+export const comparisonOperatorSchema = z.enum(['gt', 'gte', 'lt', 'lte', 'eq', 'neq']);
+export type ComparisonOperator = z.infer<typeof comparisonOperatorSchema>;
+
+/**
+ * A comparison a computed decision resolves by, deterministically.
+ *
+ * Both sides are values in the same restricted grammar the rest of the graph
+ * uses (`values.ts`): a literal, or one whole-string `${variables.x}` /
+ * `${inputs.y}` reference. So "is loan-to-value over 80" is
+ * `${variables.loanToValue} gt 80`, and "is the loan over the conforming limit"
+ * -- a threshold the screen itself publishes -- is
+ * `${variables.loanAmount} gt ${variables.conformingLimit}`, with no new syntax
+ * for either.
+ *
+ * What this deliberately cannot express is a value that does not already exist.
+ * There is no ratio operator, no sum: if a rule is about loan-to-value then some
+ * step has to produce loan-to-value, and the compiler refuses the rule until one
+ * does. Orbit reads figures a system of record computed and stands behind; it
+ * does not become a second, unaudited calculator sitting next to it.
+ */
+export const comparisonSchema = z.strictObject({
+  left: z.string().min(1),
+  operator: comparisonOperatorSchema,
+  right: z.string().min(1),
+});
+export type Comparison = z.infer<typeof comparisonSchema>;
 
 /**
  * A value an outcome returns.
@@ -115,6 +162,17 @@ export const decisionStepSchema = z.strictObject({
   purpose: z.string().min(1).optional(),
   /** See `stepBase`'s `group` -- purely presentational. */
   group: z.string().min(1).optional(),
+  /**
+   * The business rule this decision came from, in the words it was written in.
+   *
+   * Set when a decision was authored as a rule -- "if debt-to-income is over
+   * 43%, refer the file to a senior underwriter" -- rather than drawn on a
+   * canvas. It is documentation with a job: the compiled step is what runs, and
+   * this is the sentence a reviewer checks it against, so a decision whose
+   * threshold was quietly edited can be caught by reading it next to the rule it
+   * claims to implement. Never read by the compiler or the runtime.
+   */
+  ruleText: z.string().min(1).optional(),
   usesInputs: z.array(identifierSchema).optional(),
   usesVariables: z.array(identifierSchema).optional(),
   /** Values the decision itself derives, e.g. `isStaleEscalation`. */
@@ -135,9 +193,19 @@ export const decisionStepSchema = z.strictObject({
    *
    * `judgement` says what the model should weigh, in the author's own words.
    * Required for a judged decision and meaningless otherwise.
+   *
+   * `computed` compares two values the workflow already holds and takes the
+   * branch the answer selects (ADR-038). It is the resolution a written business
+   * rule usually wants: a lender's PMI threshold is a number, not a matter of
+   * opinion, and routing it through a model would buy nothing and cost
+   * determinism, money and latency. Free, instant, and identical on every run.
+   *
+   * `comparison` carries that comparison. Required for a computed decision and
+   * meaningless otherwise.
    */
-  resolution: z.enum(['demonstrated', 'judged']).optional(),
+  resolution: z.enum(['demonstrated', 'judged', 'computed']).optional(),
   judgement: z.string().min(1).optional(),
+  comparison: comparisonSchema.optional(),
 });
 
 /**

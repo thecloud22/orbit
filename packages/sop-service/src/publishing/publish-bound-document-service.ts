@@ -1,5 +1,5 @@
 import {
-  BINDABLE_KINDS as COMPILER_BINDABLE_KINDS,
+  needsBinding as compilerNeedsBinding,
   type CompileRefusal,
 } from '@orbit/agent-ir-compiler';
 import type { SopDocumentId } from '@orbit/contracts';
@@ -70,9 +70,11 @@ export interface PublishBoundDocumentService {
  * hand-copied literal, and adding `decision` to the compiler while this stayed
  * at three kinds would have let a workflow with an unbound decision reach a
  * publish that the compiler then refused — the exact ordering problem this gate
- * exists to prevent.
+ * exists to prevent. It became a function rather than a set when a computed
+ * decision made bindability a property of the step rather than of its kind
+ * (ADR-040); the reason for importing it is unchanged.
  */
-const BINDABLE_KINDS = COMPILER_BINDABLE_KINDS;
+const stepNeedsBinding = compilerNeedsBinding;
 
 /** Bindable steps with no approved, usable (non-stale, well-formed) binding. */
 export async function unboundStepIdsFor(input: {
@@ -88,7 +90,7 @@ export async function unboundStepIdsFor(input: {
 
   return input.graph.steps
     .filter((step) => {
-      if (!BINDABLE_KINDS.has(step.kind)) {
+      if (!stepNeedsBinding(step)) {
         return false;
       }
 

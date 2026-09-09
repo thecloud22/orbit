@@ -42,6 +42,7 @@ export const SUPPORTED_STEP_TYPES = [
   'terminal.expect_screen',
   'api.request',
   'model.decide',
+  'value.compare',
   'complete',
   'fail',
 ] as const;
@@ -113,6 +114,10 @@ function locatorsOf(step: AgentIrStep): readonly (readonly [Locator, string])[] 
       return step.readFrom.map(
         (source, index) => [source.locator, `readFrom[${index}].locator`] as const,
       );
+    case 'value.compare':
+      // A comparison names no element. Both operands are values already in the
+      // run's scope, which is the whole reason this step touches no surface.
+      return [];
     case 'complete':
     case 'fail':
       return [];

@@ -7,7 +7,7 @@ import {
   createFakeBrowserFactory,
   createRecordingStore,
 } from '../testing/fakes';
-import { loadFixtureAgentIr, SEEDED_AGENT_VERSION_ID } from '../testing/fixture';
+import { comparisonAgentIr, loadFixtureAgentIr, SEEDED_AGENT_VERSION_ID } from '../testing/fixture';
 
 const TRIGGER: RunTrigger = {
   type: 'watchtower_manual',
@@ -487,5 +487,92 @@ describe('executeAgentVersion — credentials', () => {
     // Never an empty string typed into a live credential field.
     expect(result.status).toBe('failed');
     expect(result.error?.code).toBe('WORKER_FAILURE');
+  });
+});
+
+/**
+ * Computed decisions (ADR-040).
+ *
+ * The point of these is that a run *branches* on a comparison, so each asserts
+ * the outcome the branch leads to rather than only the step's own output. The
+ * two directions differ by one thing: what the page said the status was.
+ */
+describe('executeAgentVersion — a decision resolved by comparing values', () => {
+  async function runComparison(options: {
+    readonly status?: string;
+    readonly comparison?: { left: string; operator: string; right: string };
+  }) {
+    const browser = createFakeBrowser(
+      options.status === undefined ? {} : { text: { 'request-status': options.status } },
+    );
+    const store = createRecordingStore();
+
+    const result = await executeAgentVersion({
+      agentVersionId: SEEDED_AGENT_VERSION_ID,
+      agentIr: comparisonAgentIr(options.comparison),
+      inputs: { requestNumber: 'SR-1001' },
+      trigger: TRIGGER,
+      store,
+      executors: { browser: createFakeBrowserFactory(browser) },
+    });
+
+    return { result, store, browser };
+  }
+
+  it('takes the branch the comparison selects, and reaches its outcome', async () => {
+    const { result } = await runComparison({ status: 'In Progress' });
+
+    expect(result.status).toBe('succeeded');
+    expect(result.businessOutcome).toBe('request_found');
+  });
+
+  it('takes the other branch when the same comparison does not hold', async () => {
+    // Same agent, same inputs. Only the page differs, and the run ends
+    // somewhere else — which is the whole claim this step type makes.
+    const { result } = await runComparison({ status: 'Closed' });
+
+    expect(result.status).toBe('succeeded');
+    expect(result.businessOutcome).toBe('request_not_found');
+  });
+
+  it('records both resolved values, so the branch can be checked by hand', async () => {
+    const { store } = await runComparison({ status: 'In Progress' });
+    const step = store.steps.find((entry) => entry.agentStepId === 'still_in_progress');
+
+    expect(step?.output).toMatchObject({
+      describedAs: 'Request Status is In Progress',
+      left: '${variables.requestStatus}',
+      operator: 'eq',
+      right: 'In Progress',
+      leftValue: 'In Progress',
+      rightValue: 'In Progress',
+      comparedAs: 'text',
+      conditionHolds: true,
+      next: 'complete_found',
+    });
+  });
+
+  it('opens no second surface and asks no model, because it reads neither', async () => {
+    const { browser } = await runComparison({ status: 'In Progress' });
+
+    // The comparison contributes no browser call of its own: the calls are the
+    // ones the navigate, fill, click, assert and extract steps already made.
+    expect(browser.calls.filter((call) => call.startsWith('readText:'))).toEqual([
+      'readText:request-status',
+      'readText:assigned-team',
+    ]);
+  });
+
+  it('halts with a typed error rather than guessing when a value is not a number', async () => {
+    const { result, store } = await runComparison({
+      status: 'In Progress',
+      comparison: { left: '${variables.requestStatus}', operator: 'gt', right: '80' },
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.error?.code).toBe('COMPARISON_NOT_COMPARABLE');
+
+    // And it stops there: nothing downstream of an unanswerable comparison runs.
+    expect(store.steps.map((entry) => entry.agentStepId)).not.toContain('complete_found');
   });
 });

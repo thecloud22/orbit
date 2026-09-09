@@ -79,6 +79,12 @@ const NAMESPACES_BY_POSITION = {
   // reach a request argument -- logged, retried, and shown as evidence -- by a
   // path the credential design deliberately does not cover.
   argument: ['inputs', 'variables'],
+  // A comparison operand is never a credential, and this is the position where
+  // that matters most. A `value.compare` records both operands and their parsed
+  // values in the run's evidence -- that transparency is the reason the step is
+  // trustworthy -- so permitting `${credentials.x}` here would put a secret into
+  // an artifact by design rather than by accident.
+  comparison: ['inputs', 'variables'],
 } as const satisfies Record<string, readonly ReferenceNamespace[]>;
 
 type ValuePosition = keyof typeof NAMESPACES_BY_POSITION;
@@ -234,6 +240,23 @@ function checkControlFlow(context: Context): void {
   const { agentIr, graph } = context;
 
   agentIr.steps.forEach((step, index) => {
+    if (step.type === 'value.compare') {
+      // Two named targets rather than an alternatives array, so they are
+      // checked by field name rather than by position.
+      for (const field of ['whenTrue', 'whenFalse'] as const) {
+        if (!graph.stepsById.has(step[field])) {
+          add(
+            context,
+            'UNKNOWN_BRANCH_TARGET',
+            `Branch target "${step[field]}" does not match any step id.`,
+            ['steps', index, field],
+            step.id,
+          );
+        }
+      }
+      return;
+    }
+
     if (step.type !== 'browser.expect_one_of' && step.type !== 'model.decide') {
       return;
     }
@@ -454,6 +477,14 @@ function checkReferences(context: Context): void {
       case 'browser.fill':
       case 'terminal.type':
         checkValue(context, step.value, 'value', ['steps', index, 'value'], step);
+        break;
+
+      case 'value.compare':
+        // Both sides are ordinary values in the same restricted grammar a fill
+        // uses, so a comparison against a variable nothing declares is refused
+        // by exactly the check that refuses filling a field from one.
+        checkValue(context, step.left, 'comparison', ['steps', index, 'left'], step);
+        checkValue(context, step.right, 'comparison', ['steps', index, 'right'], step);
         break;
 
       case 'browser.assert':

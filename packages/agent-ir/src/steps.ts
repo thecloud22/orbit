@@ -376,6 +376,58 @@ export const failStepSchema = z.strictObject({
   message: z.string().min(1),
 });
 
+/**
+ * The comparisons this contract can express, and nothing more.
+ *
+ * Deliberately the same six the SOP Graph declares, re-stated rather than
+ * imported: ADR-002 keeps business intent and the executable contract
+ * independent, and a shared enum is how that independence quietly ends. Six is
+ * also the whole point — there is no `and`, no arithmetic, no negation of a
+ * compound, because each of those would turn a reviewable comparison into a
+ * small program, which is what ADR-007 exists to refuse.
+ */
+export const comparisonOperatorSchema = z.enum(['gt', 'gte', 'lt', 'lte', 'eq', 'neq']);
+export type ComparisonOperator = z.infer<typeof comparisonOperatorSchema>;
+
+/**
+ * A branch taken by comparing two values the run already holds.
+ *
+ * The third way to resolve a decision, alongside `browser.expect_one_of` (which
+ * reads the page) and `model.decide` (which asks a model). This one reads
+ * neither: both operands are literals or `${variables.x}` / `${inputs.y}`
+ * references resolved from the run's own scope, so it touches no surface, needs
+ * no executor, consumes no permission, costs nothing and takes no time.
+ *
+ * That is the reason it exists. A lender's PMI threshold is a published number,
+ * not a matter of opinion, and a workflow that routed it through a model would
+ * pay money and surrender determinism for a comparison a machine has always been
+ * able to make exactly. `model.decide` remains for the questions that genuinely
+ * are judgement -- whether an income note describes seasonal work -- and this
+ * keeps those questions rare enough to be worth the cost when they are asked.
+ *
+ * `whenTrue` and `whenFalse` rather than an alternatives array, so a comparison
+ * cannot be given a third destination it has no way to select.
+ */
+export const valueCompareStepSchema = z.strictObject({
+  ...stepBase,
+  type: z.literal('value.compare'),
+  left: z.string().min(1),
+  operator: comparisonOperatorSchema,
+  right: z.string().min(1),
+  whenTrue: stepIdSchema,
+  whenFalse: stepIdSchema,
+  /**
+   * The comparison in the author's words, carried for evidence.
+   *
+   * A run's timeline shows what was compared and what the values were; this is
+   * what the person who wrote the rule called it, so the evidence reads as
+   * "Loan To Value is more than 80" rather than as two interpolation strings.
+   */
+  describedAs: z.string().min(1).optional(),
+  evidence: evidenceSchema.optional(),
+});
+export type ValueCompareStep = z.infer<typeof valueCompareStepSchema>;
+
 export const agentIrStepSchema = z.discriminatedUnion('type', [
   browserNavigateStepSchema,
   browserFillStepSchema,
@@ -390,6 +442,7 @@ export const agentIrStepSchema = z.discriminatedUnion('type', [
   terminalExpectScreenStepSchema,
   apiRequestStepSchema,
   modelDecideStepSchema,
+  valueCompareStepSchema,
   completeStepSchema,
   failStepSchema,
 ]);

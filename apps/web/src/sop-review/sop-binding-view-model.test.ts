@@ -354,7 +354,7 @@ describe('a call step, which is mapped rather than demonstrated', () => {
     // The actual bug this closes: `call` used to fall through the same branch
     // as `navigate`/`outcome` and read as "No binding needed" while the
     // compiler refused to publish it with `missing_binding`.
-    expect(isBindingRequired('call')).toBe(true);
+    expect(isBindingRequired({ kind: 'call', bindable: true })).toBe(true);
     expect(needsCallMapping('call')).toBe(true);
   });
 

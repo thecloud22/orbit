@@ -337,3 +337,161 @@ describe('parseSopGraphDocument', () => {
     expect(result.issues.map((issue) => issue.code)).toContain('SCHEMA_ERROR');
   });
 });
+
+/**
+ * Computed decisions (ADR-040).
+ *
+ * The escalation fixture's `check_password_expired` is an ordinary
+ * demonstrated decision, so each test here converts it into a computed one and
+ * then breaks exactly one thing about it. `status` is a variable the fixture's
+ * extract step really produces, which is what makes the "no step reads that
+ * value" test meaningful rather than trivially true of everything.
+ */
+describe('a decision resolved by comparing values', () => {
+  function computedGraph(comparison: {
+    left: string;
+    operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'neq';
+    right: string;
+  }) {
+    const graph = cloneGraph(escalationReviewGraph());
+    const step = graph.steps.find((candidate) => candidate.id === 'check_password_expired');
+
+    if (step?.kind !== 'decision') {
+      throw new Error('fixture changed: expected "check_password_expired" to be a decision');
+    }
+
+    step.resolution = 'computed';
+    step.comparison = comparison;
+    step.branches = [
+      { when: 'the condition holds', nextStepId: 'credential_expired' },
+      { when: 'it does not', nextStepId: 'open_advanced_search', otherwise: true },
+    ];
+
+    return { graph, step };
+  }
+
+  it('accepts a comparison against values the workflow holds at that point', () => {
+    const { graph } = computedGraph({
+      left: '${inputs.requestNumber}',
+      operator: 'eq',
+      right: 'SR-1001',
+    });
+
+    expect(validateSopGraph(graph)).toEqual([]);
+  });
+
+  it('refuses a rule that reads a value the workflow has not read yet', () => {
+    // `status` is genuinely produced by this workflow -- but by a step that
+    // runs *after* this decision. A rule can only compare what the run already
+    // holds when it reaches the rule, and the existing availability analysis
+    // enforces that for a comparison exactly as it does for a filled field.
+    const { graph } = computedGraph({
+      left: '${variables.status}',
+      operator: 'eq',
+      right: 'Escalated',
+    });
+
+    expect(validateSopGraph(graph).map((issue) => issue.code)).toContain(
+      'VARIABLE_NOT_AVAILABLE_ON_ALL_PATHS',
+    );
+  });
+
+  it('refuses a comparison against a value nothing produces', () => {
+    // The rule this enforces: Orbit reads figures a system of record computed,
+    // and will not work one out for itself. A rule about loan-to-value needs a
+    // step that reads loan-to-value.
+    const { graph } = computedGraph({
+      left: '${variables.loanToValue}',
+      operator: 'gt',
+      right: '80',
+    });
+
+    expect(validateSopGraph(graph).map((issue) => issue.code)).toContain(
+      'UNDECLARED_VARIABLE_REFERENCE',
+    );
+  });
+
+  it('refuses a comparison against an input the workflow does not declare', () => {
+    const { graph } = computedGraph({
+      left: '${inputs.requestNumber}',
+      operator: 'eq',
+      right: '${inputs.notDeclared}',
+    });
+
+    expect(validateSopGraph(graph).map((issue) => issue.code)).toContain(
+      'UNDECLARED_INPUT_REFERENCE',
+    );
+  });
+
+  it('refuses a malformed reference rather than reading it as literal text', () => {
+    const { graph } = computedGraph({
+      left: '${inputs.requestNumber',
+      operator: 'eq',
+      right: 'SR-1001',
+    });
+
+    expect(validateSopGraph(graph).map((issue) => issue.code)).toContain('MALFORMED_REFERENCE');
+  });
+
+  it('refuses the resolution with no comparison to make', () => {
+    const { graph, step } = computedGraph({
+      left: '${inputs.requestNumber}',
+      operator: 'eq',
+      right: 'SR-1001',
+    });
+    delete step.comparison;
+
+    expect(validateSopGraph(graph).map((issue) => issue.code)).toContain(
+      'COMPUTED_DECISION_WITHOUT_COMPARISON',
+    );
+  });
+
+  it('refuses a comparison on a decision that is not resolved by comparing', () => {
+    // Otherwise it would sit in the graph reading like a rule, be approved as
+    // one, and never be evaluated.
+    const { graph, step } = computedGraph({
+      left: '${inputs.requestNumber}',
+      operator: 'eq',
+      right: 'SR-1001',
+    });
+    delete step.resolution;
+
+    expect(validateSopGraph(graph).map((issue) => issue.code)).toContain(
+      'COMPARISON_WITHOUT_COMPUTED_RESOLUTION',
+    );
+  });
+
+  it('refuses two branches where neither is the one taken when it does not hold', () => {
+    // Without this the runtime would have to choose by position, and reordering
+    // two branches in review would silently invert the decision.
+    const { graph, step } = computedGraph({
+      left: '${inputs.requestNumber}',
+      operator: 'eq',
+      right: 'SR-1001',
+    });
+    step.branches = step.branches.map((branch) => ({
+      when: branch.when,
+      nextStepId: branch.nextStepId,
+    }));
+
+    expect(validateSopGraph(graph).map((issue) => issue.code)).toContain(
+      'COMPUTED_DECISION_BRANCH_SHAPE',
+    );
+  });
+
+  it('refuses a yes-or-no question with three branches', () => {
+    const { graph, step } = computedGraph({
+      left: '${inputs.requestNumber}',
+      operator: 'eq',
+      right: 'SR-1001',
+    });
+    step.branches = [
+      ...step.branches,
+      { when: 'a third possibility', nextStepId: 'credential_expired' },
+    ];
+
+    expect(validateSopGraph(graph).map((issue) => issue.code)).toContain(
+      'COMPUTED_DECISION_BRANCH_SHAPE',
+    );
+  });
+});

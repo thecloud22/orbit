@@ -56,6 +56,20 @@ export const errorCodeSchema = z.enum([
   'DECISION_BUDGET_EXHAUSTED',
 
   /**
+   * A computed decision could not compare its two values (ADR-040).
+   *
+   * One code, not five, because a comparison has exactly one way to fail: a
+   * side that does not hold the kind of value the operator needs. It is a
+   * failure rather than a branch, and deliberately so -- `>` on something that
+   * is not a number has no true answer and no false answer, and a runtime that
+   * quietly picked one would route a loan on a value nobody could reconstruct.
+   * The message names both operands as they arrived, which is what makes the
+   * halt fixable: almost always the screen showed something the workflow did
+   * not expect, and the raw text says so.
+   */
+  'COMPARISON_NOT_COMPARABLE',
+
+  /**
    * Terminal-surface failures. Named separately from their browser equivalents
    * rather than shared: `BROWSER_TIMEOUT` and `LOCATOR_NOT_FOUND` are embedded in
    * published immutable Agent Versions and keep their names forever, so a second

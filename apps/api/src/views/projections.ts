@@ -415,7 +415,15 @@ export function toSopBindingsView(input: {
   }
 
   const steps: readonly SopStepBindingView[] = input.graph.steps.map((step) => {
-    const bindable = isBindableStepKind(step.kind);
+    // Kind alone is not the whole answer any more. A computed decision compares
+    // two values the run already holds, so there is nothing on any page to
+    // demonstrate (ADR-040) -- showing it as "Not recorded" would put a step in
+    // front of a reviewer that nobody can ever action, and would hold the
+    // publish gate shut on it forever. Written against the resolution directly
+    // rather than through the compiler's `needsBinding`, because that answers a
+    // narrower question: a `call` step needs a mapping and is not in its set.
+    const isComputedDecision = step.kind === 'decision' && step.resolution === 'computed';
+    const bindable = isBindableStepKind(step.kind) && !isComputedDecision;
     const binding = currentByStep.get(step.id);
 
     // Reused rather than a hand-rolled hash comparison: the same validator the

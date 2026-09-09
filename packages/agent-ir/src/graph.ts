@@ -7,11 +7,12 @@ import { isTerminalStep, type AgentIrStep } from './steps';
  * Steps form an ordered list whose flow is implicit:
  *
  *   - `complete` and `fail` are terminal and have no successor;
- *   - `browser.expect_one_of` and `model.decide` transfer control only to their
- *     explicit `next` targets, with no fall-through. They differ in how the
- *     branch is chosen, not in the shape of the graph, which is why every
- *     analysis below — acyclicity, reachability, definite assignment — works on
- *     a judged decision unchanged;
+ *   - `browser.expect_one_of`, `model.decide` and `value.compare` transfer
+ *     control only to their explicit targets, with no fall-through. They differ
+ *     in how the branch is chosen — by what is visible, by a model, by comparing
+ *     two values the run already holds — not in the shape of the graph, which is
+ *     why every analysis below (acyclicity, reachability, definite assignment)
+ *     works on all three unchanged;
  *   - every other step falls through to the next step in array order.
  *
  * This is what the seeded fixture already means: the found path falls through
@@ -40,6 +41,10 @@ export function successorsOf(
 
   if (step.type === 'browser.expect_one_of' || step.type === 'model.decide') {
     return step.alternatives.map((alternative) => alternative.next);
+  }
+
+  if (step.type === 'value.compare') {
+    return [step.whenTrue, step.whenFalse];
   }
 
   return nextInOrder === undefined ? [] : [nextInOrder];

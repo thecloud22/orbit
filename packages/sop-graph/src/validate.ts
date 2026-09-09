@@ -49,6 +49,10 @@ export const SOP_GRAPH_ISSUE_CODES = [
   'UNDECLARED_OUTCOME_RETURN',
   'OPTIONAL_VARIABLE_IN_OUTCOME',
 
+  'COMPUTED_DECISION_WITHOUT_COMPARISON',
+  'COMPARISON_WITHOUT_COMPUTED_RESOLUTION',
+  'COMPUTED_DECISION_BRANCH_SHAPE',
+
   'INVALID_URL',
 ] as const;
 
@@ -276,6 +280,19 @@ function referencesOf(
         (name, position) =>
           [`\${variables.${name}}`, ['steps', index, 'usesVariables', position]] as const,
       ),
+      // Both sides of a computed decision's comparison are ordinary values in
+      // this graph's own grammar, so listing them here is the whole of their
+      // reference checking: malformed syntax, an undeclared input, a variable
+      // nothing produces, and a variable that only exists on some paths are all
+      // caught by the checks that already read this function. A rule written
+      // against a figure the workflow never reads is refused before it is ever
+      // compiled, which is the point -- Orbit will not invent the number.
+      ...(step.comparison === undefined
+        ? []
+        : ([
+            [step.comparison.left, ['steps', index, 'comparison', 'left']],
+            [step.comparison.right, ['steps', index, 'comparison', 'right']],
+          ] as const)),
     ];
   }
 
@@ -587,12 +604,85 @@ function checkUrls(context: Context): void {
   });
 }
 
+/**
+ * A computed decision is well formed, or it is refused here.
+ *
+ * Three shape rules, each guarding a different way the same wrong answer could
+ * be produced silently. A comparison without the resolution would be documented
+ * and never evaluated; the resolution without a comparison has nothing to
+ * evaluate; and a comparison answering yes or no across three branches, or
+ * across two branches where neither is marked the "no", leaves the runtime to
+ * pick by position -- which is how a threshold gets inverted by a reordering
+ * nobody read as a change in meaning.
+ */
+function checkComputedDecisions(context: Context): void {
+  context.graph.steps.forEach((step, index) => {
+    if (step.kind !== 'decision') {
+      return;
+    }
+
+    const isComputed = step.resolution === 'computed';
+
+    if (isComputed && step.comparison === undefined) {
+      add(
+        context,
+        'COMPUTED_DECISION_WITHOUT_COMPARISON',
+        `"${describeStep(step)}" is decided by comparing two values, but no comparison has been written.`,
+        ['steps', index, 'comparison'],
+        step.id,
+      );
+      return;
+    }
+
+    if (!isComputed && step.comparison !== undefined) {
+      add(
+        context,
+        'COMPARISON_WITHOUT_COMPUTED_RESOLUTION',
+        `"${describeStep(step)}" carries a comparison, but is not decided by comparing values, so the comparison would never be used.`,
+        ['steps', index, 'resolution'],
+        step.id,
+      );
+      return;
+    }
+
+    if (!isComputed) {
+      return;
+    }
+
+    if (step.branches.length !== 2) {
+      add(
+        context,
+        'COMPUTED_DECISION_BRANCH_SHAPE',
+        `"${describeStep(step)}" compares two values, which answers yes or no, so it needs exactly two branches — it has ${String(step.branches.length)}.`,
+        ['steps', index, 'branches'],
+        step.id,
+      );
+      return;
+    }
+
+    const otherwise = step.branches.filter((branch) => branch.otherwise === true);
+
+    if (otherwise.length !== 1) {
+      add(
+        context,
+        'COMPUTED_DECISION_BRANCH_SHAPE',
+        otherwise.length === 0
+          ? `"${describeStep(step)}" does not say which of its two branches is taken when the condition does not hold.`
+          : `"${describeStep(step)}" marks both branches as the one taken when the condition does not hold.`,
+        ['steps', index, 'branches'],
+        step.id,
+      );
+    }
+  });
+}
+
 export function validateSopGraph(graph: SopGraph): readonly SopGraphIssue[] {
   const context: Context = { graph, stepGraph: buildStepGraph(graph), issues: [] };
 
   checkIdentity(context);
   checkControlFlow(context);
   checkReferences(context);
+  checkComputedDecisions(context);
   checkSecrets(context);
   checkUrls(context);
 

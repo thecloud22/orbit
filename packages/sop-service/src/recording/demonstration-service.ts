@@ -15,7 +15,7 @@ import { describeStep, type SopGraph, type SopStep } from '@orbit/sop-graph';
 
 import {
   assembleBinding,
-  BINDABLE_KINDS,
+  needsBinding,
   bindingBodyFor,
   declaredNames,
   defaultValueSourceFor,
@@ -111,7 +111,7 @@ export function stepsAwaitingBinding(
   graph: SopGraph,
   bound: ReadonlySet<string>,
 ): readonly SopStep[] {
-  return graph.steps.filter((step) => BINDABLE_KINDS.has(step.kind) && !bound.has(step.id));
+  return graph.steps.filter((step) => needsBinding(step) && !bound.has(step.id));
 }
 
 /** The element a capture names, as a sentence a reviewer can check at a glance. */

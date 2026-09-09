@@ -30,6 +30,7 @@ import {
 import { RuntimeError, asRuntimeError, describeCause } from '../errors';
 import { verifyBinding, type ExecutionBindingResolver } from '../recovery/drift';
 import { captureEvidence, failureEvidence, successEvidence } from './evidence';
+import { compareValues } from '../steps/compare';
 import { resolveValue, type ResolutionScope } from '../values/interpolate';
 import { silentLogger, type RuntimeLogger } from '../logger';
 import { assertApiHost, buildRequestUrl, headersFrom, readJsonPointer } from '../steps/api-request';
@@ -829,6 +830,32 @@ async function performStep(context: PerformStepInput): Promise<StepResult> {
       // `next` comes from the step's own definition. The judge returned an
       // index; it never named a destination and has no way to.
       return { output: resolved.output, next: resolved.alternative.next };
+    }
+
+    case 'value.compare': {
+      // No executor, no surface, no network. Both operands come from the run's
+      // own scope, so this is the one branching step whose answer is settled
+      // before it is asked -- and the evidence records the resolved values, not
+      // just the outcome, so the branch a run took can be recomputed by hand.
+      const leftValue = resolveValue(step.left, 'comparison', scope, step.id);
+      const rightValue = resolveValue(step.right, 'comparison', scope, step.id);
+      const compared = compareValues(step, leftValue, rightValue);
+      const next = compared.holds ? step.whenTrue : step.whenFalse;
+
+      return {
+        output: {
+          ...(step.describedAs === undefined ? {} : { describedAs: step.describedAs }),
+          left: step.left,
+          operator: step.operator,
+          right: step.right,
+          leftValue: compared.leftValue,
+          rightValue: compared.rightValue,
+          comparedAs: compared.comparedAs,
+          conditionHolds: compared.holds,
+          next,
+        },
+        next,
+      };
     }
 
     case 'browser.assert': {

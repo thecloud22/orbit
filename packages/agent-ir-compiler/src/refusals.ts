@@ -55,6 +55,19 @@ export const COMPILE_REFUSAL_CODES = [
   'unusable_value_source',
   /** A navigate step with no destination at all. */
   'missing_destination',
+  /**
+   * A computed decision whose comparison cannot be compiled (ADR-040).
+   *
+   * Covers the two ways a written rule fails to become an executable one: it
+   * compares against a figure no step in this workflow reads, or its two
+   * branches do not say which is taken when the condition does not hold. Both
+   * are refusals rather than assumptions, because the alternative in the first
+   * case is Orbit computing the figure itself -- becoming a second, unaudited
+   * calculator beside the system of record -- and in the second is picking a
+   * branch by position, which inverts a threshold on a reordering nobody read
+   * as a change of meaning.
+   */
+  'uncompilable_comparison',
   /** The compiler produced something that is not valid Agent IR. */
   'invalid_candidate',
 ] as const;

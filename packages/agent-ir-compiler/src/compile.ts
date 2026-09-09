@@ -12,6 +12,9 @@ import { stepChecksum } from '@orbit/db/checksum';
 import type { ExecutionBinding, SelectorChain } from '@orbit/execution-mapping';
 import {
   classifyValue,
+  describeComparison,
+  describeVariable,
+  producedBy,
   type InputDeclaration as SopInputDeclaration,
   type SopGraph,
   type SopStep,
@@ -108,6 +111,144 @@ function countJudgedSteps(graph: SopGraph): number {
 interface JudgedAlternativeSource {
   readonly whenVisible: Locator;
   readonly next: string;
+}
+
+/**
+ * Compiles a computed decision, or refuses it (ADR-040).
+ *
+ * The two refusals here are the ones that keep a written rule honest. A
+ * comparison against a figure no step reads cannot be made executable without
+ * Orbit computing the figure itself, which is precisely the line ADR-002 draws:
+ * the system of record computes and stands behind its own numbers, and Orbit
+ * reads them. And a two-branch decision that does not say which branch is the
+ * "no" would have to be resolved by position, so a reordering that looks
+ * cosmetic in review would invert a lending decision at run time.
+ *
+ * Nothing here needs a binding, which is why this runs before the binding
+ * lookup rather than inside it.
+ */
+function compileComputedDecision(
+  step: Extract<SopStep, { kind: 'decision' }>,
+  graph: SopGraph,
+): { readonly step: AgentIrStep } | { readonly refusals: readonly CompileRefusal[] } {
+  const refusals: CompileRefusal[] = [];
+  const { comparison } = step;
+
+  if (comparison === undefined) {
+    return {
+      refusals: [
+        refusal(
+          'uncompilable_comparison',
+          `Step "${step.id}" is decided by comparing two values, but no comparison has been written.`,
+          step.id,
+        ),
+      ],
+    };
+  }
+
+  // Both operands are checked against what the workflow actually produces
+  // rather than against what it declares: a variable declared and never
+  // extracted would compile to a comparison that halts on its first run.
+  const produced = new Set(graph.steps.flatMap((candidate) => producedBy(candidate)));
+  const declaredInputs = new Set(graph.inputs.map((input) => input.id));
+
+  for (const [side, raw] of [
+    ['left', comparison.left],
+    ['right', comparison.right],
+  ] as const) {
+    const classified = classifyValue(raw);
+
+    if (classified.kind === 'malformed') {
+      refusals.push(
+        refusal(
+          'uncompilable_comparison',
+          `Step "${step.id}" compares against "${raw}", which is not written correctly.`,
+          step.id,
+        ),
+      );
+      continue;
+    }
+
+    if (classified.kind !== 'reference') {
+      continue;
+    }
+
+    const { namespace, name } = classified.reference;
+    const known = namespace === 'inputs' ? declaredInputs.has(name) : produced.has(name);
+
+    if (!known) {
+      refusals.push(
+        refusal(
+          'uncompilable_comparison',
+          namespace === 'inputs'
+            ? `Step "${step.id}" compares the ${side}-hand side against the run input "${name}", which this workflow does not declare.`
+            : `Step "${step.id}" compares the ${side}-hand side against "${describeVariable(name)}", and no step in this workflow reads that value. Add a step that reads it before this decision — Orbit will not work it out for itself.`,
+          step.id,
+        ),
+      );
+    }
+  }
+
+  const otherwise = step.branches.filter((branch) => branch.otherwise === true);
+
+  if (step.branches.length !== 2 || otherwise.length !== 1) {
+    refusals.push(
+      refusal(
+        'uncompilable_comparison',
+        step.branches.length !== 2
+          ? `Step "${step.id}" compares two values, which answers yes or no, so it needs exactly two branches — it has ${String(step.branches.length)}.`
+          : otherwise.length === 0
+            ? `Step "${step.id}" does not say which of its two branches is taken when the condition does not hold.`
+            : `Step "${step.id}" marks both branches as the one taken when the condition does not hold.`,
+        step.id,
+      ),
+    );
+  }
+
+  const whenFalseBranch = otherwise[0];
+  const whenTrueBranch = step.branches.find((branch) => branch.otherwise !== true);
+
+  for (const branch of step.branches) {
+    if (!graph.steps.some((candidate) => candidate.id === branch.nextStepId)) {
+      refusals.push(
+        refusal(
+          'unresolved_branch_target',
+          `Step "${step.id}" branches to "${branch.nextStepId}" on "${branch.when}", and this workflow has no such step.`,
+          step.id,
+        ),
+      );
+    }
+  }
+
+  if (refusals.length > 0 || whenTrueBranch === undefined || whenFalseBranch === undefined) {
+    return { refusals: refusals.length > 0 ? refusals : [uncompilableShape(step.id)] };
+  }
+
+  return {
+    step: {
+      id: step.id,
+      sourceSopStepIds: [step.id],
+      type: 'value.compare',
+      left: comparison.left,
+      operator: comparison.operator,
+      right: comparison.right,
+      whenTrue: whenTrueBranch.nextStepId,
+      whenFalse: whenFalseBranch.nextStepId,
+      describedAs: describeComparison(comparison),
+      // No screenshot: this step reads no page, so a screenshot would show
+      // whatever happened to be open and imply the comparison came from it.
+      // The resolved operands are the evidence, and the interpreter records
+      // them on the step itself.
+    },
+  };
+}
+
+function uncompilableShape(stepId: string): CompileRefusal {
+  return refusal(
+    'uncompilable_comparison',
+    `Step "${stepId}" could not be compiled into a comparison.`,
+    stepId,
+  );
 }
 
 /**
@@ -214,6 +355,29 @@ export const BINDABLE_KINDS = new Set<SopStep['kind']>([
   // branch, which is what `browser.expect_one_of` resolves at run time.
   'decision',
 ]);
+
+/**
+ * Whether this particular step has to be shown to Orbit on a real page.
+ *
+ * Kind alone stopped being enough when decisions gained a third resolution
+ * (ADR-040). A computed decision compares two values the run already holds, so
+ * there is nothing on any screen to point at -- asking someone to demonstrate
+ * one would be asking them to invent a page state that has no bearing on the
+ * answer, and refusing to publish until they did would make written rules
+ * unusable.
+ *
+ * Everything that reads bindability now asks this rather than the set: the
+ * compiler, the publish gate, the recorder's list of what still needs
+ * demonstrating, and Watchtower's progress count. They agree because they call
+ * one function.
+ */
+export function needsBinding(step: SopStep): boolean {
+  if (step.kind === 'decision' && step.resolution === 'computed') {
+    return false;
+  }
+
+  return BINDABLE_KINDS.has(step.kind);
+}
 
 /** Agent IR declares one value type today; anything else cannot be expressed. */
 function irInputFor(declaration: SopInputDeclaration): IrInputDeclaration | null {
@@ -592,7 +756,19 @@ export function compileCandidate(input: CompileInput): CompileResult {
       continue;
     }
 
-    if (!BINDABLE_KINDS.has(step.kind)) {
+    if (step.kind === 'decision' && step.resolution === 'computed') {
+      const computed = compileComputedDecision(step, graph);
+
+      if ('refusals' in computed) {
+        refusals.push(...computed.refusals);
+        continue;
+      }
+
+      steps.push(computed.step);
+      continue;
+    }
+
+    if (!needsBinding(step)) {
       continue;
     }
 

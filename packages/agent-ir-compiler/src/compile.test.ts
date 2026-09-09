@@ -539,3 +539,138 @@ describe('compiling a bound call step', () => {
     expect(refusalCodes(result)).toContain('unusable_value_source');
   });
 });
+
+/**
+ * Computed decisions (ADR-040).
+ *
+ * Built on the Phase 1 graph by inserting a decision that compares the status
+ * the workflow already extracts against a literal, and routing its two branches
+ * at the two outcome steps. Nothing is bound for it, deliberately: a computed
+ * decision needs no binding, and a test that supplied one would not prove that.
+ */
+describe('a decision resolved by comparing values', () => {
+  function graphWithComparison(
+    comparison: {
+      left: string;
+      operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'neq';
+      right: string;
+    },
+    branchOverrides?: readonly {
+      when: string;
+      nextStepId: string;
+      otherwise?: boolean;
+    }[],
+  ): SopGraph {
+    const base = findServiceRequestGraph();
+    const steps: SopStep[] = [
+      ...base.steps.slice(0, 4),
+      {
+        id: 'is_in_progress',
+        kind: 'decision',
+        question: 'Is the request still in progress?',
+        resolution: 'computed',
+        ruleText: 'A request still in progress is reported as open.',
+        comparison,
+        branches: branchOverrides ?? [
+          { when: 'still in progress', nextStepId: 'found' },
+          { when: 'anything else', nextStepId: 'closed', otherwise: true },
+        ],
+      },
+      base.steps[4]!,
+      {
+        id: 'closed',
+        kind: 'outcome',
+        outcome: 'request_found',
+        message: 'The request was found and is not in progress.',
+      },
+    ];
+
+    return { ...base, steps };
+  }
+
+  it('compiles to a value.compare that touches no surface and needs no binding', () => {
+    const graph = graphWithComparison({
+      left: '${variables.requestStatus}',
+      operator: 'eq',
+      right: 'In Progress',
+    });
+    const result = compile({ graph, bindings: bindingsFor(graph) });
+
+    expect(refusalCodes(result)).toEqual([]);
+    if (!result.ok) return;
+
+    const compiled = result.agentIr.steps.find((step) => step.id === 'is_in_progress');
+
+    expect(compiled).toEqual({
+      id: 'is_in_progress',
+      sourceSopStepIds: ['is_in_progress'],
+      type: 'value.compare',
+      left: '${variables.requestStatus}',
+      operator: 'eq',
+      right: 'In Progress',
+      // The branch that is *not* marked `otherwise`, so reordering the two in
+      // the graph cannot swap them here.
+      whenTrue: 'found',
+      whenFalse: 'closed',
+      describedAs: 'Request Status is In Progress',
+    });
+  });
+
+  it('grants no model permission, because no model is asked anything', () => {
+    const graph = graphWithComparison({
+      left: '${variables.requestStatus}',
+      operator: 'eq',
+      right: 'In Progress',
+    });
+    const result = compile({ graph, bindings: bindingsFor(graph) });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.agentIr.permissions.model).toBeUndefined();
+  });
+
+  it('refuses a comparison against a value no step in the workflow reads', () => {
+    // The load-bearing refusal: the alternative is Orbit deriving the figure
+    // itself, becoming a second calculator beside the system of record.
+    const graph = graphWithComparison({
+      left: '${variables.loanToValue}',
+      operator: 'gt',
+      right: '80',
+    });
+    const result = compile({ graph, bindings: bindingsFor(graph) });
+
+    expect(refusalCodes(result)).toContain('uncompilable_comparison');
+    if (result.ok) return;
+
+    const refusal = result.refusals.find((entry) => entry.code === 'uncompilable_comparison');
+    expect(refusal?.message).toContain('Loan To Value');
+    expect(refusal?.message).toContain('will not work it out for itself');
+  });
+
+  it('refuses two branches where neither says what happens when it does not hold', () => {
+    const graph = graphWithComparison(
+      { left: '${variables.requestStatus}', operator: 'eq', right: 'In Progress' },
+      [
+        { when: 'still in progress', nextStepId: 'found' },
+        { when: 'anything else', nextStepId: 'closed' },
+      ],
+    );
+    const result = compile({ graph, bindings: bindingsFor(graph) });
+
+    expect(refusalCodes(result)).toContain('uncompilable_comparison');
+  });
+
+  it('refuses a branch pointing at a step this workflow does not have', () => {
+    const graph = graphWithComparison(
+      { left: '${variables.requestStatus}', operator: 'eq', right: 'In Progress' },
+      [
+        { when: 'still in progress', nextStepId: 'no_such_step' },
+        { when: 'anything else', nextStepId: 'closed', otherwise: true },
+      ],
+    );
+    const result = compile({ graph, bindings: bindingsFor(graph) });
+
+    expect(refusalCodes(result)).toContain('unresolved_branch_target');
+  });
+});

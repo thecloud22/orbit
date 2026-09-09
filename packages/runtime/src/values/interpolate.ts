@@ -18,6 +18,10 @@ const NAMESPACES_BY_POSITION = {
   expected: ['inputs', 'variables'],
   assign: ['result'],
   output: ['inputs', 'variables'],
+  // Never `credentials`: a comparison's operands are recorded in the step's
+  // evidence, so a secret resolved here would be written to an artifact by
+  // design. Mirrors the semantic validator's list for the same position.
+  comparison: ['inputs', 'variables'],
 } as const satisfies Record<string, readonly ReferenceNamespace[]>;
 
 export type ValuePosition = keyof typeof NAMESPACES_BY_POSITION;

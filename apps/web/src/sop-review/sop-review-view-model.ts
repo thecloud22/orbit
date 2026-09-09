@@ -127,7 +127,7 @@ function unboundRequiredCount(bindings: SopBindingsView | null): number | null {
 
   return bindings.steps.filter(
     (step) =>
-      isBindingRequired(step.kind) &&
+      isBindingRequired(step) &&
       !(step.status === 'approved' && !step.stale && step.issues.length === 0),
   ).length;
 }

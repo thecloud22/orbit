@@ -74,3 +74,54 @@ export function brokenExtractLocatorAgentIr(
 
   return reparse(document, 'The broken-locator variant');
 }
+
+/**
+ * The seeded agent with a computed decision spliced in after extraction.
+ *
+ * Inserted between `extract_request_data` and the two `complete` steps, so the
+ * comparison reads a variable the run genuinely produced a moment earlier
+ * rather than one handed to the fixture. Both destinations already exist, which
+ * is what lets a single fixture prove branching in both directions by varying
+ * only what the page says.
+ *
+ * Re-validated on the way out like every other variant, so a test can never run
+ * a document Orbit would refuse to publish.
+ */
+export function comparisonAgentIr(
+  comparison: { left: string; operator: string; right: string } = {
+    left: '${variables.requestStatus}',
+    operator: 'eq',
+    right: 'In Progress',
+  },
+): AgentIr {
+  const document = JSON.parse(JSON.stringify(loadFixtureAgentIr())) as {
+    id: string;
+    version: string;
+    name: string;
+    steps: Record<string, unknown>[];
+  };
+
+  document.id = agentIdSchema.parse('agent_find_service_request_comparison');
+  document.version = '9.9.8';
+  document.name = 'Find Service Request (computed decision fixture)';
+
+  const at = document.steps.findIndex((step) => step['id'] === 'extract_request_data');
+
+  if (at === -1) {
+    throw new Error('The fixture no longer has an extract_request_data step.');
+  }
+
+  document.steps.splice(at + 1, 0, {
+    id: 'still_in_progress',
+    type: 'value.compare',
+    sourceSopStepIds: ['sop_step_search_and_verify'],
+    left: comparison.left,
+    operator: comparison.operator,
+    right: comparison.right,
+    whenTrue: 'complete_found',
+    whenFalse: 'complete_not_found',
+    describedAs: 'Request Status is In Progress',
+  });
+
+  return reparse(document, 'The computed-decision variant');
+}

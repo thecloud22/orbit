@@ -54,7 +54,11 @@ If a document conflicts with this file, stop and clearly identify the conflict r
 - Runtime executes Agent IR, never raw SOP text, raw LLM output, or arbitrary user code.
 - Every run must reference an immutable Agent Version.
 - Every Agent IR step must map to one or more source SOP step IDs.
-- Browser execution is deterministic in Phase 1. No runtime LLM decisions.
+- Execution is deterministic by default. The two exceptions are opt-in per step and named:
+  a judged decision calls a model (**ADR-032**, requires `permissions.model`), and drift recovery
+  proposes a repair (**ADR-033**, requires `permissions.recovery`). Everything else — including a
+  computed decision, which compares two values the run already holds (**ADR-040**) — resolves the
+  same way on every run.
 - Evidence is a first-class product feature, not debug output.
 - Technical run status and business outcome are separate concepts.
 - Policies are independent of prompts and model recommendations.
@@ -202,6 +206,13 @@ ${variables.assignedTeam}
 - Do not execute arbitrary user-provided JavaScript expressions.
 - Do not use `eval`, `Function`, dynamic module import, or arbitrary shell commands.
 - Validate run inputs before creating/dispatching a run.
+- A **comparison** is the one operation permitted on declared values, and only through a
+  `computed` decision's closed six-operator vocabulary — `gt`, `gte`, `lt`, `lte`, `eq`, `neq`
+  (**ADR-040**). It has no arithmetic, no combination, and no negation of a compound: a rule
+  needing two conditions is two decisions in sequence. Both operands must be a literal or one
+  whole-string reference in the grammar above, and a comparison against a value no step in the
+  workflow reads is refused at compile time rather than derived — Orbit reads figures a system of
+  record computed and stands behind, and never becomes a second calculator beside it.
 
 ## Browser and security rules
 

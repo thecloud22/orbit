@@ -53,14 +53,16 @@ export function describeBindingStatus(entry: SopStepBindingView): BindingStatusD
   // step touches no element, so neither is a step anyone has to demonstrate.
   // Reporting them as "Not recorded" made a workflow that was ready to publish
   // read as two-thirds finished and missing something.
-  if (!isBindingRequired(entry.kind)) {
+  if (!isBindingRequired(entry)) {
     return {
       label: 'No binding needed',
       tone: 'muted',
       detail:
         entry.kind === 'navigate'
           ? 'This step opens a page, which the workflow already names.'
-          : 'This step acts on no element, so there is nothing to demonstrate.',
+          : entry.kind === 'decision'
+            ? 'This step decides by comparing values the workflow already reads, so there is nothing on a page to point at.'
+            : 'This step acts on no element, so there is nothing to demonstrate.',
     };
   }
 
@@ -158,7 +160,7 @@ export function summarizeBindings(bindings: SopBindingsView | null): string | nu
   // those made a fully mapped workflow report itself as incomplete — the
   // headline disagreeing with `isFullyBoundForPublish`, which has always
   // counted only the required kinds.
-  const required = bindings.steps.filter((step) => isBindingRequired(step.kind));
+  const required = bindings.steps.filter((step) => isBindingRequired(step));
 
   if (required.length === 0) {
     return 'No step in this workflow needs a binding.';
@@ -230,8 +232,20 @@ export const CALL_MAPPED_KINDS: readonly string[] = ['call'];
  * steps approved" and showed its `navigate` step as "Not recorded", while the
  * publish button correctly considered it ready.
  */
-export function isBindingRequired(kind: string): boolean {
-  return WATCHTOWER_BINDABLE_KINDS.includes(kind) || CALL_MAPPED_KINDS.includes(kind);
+export function isBindingRequired(entry: {
+  readonly kind: string;
+  readonly bindable: boolean;
+}): boolean {
+  // The server's own answer comes first. Kind used to be the whole story, and
+  // stopped being it when a decision gained a resolution that compares values
+  // the run already holds rather than reading a page (ADR-040): two decisions
+  // of the same kind now differ on whether anything can be demonstrated, and
+  // only the projection, which has seen the step, knows which is which.
+  if (!entry.bindable) {
+    return false;
+  }
+
+  return WATCHTOWER_BINDABLE_KINDS.includes(entry.kind) || CALL_MAPPED_KINDS.includes(entry.kind);
 }
 
 /** Whether this step is mapped by declaration rather than by demonstration. */
@@ -287,7 +301,7 @@ export function isFullyBoundForPublish(bindings: SopBindingsView | null): boolea
     return false;
   }
 
-  const required = bindings.steps.filter((step) => isBindingRequired(step.kind));
+  const required = bindings.steps.filter((step) => isBindingRequired(step));
 
   return (
     required.length > 0 &&
