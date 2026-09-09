@@ -151,6 +151,7 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
         database: handle.db,
         provider: options.sopProvider,
         ...(options.modelBudgets === undefined ? {} : { budgets: options.modelBudgets }),
+        ...(options.modelRates === undefined ? {} : { rates: options.modelRates }),
       }),
       sopDiscardService: createSopDiscardService({ database: handle.db }),
       sopRevisionService: createSopRevisionService({ database: handle.db }),

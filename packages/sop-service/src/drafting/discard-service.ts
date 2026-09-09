@@ -60,20 +60,19 @@ export function createSopDiscardService(options: {
         return { ok: false, reason: 'already_discarded' };
       }
 
-      // Asked of the candidate chain and the version rows, which is where the
-      // answer already lives -- the same path `publicationStatusFor` walks for
-      // the review page. A second way of deciding "is something running from
-      // this?" would be a second thing to keep true.
-      const candidate = await repositories.agentIrCandidates.findCurrent(documentId);
+      // Asked across *every* candidate this document has produced, not just the
+      // current one. Compilation supersedes the previous candidate before the
+      // new one is approved, so a document whose latest publish attempt failed
+      // has a current candidate carrying no version -- while an earlier version
+      // is still running. Reading only the current candidate reported that
+      // document as unpublished and let discarding remove the source of a live
+      // agent, which is the one thing this check exists to prevent.
+      const live = (await repositories.agentVersions.publishedByDocument(documentId)).get(
+        documentId,
+      );
 
-      if (candidate !== null) {
-        const live = (
-          await repositories.agentVersions.listByAgent(candidate.agentIr.id as never)
-        ).find((version) => version.publishedFromCandidateId === candidate.id);
-
-        if (live !== undefined) {
-          return { ok: false, reason: 'published', agentVersion: live.version };
-        }
+      if (live !== undefined) {
+        return { ok: false, reason: 'published', agentVersion: live };
       }
 
       await repositories.sopDocuments.discard(documentId);

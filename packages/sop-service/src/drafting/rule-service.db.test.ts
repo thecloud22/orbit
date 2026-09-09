@@ -1,6 +1,6 @@
 import { createRepositories } from '@orbit/db';
 import { useTestDatabase } from '@orbit/db/testing';
-import { createFakeSopProvider, respondWith } from '@orbit/sop-generation/testing';
+import { createFakeSopProvider, FAKE_CALL_USAGE, respondWith } from '@orbit/sop-generation/testing';
 import { mortgageUnderwritingGraph } from '@orbit/sop-graph/testing';
 import { describe, expect, it } from 'vitest';
 
@@ -117,6 +117,71 @@ describe('drafting a rule against a stored workflow', () => {
     );
     expect(revision?.revisionNumber).toBe(1);
     expect(revision?.graph.steps.some((step) => step.id.startsWith('decision'))).toBe(false);
+  });
+
+  it('bills what it spent to the same ledger the budget is read from', async () => {
+    // The bug this pins: the service read the ledger to check a ceiling and
+    // never wrote back to it, so rule drafting spent tokens no budget could
+    // ever see and no cost view ever showed. Asserted through the repository
+    // rather than a spy, because the ledger being *the same rows* is the point.
+    const database = getDatabase().db;
+    const documentId = await storedWorkflow(database);
+    const provider = createFakeSopProvider({
+      respond: () => respondWith({}),
+      respondToRule: () => respondWith(DTI_RULE),
+    });
+
+    const before = await createRepositories(database).modelUsage.totals();
+    expect(before.calls).toBe(0);
+
+    await createSopRuleService({ database, provider }).draft({
+      documentId,
+      ruleText: 'A file whose debt-to-income exceeds 43% goes to a senior underwriter.',
+    });
+
+    const after = await createRepositories(database).modelUsage.totalsForDocument(documentId);
+
+    expect(after.calls).toBe(1);
+    expect(after.totalTokens).toBe(FAKE_CALL_USAGE.inputTokens + FAKE_CALL_USAGE.outputTokens);
+  });
+
+  it('bills a call whose answer turned out to be unusable', async () => {
+    // A call that happened has to be billed whatever became of what it
+    // produced. Otherwise the cheapest way to draft rules for free would be to
+    // write ones that get refused.
+    const database = getDatabase().db;
+    const documentId = await storedWorkflow(database);
+    const provider = createFakeSopProvider({
+      respond: () => respondWith({}),
+      respondToRule: () => respondWith({ ...DTI_RULE, leftValue: 'reserveMonths' }),
+    });
+
+    await createSopRuleService({ database, provider }).draft({
+      documentId,
+      ruleText: 'A file with fewer than 3 months of reserves needs additional reserves.',
+    });
+
+    expect(
+      (await createRepositories(database).modelUsage.totalsForDocument(documentId)).calls,
+    ).toBe(1);
+  });
+
+  it('bills nothing when a budget refused the call before the model was reached', async () => {
+    const database = getDatabase().db;
+    const documentId = await storedWorkflow(database);
+    const provider = createFakeSopProvider({
+      respond: () => respondWith({}),
+      respondToRule: () => respondWith(DTI_RULE),
+    });
+
+    const result = await createSopRuleService({
+      database,
+      provider,
+      budgets: { global: 1 },
+    }).draft({ documentId, ruleText: 'Anything at all.' });
+
+    expect(result.ok).toBe(false);
+    expect((await createRepositories(database).modelUsage.totals()).calls).toBe(0);
   });
 
   it('refuses a rule about a figure this workflow never reads', async () => {

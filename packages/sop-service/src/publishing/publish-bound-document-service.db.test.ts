@@ -174,6 +174,36 @@ describe('publishing a fully bound drafted workflow in one action', () => {
     expect(listed.map((document) => document.id)).toContain(drafted.document.id);
   });
 
+  it('still refuses to discard when a newer candidate has not published', async () => {
+    // The gap this closes. Compilation supersedes the previous candidate before
+    // the new one is approved, so a second publish attempt that fails leaves a
+    // current candidate with no version while the *earlier* version is still
+    // running. Reading only the current candidate reported this document as
+    // unpublished, and discard removed the source of a live agent -- the one
+    // thing the discard service says it must never do.
+    const database = getDatabase().db;
+    const drafted = await draftedDocument(ALL_BOUND);
+
+    const published = await service().publish(drafted.document.id);
+    expect(published.ok).toBe(true);
+
+    // A second compile, left unapproved: the current candidate now carries no
+    // published version, exactly as a failed publish attempt would leave it.
+    const recompiled = await createSopCandidateService({ database }).compileDocument({
+      documentId: drafted.document.id,
+    });
+    expect(recompiled.ok).toBe(true);
+
+    const discarded = await createSopDiscardService({ database }).discard(drafted.document.id);
+
+    expect(discarded.ok).toBe(false);
+    if (discarded.ok || discarded.reason !== 'published') return;
+    expect(discarded.agentVersion).toBe('0.1.0');
+
+    const listed = await createRepositories(database).sopDocuments.list();
+    expect(listed.map((document) => document.id)).toContain(drafted.document.id);
+  });
+
   it('produces exactly what the manual, four-step path would have', async () => {
     const database = getDatabase().db;
     const manual = await draftedDocument(ALL_BOUND);

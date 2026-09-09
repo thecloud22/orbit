@@ -1,10 +1,13 @@
-import type { SopDocumentId } from '@orbit/contracts';
+import { newModelRequestId, type SopDocumentId } from '@orbit/contracts';
 import { createRepositories, type OrbitDatabase } from '@orbit/db';
 import {
   draftRuleDecision,
+  estimateCostMicroUsd,
   type BudgetRefusal,
   type LLMProvider,
   type ModelBudgets,
+  type ModelCallUsage,
+  type ModelRates,
   type RuleDraftRefusal,
 } from '@orbit/sop-generation';
 import { describeStep, producedBy, type SopGraph, type SopStepDraft } from '@orbit/sop-graph';
@@ -70,8 +73,42 @@ export function createSopRuleService(options: {
   readonly database: OrbitDatabase;
   readonly provider: LLMProvider;
   readonly budgets?: ModelBudgets;
+  /** Per-model rates for the cost estimate. An estimate, never a bill. */
+  readonly rates?: ModelRates;
 }): SopRuleService {
   const repositories = createRepositories(options.database);
+  const rates = options.rates ?? {};
+
+  /**
+   * Bills one drafting call to the same ledger every other model call uses.
+   *
+   * A refusal that never reached the provider has no usage and writes nothing,
+   * which is the one case where silence is correct: `budget_exhausted` is
+   * decided before the model is touched, so there is nothing to bill.
+   */
+  async function recordUsage(
+    documentId: SopDocumentId,
+    usage: ModelCallUsage | null | undefined,
+  ): Promise<void> {
+    if (usage === undefined || usage === null) {
+      return;
+    }
+
+    await repositories.modelUsage.record({
+      requestId: newModelRequestId(),
+      documentId,
+      provider: options.provider.descriptor.provider,
+      model: options.provider.descriptor.model,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      estimatedCostMicroUsd: estimateCostMicroUsd({
+        usage,
+        model: options.provider.descriptor.model,
+        rates,
+      }),
+      attempt: 1,
+    });
+  }
 
   return {
     async draft(input) {
@@ -115,6 +152,15 @@ export function createSopRuleService(options: {
           })),
         },
       });
+
+      // Written before anything else is decided, and on the refused path as
+      // much as the accepted one: a call that happened has to be billed
+      // whatever became of what it produced. Skipping this is how rule drafting
+      // spent tokens that no ceiling could ever see and no cost view ever
+      // showed -- the budget was read from the ledger and never written back.
+      // `budget_exhausted` is the one outcome carrying no usage: it is decided
+      // before the provider is touched, so there is nothing to bill.
+      await recordUsage(input.documentId, 'usage' in result ? result.usage : null);
 
       if (!result.ok) {
         return result.reason === 'provider_failed'

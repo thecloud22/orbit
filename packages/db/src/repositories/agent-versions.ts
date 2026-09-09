@@ -58,8 +58,18 @@ export interface AgentVersionRepository {
    * a candidate records the document it was compiled from. Asking per document
    * would be two queries each, and the documents list asks for all of them at
    * once.
+   *
+   * It walks *every* candidate of a document rather than the current one, and
+   * that difference is load-bearing rather than incidental. Compilation
+   * supersedes the previous candidate before the new one is approved, so a
+   * document whose latest publish attempt failed has a current candidate with
+   * no version — while an earlier version is still running. Asking only the
+   * current candidate reports that document as unpublished, which is how
+   * discarding once let the source of a live agent leave the list.
+   *
+   * `documentId` narrows it to one document, for a caller that has one.
    */
-  publishedByDocument(): Promise<ReadonlyMap<SopDocumentId, string>>;
+  publishedByDocument(documentId?: SopDocumentId): Promise<ReadonlyMap<SopDocumentId, string>>;
 }
 
 export function createAgentVersionRepository(executor: Executor): AgentVersionRepository {
@@ -133,7 +143,9 @@ export function createAgentVersionRepository(executor: Executor): AgentVersionRe
         .map((row) => toAgentVersionSummary(toAgentVersionRecord(row)));
     },
 
-    async publishedByDocument() {
+    async publishedByDocument(documentId) {
+      const published = eq(agentVersions.lifecycleStatus, 'published');
+
       const rows = await executor
         .select({
           documentId: agentIrCandidates.documentId,
@@ -144,7 +156,11 @@ export function createAgentVersionRepository(executor: Executor): AgentVersionRe
           agentIrCandidates,
           eq(agentVersions.publishedFromCandidateId, agentIrCandidates.id),
         )
-        .where(eq(agentVersions.lifecycleStatus, 'published'))
+        .where(
+          documentId === undefined
+            ? published
+            : and(published, eq(agentIrCandidates.documentId, documentId)),
+        )
         .orderBy(asc(agentVersions.createdAt));
 
       // Last write wins, so a document published more than once reports its
