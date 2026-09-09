@@ -21,7 +21,8 @@ import { describeEvidence, humanizeKey, type EvidenceItem } from './run-view-mod
 /**
  * Which surface a step ran on, for a run that spans more than one.
  *
- * `null` for `complete`, `fail` and `model.decide`, which touch no surface. A
+ * `null` for `complete`, `fail`, `model.decide` and `value.compare`, which
+ * touch no surface. A
  * reader following a workflow that looks something up over an API, does the work
  * on a green screen and writes the result back needs to see where each step
  * happened; without it the timeline reads as one undifferentiated list and the
@@ -45,6 +46,8 @@ export interface TimelineStep {
   readonly branch: BranchChoice | null;
   /** Present only for a judged decision (ADR-032). */
   readonly judged: JudgedChoice | null;
+  /** Present only for a decision resolved by comparing values (ADR-040). */
+  readonly comparison: ComparisonChoice | null;
   /** Wall-clock duration, when the step recorded both ends. */
   readonly durationLabel: string | null;
 }
@@ -142,6 +145,57 @@ export interface JudgedChoice {
   readonly model: string | null;
 }
 
+/**
+ * How a computed decision resolved (ADR-040).
+ *
+ * The one branch a reader can check for themselves, and this is what makes that
+ * true. A demonstrated branch is described by the element that matched and a
+ * judged one by a confidence score, but a comparison has both of its operands
+ * *as the run resolved them* — so "92.09% is more than 80" can be read, agreed
+ * with, or disputed without opening anything else.
+ *
+ * `describedAs` is the sentence the compiler stamped in, rendered by the same
+ * function the review page uses. A person approves "Loan To Value is more than
+ * 80" and the timeline says those words back, which is the property that makes
+ * a threshold quietly edited after approval visible rather than buried.
+ */
+export interface ComparisonChoice {
+  /** The comparison in the author's words, when the version carries it. */
+  readonly describedAs: string | null;
+  readonly leftValue: string;
+  readonly rightValue: string;
+  readonly holds: boolean;
+  /** Whether the two sides were read as numbers or as text. */
+  readonly comparedAs: string | null;
+  readonly next: string;
+}
+
+export function describeComparison(step: RunStepView): ComparisonChoice | null {
+  if (step.stepType !== 'value.compare') {
+    return null;
+  }
+
+  const leftValue = stringField(step.output, 'leftValue');
+  const rightValue = stringField(step.output, 'rightValue');
+  const next = stringField(step.output, 'next');
+  const holds = step.output?.['conditionHolds'];
+
+  // Every field or nothing: a half-rendered comparison would be a claim about
+  // how a run branched, made from an output this build does not understand.
+  if (leftValue === null || rightValue === null || next === null || typeof holds !== 'boolean') {
+    return null;
+  }
+
+  return {
+    describedAs: stringField(step.output, 'describedAs'),
+    leftValue,
+    rightValue,
+    holds,
+    comparedAs: stringField(step.output, 'comparedAs'),
+    next,
+  };
+}
+
 function numberField(output: Record<string, unknown> | null, key: string): number | null {
   const value = output?.[key];
   return typeof value === 'number' ? value : null;
@@ -235,6 +289,16 @@ const BRANCH_OUTPUT_KEYS = [
   'confidence',
   'confidenceThreshold',
   'rationale',
+  // A comparison's own keys, rendered as a comparison rather than repeated as
+  // six raw fields underneath it.
+  'describedAs',
+  'left',
+  'operator',
+  'right',
+  'leftValue',
+  'rightValue',
+  'comparedAs',
+  'conditionHolds',
 ];
 
 export interface StepDetailRow {
@@ -342,6 +406,7 @@ export function buildRunTimeline(run: RunDetailView): RunTimeline {
       evidence: describeEvidence(artifactsByStep.get(step.id) ?? []),
       branch: describeBranch(step),
       judged: describeJudgedDecision(step),
+      comparison: describeComparison(step),
       durationLabel: formatDuration(step.startedAt, step.finishedAt),
     }));
 

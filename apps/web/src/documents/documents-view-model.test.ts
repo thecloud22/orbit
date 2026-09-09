@@ -10,6 +10,7 @@ function summary(overrides: Partial<SopDocumentSummaryView> = {}): SopDocumentSu
     status: 'draft',
     revisionCount: 1,
     stepCount: 26,
+    publishedVersion: null,
     createdAt: '2026-09-06T12:00:00.000Z',
     ...overrides,
   };
@@ -130,5 +131,23 @@ describe('the empty state', () => {
     // which is the dead end this page was built to remove.
     expect(EMPTY_DOCUMENTS_MESSAGE).toContain('home page');
     expect(EMPTY_DOCUMENTS_MESSAGE).toContain('own words');
+  });
+});
+
+describe('a workflow that is running', () => {
+  it('reports the live version alongside the revision’s own status', () => {
+    // Both facts, because they answer different questions. A published workflow
+    // that has since been revised is genuinely a draft *revision* and genuinely
+    // a running *agent*, and the list used to report only the first — so the
+    // one thing this screen is most often scanned for was the one thing it
+    // could not say.
+    const row = toDocumentRow(summary({ status: 'draft', publishedVersion: '0.1.0' }));
+
+    expect(row.publishedVersion).toBe('0.1.0');
+    expect(row.statusLabel).toBe('Draft');
+  });
+
+  it('reports nothing live for a workflow that has never been published', () => {
+    expect(toDocumentRow(summary()).publishedVersion).toBeNull();
   });
 });

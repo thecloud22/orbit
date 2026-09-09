@@ -45,6 +45,7 @@ function document(overrides: Partial<SopDocumentSummaryView> = {}): SopDocumentS
     status: 'draft',
     revisionCount: 1,
     stepCount: 4,
+    publishedVersion: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };

@@ -127,10 +127,16 @@ describe('GET /v1/sop-documents/:documentId', () => {
 });
 
 describe('GET /v1/sop-documents', () => {
-  function listing(documents: readonly unknown[]) {
+  function listing(
+    documents: readonly unknown[],
+    publishedByDocument: ReadonlyMap<string, string> = new Map(),
+  ) {
     return buildServer({
       logLevel: 'silent',
       context: createStubContext({
+        agentVersions: {
+          publishedByDocument: () => Promise.resolve(publishedByDocument as never),
+        },
         sopDocuments: {
           list: () => Promise.resolve(documents as never),
           summarize: (id) =>
@@ -167,9 +173,27 @@ describe('GET /v1/sop-documents', () => {
         status: 'draft',
         revisionCount: 2,
         stepCount: 26,
+        publishedVersion: null,
         createdAt: '2026-09-06T12:00:00.000Z',
       },
     ]);
+
+    await app.close();
+  });
+
+  it('says which documents are running, and at which version', async () => {
+    // The list derives `status` from the newest revision, which says nothing
+    // about publication -- a live workflow that has since been revised reads as
+    // "draft" there. Both facts are reported because they answer different
+    // questions, and "which of these are actually running?" is the one this
+    // screen is most often scanned for.
+    const app = listing([summary], new Map([[DOCUMENT_ID, '0.2.0']]));
+    await app.ready();
+
+    const response = await app.inject({ method: 'GET', url: '/v1/sop-documents' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data[0]).toMatchObject({ status: 'draft', publishedVersion: '0.2.0' });
 
     await app.close();
   });

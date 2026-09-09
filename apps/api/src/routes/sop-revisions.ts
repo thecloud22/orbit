@@ -145,13 +145,20 @@ export function registerSopRevisionRoutes(app: FastifyInstance, context: ApiCont
   app.get('/v1/sop-documents', async () => {
     const documents = await context.repositories.sopDocuments.list();
 
-    const summaries = await Promise.all(
-      documents.map((document) => context.repositories.sopDocuments.summarize(document.id)),
-    );
+    // One query for every document's published version, rather than two per
+    // document: the list is the one place that asks about all of them at once.
+    const [summaries, publishedVersions] = await Promise.all([
+      Promise.all(
+        documents.map((document) => context.repositories.sopDocuments.summarize(document.id)),
+      ),
+      context.repositories.agentVersions.publishedByDocument(),
+    ]);
 
     const data: readonly SopDocumentSummaryView[] = summaries
       .filter((summary) => summary !== null)
-      .map(toSopDocumentSummaryView);
+      .map((summary) =>
+        toSopDocumentSummaryView(summary, publishedVersions.get(summary.id) ?? null),
+      );
 
     return { data };
   });

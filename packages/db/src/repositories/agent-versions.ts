@@ -4,6 +4,7 @@ import {
   type AgentId,
   type AgentIrCandidateId,
   type AgentVersionId,
+  type SopDocumentId,
 } from '@orbit/contracts';
 import { and, asc, eq, isNotNull } from 'drizzle-orm';
 
@@ -15,7 +16,7 @@ import {
   type AgentVersionRecord,
   type AgentVersionSummary,
 } from '../mappers';
-import { agents, agentVersions } from '../schema';
+import { agentIrCandidates, agents, agentVersions } from '../schema';
 
 export interface CreateAgentVersionInput {
   /** Already validated by @orbit/agent-ir; this repository never stores unvalidated IR. */
@@ -49,6 +50,16 @@ export interface AgentVersionRepository {
   findByAgentAndVersion(agentId: AgentId, version: string): Promise<AgentVersionRecord | null>;
   listPublished(): Promise<readonly AgentVersionSummary[]>;
   listByAgent(agentId: AgentId): Promise<readonly AgentVersionRecord[]>;
+  /**
+   * The published version each document has, if any, in one query.
+   *
+   * The join is document -> candidate -> version, because that is the only
+   * path there is: a version records the candidate it was published from, and
+   * a candidate records the document it was compiled from. Asking per document
+   * would be two queries each, and the documents list asks for all of them at
+   * once.
+   */
+  publishedByDocument(): Promise<ReadonlyMap<SopDocumentId, string>>;
 }
 
 export function createAgentVersionRepository(executor: Executor): AgentVersionRepository {
@@ -120,6 +131,25 @@ export function createAgentVersionRepository(executor: Executor): AgentVersionRe
       return rows
         .filter((row) => !archivedAgentIds.has(row.agentId))
         .map((row) => toAgentVersionSummary(toAgentVersionRecord(row)));
+    },
+
+    async publishedByDocument() {
+      const rows = await executor
+        .select({
+          documentId: agentIrCandidates.documentId,
+          version: agentVersions.version,
+        })
+        .from(agentVersions)
+        .innerJoin(
+          agentIrCandidates,
+          eq(agentVersions.publishedFromCandidateId, agentIrCandidates.id),
+        )
+        .where(eq(agentVersions.lifecycleStatus, 'published'))
+        .orderBy(asc(agentVersions.createdAt));
+
+      // Last write wins, so a document published more than once reports its
+      // newest version rather than the one it started with.
+      return new Map(rows.map((row) => [row.documentId, row.version]));
     },
 
     async listByAgent(agentId) {

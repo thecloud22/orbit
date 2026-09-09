@@ -154,12 +154,16 @@ describe('agent version immutability and integrity', () => {
     expect(methods).not.toContain('update');
     expect(methods).not.toContain('publish');
     expect(methods).not.toContain('delete');
+    // Pinned exactly, so widening this surface is a deliberate edit rather
+    // than something that happens on the way to a feature. Every entry beyond
+    // `create` is a read.
     expect(methods.sort()).toEqual([
       'create',
       'findByAgentAndVersion',
       'findById',
       'listByAgent',
       'listPublished',
+      'publishedByDocument',
     ]);
   });
 

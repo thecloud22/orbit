@@ -169,11 +169,12 @@ function StepEntry({
   readonly isLast: boolean;
   readonly showSurfaces: boolean;
 }) {
-  const { step, surface, events, evidence, branch, judged, durationLabel } = entry;
+  const { step, surface, events, evidence, branch, judged, comparison, durationLabel } = entry;
   const details = stepDetails(step);
   const hasBody =
     branch !== null ||
     judged !== null ||
+    comparison !== null ||
     details.length > 0 ||
     events.length > 0 ||
     evidence.length > 0;
@@ -259,6 +260,36 @@ function StepEntry({
                 The model’s own account: “{judged.rationale}”
               </p>
             )}
+          </div>
+        )}
+
+        {/*
+          The one branch a reader can check for themselves. A demonstrated
+          branch is described by the element that matched and a judged one by a
+          confidence score -- neither can be verified from the page. A
+          comparison shows both operands as the run resolved them, so
+          "92.09% is more than 80" can be agreed with or disputed on the spot.
+          Green and red for held and did-not-hold, because the answer is the
+          first thing a reader is looking for.
+        */}
+        {comparison !== null && (
+          <div
+            className={`mt-2 rounded-md border px-3 py-2 text-sm ${
+              comparison.holds
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                : 'border-slate-200 bg-slate-50 text-slate-700'
+            }`}
+            data-testid="step-comparison"
+          >
+            <p>
+              {comparison.describedAs === null ? 'The comparison' : `“${comparison.describedAs}”`}{' '}
+              {comparison.holds ? 'held' : 'did not hold'}, so the run continued at{' '}
+              <span className="font-mono text-xs">{comparison.next}</span>.
+            </p>
+            <p className="mt-1 font-mono text-xs opacity-80">
+              {comparison.leftValue} vs {comparison.rightValue}
+              {comparison.comparedAs === null ? '' : ` · compared as ${comparison.comparedAs}`}
+            </p>
           </div>
         )}
 

@@ -9,6 +9,7 @@ import {
   humanizeLocator,
   stepDetails,
   surfaceOf,
+  describeComparison,
 } from './run-timeline-view-model';
 
 function step(overrides: Partial<RunStepView> = {}): RunStepView {
@@ -238,6 +239,73 @@ describe('describeBranch', () => {
   });
 });
 
+describe('describeComparison', () => {
+  /** What the runtime actually records for a `value.compare` step (ADR-040). */
+  function comparisonStep(output: Record<string, unknown>) {
+    return step({
+      agentStepId: 'check_pmi_threshold',
+      stepType: 'value.compare',
+      output: {
+        describedAs: 'Loan To Value is more than 80',
+        left: '${variables.loanToValue}',
+        operator: 'gt',
+        right: '80',
+        leftValue: '92.09%',
+        rightValue: '80',
+        comparedAs: 'number',
+        conditionHolds: true,
+        next: 'add_pmi_condition',
+        ...output,
+      },
+    });
+  }
+
+  it('reports both operands as the run resolved them, not just the outcome', () => {
+    // The property the whole step type rests on: a reader can check this branch
+    // for themselves, which is not true of a demonstrated or judged one.
+    expect(describeComparison(comparisonStep({}))).toEqual({
+      describedAs: 'Loan To Value is more than 80',
+      leftValue: '92.09%',
+      rightValue: '80',
+      holds: true,
+      comparedAs: 'number',
+      next: 'add_pmi_condition',
+    });
+  });
+
+  it('reports a comparison that did not hold as one', () => {
+    const described = describeComparison(
+      comparisonStep({ conditionHolds: false, leftValue: '72.73%', next: 'check_flood_zone' }),
+    );
+
+    expect(described?.holds).toBe(false);
+    expect(described?.next).toBe('check_flood_zone');
+  });
+
+  it('describes only a comparison step', () => {
+    expect(describeComparison(step({ stepType: 'browser.click' }))).toBeNull();
+    expect(describeComparison(step({ stepType: 'model.decide' }))).toBeNull();
+  });
+
+  it('renders nothing rather than half a claim when a field is missing', () => {
+    // A partly rendered comparison would be a statement about how a run
+    // branched, assembled from an output this build does not understand.
+    for (const missing of ['leftValue', 'rightValue', 'next', 'conditionHolds']) {
+      const output = { ...comparisonStep({}).output } as Record<string, unknown>;
+      delete output[missing];
+
+      expect(describeComparison(step({ stepType: 'value.compare', output }))).toBeNull();
+    }
+  });
+
+  it('survives a version that carried no described sentence', () => {
+    const output = { ...comparisonStep({}).output } as Record<string, unknown>;
+    delete output['describedAs'];
+
+    expect(describeComparison(step({ stepType: 'value.compare', output }))?.describedAs).toBeNull();
+  });
+});
+
 describe('humanizeLocator', () => {
   it('drops the strategy and reads the target as words', () => {
     expect(humanizeLocator('test_id=request-not-found')).toBe('request not found');
@@ -287,6 +355,29 @@ describe('stepDetails', () => {
           selectedAlternativeIndex: 1,
           matchedLocator: 'test_id=request-not-found',
           next: 'complete_not_found',
+        },
+      }),
+    );
+
+    expect(rows).toEqual([]);
+  });
+
+  it('does not repeat the comparison fields the timeline already renders', () => {
+    // Otherwise a computed decision reads as a decision *and* as eight raw
+    // rows saying the same thing underneath it.
+    const rows = stepDetails(
+      step({
+        stepType: 'value.compare',
+        output: {
+          describedAs: 'Loan To Value is more than 80',
+          left: '${variables.loanToValue}',
+          operator: 'gt',
+          right: '80',
+          leftValue: '92.09%',
+          rightValue: '80',
+          comparedAs: 'number',
+          conditionHolds: true,
+          next: 'add_pmi_condition',
         },
       }),
     );

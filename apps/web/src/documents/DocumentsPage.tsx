@@ -172,11 +172,29 @@ export function DocumentsPage({
                     </span>
                   </span>
 
-                  <span
-                    className={`rounded px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[row.tone]}`}
-                    data-testid="document-status"
-                  >
-                    {row.statusLabel}
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {/*
+                      Shown before the revision's own status and in the stronger
+                      colour, because "this one is running" is the fact a person
+                      scanning this list is looking for. The two are not
+                      alternatives: a live workflow that has since been revised
+                      is a draft revision *and* a running agent, and the list
+                      used to report only the first.
+                    */}
+                    {row.publishedVersion !== null && (
+                      <span
+                        className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800"
+                        data-testid="document-published"
+                      >
+                        Live · {row.publishedVersion}
+                      </span>
+                    )}
+                    <span
+                      className={`rounded px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[row.tone]}`}
+                      data-testid="document-status"
+                    >
+                      {row.statusLabel}
+                    </span>
                   </span>
                 </a>
               </li>

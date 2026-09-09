@@ -371,20 +371,24 @@ export function toSopReviewView(review: {
   };
 }
 
-export function toSopDocumentSummaryView(summary: {
-  readonly id: SopDocumentRecord['id'];
-  readonly title: string;
-  readonly status: string | null;
-  readonly revisionCount: number;
-  readonly stepCount: number;
-  readonly createdAt: Date;
-}): SopDocumentSummaryView {
+export function toSopDocumentSummaryView(
+  summary: {
+    readonly id: SopDocumentRecord['id'];
+    readonly title: string;
+    readonly status: string | null;
+    readonly revisionCount: number;
+    readonly stepCount: number;
+    readonly createdAt: Date;
+  },
+  publishedVersion: string | null = null,
+): SopDocumentSummaryView {
   return {
     documentId: summary.id,
     title: summary.title,
     status: summary.status,
     revisionCount: summary.revisionCount,
     stepCount: summary.stepCount,
+    publishedVersion,
     createdAt: summary.createdAt.toISOString(),
   };
 }

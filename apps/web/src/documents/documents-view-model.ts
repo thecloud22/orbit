@@ -32,6 +32,17 @@ export interface DocumentRow {
    * otherwise indistinguishable without opening each one.
    */
   readonly disambiguator: string | null;
+  /**
+   * The version running from this document, or null when nothing is.
+   *
+   * Kept apart from `statusLabel` rather than folded into it, because they are
+   * different facts and both matter. A published workflow that has since been
+   * revised is genuinely a draft *revision* and genuinely a live *workflow*,
+   * and the list used to show only the first — so the one thing a person most
+   * wants from this screen, "which of these are actually running?", was the one
+   * thing it could not answer.
+   */
+  readonly publishedVersion: string | null;
 }
 
 const STATUS_LABELS: Readonly<Record<string, string>> = {
@@ -66,6 +77,7 @@ export function toDocumentRow(summary: SopDocumentSummaryView): DocumentRow {
     tone: status === null ? 'neutral' : (STATUS_TONES[status] ?? 'neutral'),
     detail: `${plural(summary.stepCount, 'step')} · ${plural(summary.revisionCount, 'revision')}`,
     createdAt: formatDate(summary.createdAt),
+    publishedVersion: summary.publishedVersion,
     // Whether this collides with a sibling is not this function's to know --
     // `documentRows` fills it in once every row in the list is in hand.
     disambiguator: null,

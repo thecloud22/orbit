@@ -403,6 +403,16 @@ export interface SopDocumentSummaryView {
   readonly revisionCount: number;
   /** Steps in the current revision; 0 when the document has no live revision. */
   readonly stepCount: number;
+  /**
+   * The version running from this document, or null when nothing is.
+   *
+   * Separate from `status`, which is the newest *revision's* lifecycle state
+   * and says nothing about publication -- a workflow that is live and has since
+   * been revised reads as "draft" there, which is true of the revision and
+   * badly misleading about the workflow. Both facts are shown because they
+   * answer different questions.
+   */
+  readonly publishedVersion: string | null;
   readonly createdAt: string;
 }
 
