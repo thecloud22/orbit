@@ -54,45 +54,56 @@ export function registerApiSystemRoutes(app: FastifyInstance, context: ApiContex
   app.get('/v1/api-systems', async () => {
     const rows = await repositories.apiSystems.list();
 
+    // Wrapped in `data`, matching every other GET route (`/v1/agent-versions`
+    // and the rest). This was the actual defect a live registration attempt
+    // surfaced: the client's shared `getJson()` helper unconditionally reads
+    // `body.data`, so a bare `{ systems: [...] }` response made every
+    // successful call resolve to `undefined`, and `result.systems` inside the
+    // caller's `.then()` threw -- caught silently by that same promise
+    // chain's `.catch()`, with no console error and a 200 on the wire the
+    // whole time. Confirmed by driving a real browser: the request always
+    // succeeded with the right body, and the page still rendered failure.
     return {
-      systems: rows.map((row) => {
-        const imported = importOpenApi(row.catalogId, safeParse(row.specText));
+      data: {
+        systems: rows.map((row) => {
+          const imported = importOpenApi(row.catalogId, safeParse(row.specText));
 
-        return {
-          id: row.id,
-          catalogId: row.catalogId,
-          name: row.name,
-          authScheme: row.authScheme,
-          credentialRef: row.credentialRef,
-          /**
-           * Whether the deployment supplies the credential — never what it is.
-           *
-           * The one thing an operator needs to know from a screen, and the one
-           * thing that must never appear on one. Reported as a boolean derived
-           * from the environment at request time (ADR-038).
-           */
-          credentialConfigured:
-            row.credentialRef === null
-              ? null
-              : (process.env[environmentVariableFor(row.credentialRef)] ?? '') !== '',
-          credentialVariable:
-            row.credentialRef === null ? null : environmentVariableFor(row.credentialRef),
-          hosts: imported.ok ? imported.catalog.hosts : [],
-          operations: imported.ok
-            ? imported.catalog.operations.map((operation) => ({
-                operationId: operation.operationId,
-                method: operation.method,
-                path: operation.path,
-                summary: operation.summary ?? null,
-                parameters: operation.parameters,
-              }))
-            : [],
-          // Shown rather than hidden: an operation that was skipped is
-          // something a reviewer needs to see, not a silent absence.
-          refusals: imported.refusals,
-          importError: imported.ok ? null : imported.message,
-        };
-      }),
+          return {
+            id: row.id,
+            catalogId: row.catalogId,
+            name: row.name,
+            authScheme: row.authScheme,
+            credentialRef: row.credentialRef,
+            /**
+             * Whether the deployment supplies the credential — never what it is.
+             *
+             * The one thing an operator needs to know from a screen, and the one
+             * thing that must never appear on one. Reported as a boolean derived
+             * from the environment at request time (ADR-038).
+             */
+            credentialConfigured:
+              row.credentialRef === null
+                ? null
+                : (process.env[environmentVariableFor(row.credentialRef)] ?? '') !== '',
+            credentialVariable:
+              row.credentialRef === null ? null : environmentVariableFor(row.credentialRef),
+            hosts: imported.ok ? imported.catalog.hosts : [],
+            operations: imported.ok
+              ? imported.catalog.operations.map((operation) => ({
+                  operationId: operation.operationId,
+                  method: operation.method,
+                  path: operation.path,
+                  summary: operation.summary ?? null,
+                  parameters: operation.parameters,
+                }))
+              : [],
+            // Shown rather than hidden: an operation that was skipped is
+            // something a reviewer needs to see, not a silent absence.
+            refusals: imported.refusals,
+            importError: imported.ok ? null : imported.message,
+          };
+        }),
+      },
     };
   });
 

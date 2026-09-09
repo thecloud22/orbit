@@ -18,6 +18,7 @@ function server() {
   return buildServer({
     context: createStubContext({
       apiSystems: {
+        list: () => Promise.resolve([]),
         byCatalogId: () => Promise.resolve(undefined),
         create: (input) =>
           Promise.resolve({
@@ -53,6 +54,28 @@ paths:
           required: true
           schema: { type: string }
 `;
+
+describe('GET /v1/api-systems', () => {
+  it('wraps the payload in `data`, matching every other GET route', async () => {
+    // The actual defect: this response used to be a bare `{ systems: [...] }`,
+    // while the client's shared `getJson()` helper unconditionally reads
+    // `body.data`. Every call succeeded on the wire and still resolved to
+    // `undefined`, which is exactly what a live registration attempt
+    // surfaced -- a 200 with the right JSON, and a page that still rendered
+    // failure with no console error, because the throw happened inside an
+    // already-caught promise chain.
+    const app = server();
+    await app.ready();
+
+    const response = await app.inject({ method: 'GET', url: '/v1/api-systems' });
+    const body = response.json();
+
+    expect(body).toHaveProperty('data');
+    expect(body.data).toHaveProperty('systems');
+    expect(Array.isArray(body.data.systems)).toBe(true);
+    await app.close();
+  });
+});
 
 describe('POST /v1/api-systems', () => {
   it('registers a well-formed system', async () => {
