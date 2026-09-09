@@ -22,13 +22,17 @@ import {
   type TerminalBusinessOutcome,
 } from '@orbit/contracts';
 
-import { resolveDecision, DEFAULT_DECISION_SETTINGS, type DecisionSettings } from './decision';
-import { RuntimeError, asRuntimeError, describeCause } from './errors';
-import { verifyBinding, type ExecutionBindingResolver } from './drift';
+import {
+  resolveDecision,
+  DEFAULT_DECISION_SETTINGS,
+  type DecisionSettings,
+} from '../steps/decision';
+import { RuntimeError, asRuntimeError, describeCause } from '../errors';
+import { verifyBinding, type ExecutionBindingResolver } from '../recovery/drift';
 import { captureEvidence, failureEvidence, successEvidence } from './evidence';
-import { resolveValue, type ResolutionScope } from './interpolate';
-import { silentLogger, type RuntimeLogger } from './logger';
-import { assertApiHost, buildRequestUrl, headersFrom, readJsonPointer } from './api-request';
+import { resolveValue, type ResolutionScope } from '../values/interpolate';
+import { silentLogger, type RuntimeLogger } from '../logger';
+import { assertApiHost, buildRequestUrl, headersFrom, readJsonPointer } from '../steps/api-request';
 import { operationById, type ApiCatalog } from '@orbit/api-catalog';
 import {
   compareScreen,
@@ -49,14 +53,14 @@ import type {
   RecoveryProposer,
   RunRecorder,
   RunStore,
-} from './ports';
+} from '../ports';
 import {
   assertExecutableProfile,
   assertNavigable,
   assertTerminalHost,
   timeoutFor,
 } from './profile';
-import type { RecoveryContext } from './recovery';
+import type { RecoveryContext } from '../recovery/recovery';
 
 /**
  * The Agent IR interpreter.

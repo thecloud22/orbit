@@ -1,7 +1,7 @@
 import type { AgentIr } from '@orbit/agent-ir';
 import type { AgentVersionId, RunInputs } from '@orbit/contracts';
 
-import { validateRunInputs } from './inputs';
+import { validateRunInputs } from '../values/inputs';
 import { assertExecutableProfile } from './profile';
 
 /**

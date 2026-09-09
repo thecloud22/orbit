@@ -1,6 +1,6 @@
 import type { AgentIr, AgentIrStep, Assertion, Locator } from '@orbit/agent-ir';
 
-import { RuntimeError, type ErrorDetail } from './errors';
+import { RuntimeError, type ErrorDetail } from '../errors';
 
 /**
  * The Task 6 runtime profile.

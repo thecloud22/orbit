@@ -11,9 +11,9 @@ import { seedTestAgentVersion, TEST_TRIGGER, useTestDatabase } from '@orbit/db/t
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { executeAgentVersion } from './interpreter';
-import { createDatabaseRunStore } from './persistence';
-import { createFakeBrowser, createFakeBrowserFactory } from './testing/fakes';
-import { loadFixtureAgentIr } from './testing/fixture';
+import { createDatabaseRunStore } from '../persistence';
+import { createFakeBrowser, createFakeBrowserFactory } from '../testing/fakes';
+import { loadFixtureAgentIr } from '../testing/fixture';
 
 /**
  * The whole interpreter against real persistence, with a fake browser.

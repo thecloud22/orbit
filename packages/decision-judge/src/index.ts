@@ -8,7 +8,7 @@
  * runtime declares a one-method interface returning an index into a closed list
  * and imports nothing from here; `apps/browser-worker` wires the two together,
  * exactly as it wires @orbit/executor-playwright behind `BrowserExecutor`, and
- * `packages/runtime/src/decision-judge-boundary.test.ts` proves the runtime
+ * `packages/runtime/src/steps/decision-judge-boundary.test.ts` proves the runtime
  * cannot reach this package transitively.
  *
  * It legitimately reaches the network, in one direction, from

@@ -1,6 +1,6 @@
 import { classifyInterpolation, type ReferenceNamespace } from '@orbit/agent-ir';
 
-import { RuntimeError } from './errors';
+import { RuntimeError } from '../errors';
 
 /**
  * Restricted interpolation at run time (ADR-007).

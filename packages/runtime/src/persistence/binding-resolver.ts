@@ -2,7 +2,7 @@ import type { AgentVersionId } from '@orbit/contracts';
 import { createRepositories, type OrbitDatabase } from '@orbit/db';
 import { comparisonModeFor } from '@orbit/execution-mapping';
 
-import type { ExecutionBindingResolver, StepBinding } from '../drift';
+import type { ExecutionBindingResolver, StepBinding } from '../recovery/drift';
 
 /**
  * The approved bindings a run should be checked against.

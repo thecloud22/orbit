@@ -1,6 +1,6 @@
 import { type ApiCatalog, type CatalogOperation } from '@orbit/api-catalog';
 
-import { RuntimeError } from './errors';
+import { RuntimeError } from '../errors';
 
 /**
  * Building the request an operation describes.

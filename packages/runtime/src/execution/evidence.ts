@@ -1,9 +1,9 @@
 import type { AgentIr, AgentIrStep } from '@orbit/agent-ir';
 import type { ArtifactKind, ArtifactLinkRole, RunStepId } from '@orbit/contracts';
 
-import { RuntimeError, describeCause } from './errors';
-import type { RuntimeLogger } from './logger';
-import type { BrowserExecutor, RecordedArtifact, RunRecorder } from './ports';
+import { RuntimeError, describeCause } from '../errors';
+import type { RuntimeLogger } from '../logger';
+import type { BrowserExecutor, RecordedArtifact, RunRecorder } from '../ports';
 
 /**
  * The Phase 1 evidence policy.

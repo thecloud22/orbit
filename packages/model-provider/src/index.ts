@@ -14,7 +14,7 @@
  * caller decides what that reply means.
  *
  * @orbit/runtime cannot reach this package, by construction and by test:
- * `packages/runtime/src/decision-judge-boundary.test.ts` walks the workspace
+ * `packages/runtime/src/steps/decision-judge-boundary.test.ts` walks the workspace
  * closure and names it forbidden (ADR-032, ADR-034).
  */
 export const PACKAGE_NAME = '@orbit/model-provider' as const;

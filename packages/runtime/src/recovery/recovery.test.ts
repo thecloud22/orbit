@@ -2,10 +2,14 @@ import type { RunTrigger } from '@orbit/contracts';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ExecutionBindingResolver, StepBinding } from './drift';
-import { executeAgentVersion } from './interpreter';
-import type { DriftObservation, RecoveryProposalOutcome, RecoveryProposer } from './ports';
-import { createFakeBrowser, createFakeBrowserFactory, createRecordingStore } from './testing/fakes';
-import { loadFixtureAgentIr, SEEDED_AGENT_VERSION_ID } from './testing/fixture';
+import { executeAgentVersion } from '../execution/interpreter';
+import type { DriftObservation, RecoveryProposalOutcome, RecoveryProposer } from '../ports';
+import {
+  createFakeBrowser,
+  createFakeBrowserFactory,
+  createRecordingStore,
+} from '../testing/fakes';
+import { loadFixtureAgentIr, SEEDED_AGENT_VERSION_ID } from '../testing/fixture';
 
 /**
  * Bounded recovery, from the runtime's side (ADR-033).

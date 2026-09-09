@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isRuntimeError, type RuntimeError } from './errors';
+import { isRuntimeError, type RuntimeError } from '../errors';
 import { resolveValue, type ResolutionScope, type ValuePosition } from './interpolate';
 
 const STEP_ID = 'enter_request_number';

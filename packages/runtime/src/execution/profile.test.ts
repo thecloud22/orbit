@@ -1,7 +1,7 @@
 import type { AgentIr, AgentIrStep } from '@orbit/agent-ir';
 import { describe, expect, it } from 'vitest';
 
-import { isRuntimeError, type RuntimeError } from './errors';
+import { isRuntimeError, type RuntimeError } from '../errors';
 import {
   assertExecutableProfile,
   assertNavigable,
@@ -9,7 +9,7 @@ import {
   SUPPORTED_STEP_TYPES,
   timeoutFor,
 } from './profile';
-import { loadFixtureAgentIr } from './testing/fixture';
+import { loadFixtureAgentIr } from '../testing/fixture';
 
 function cloneFixture(): AgentIr {
   return structuredClone(loadFixtureAgentIr());

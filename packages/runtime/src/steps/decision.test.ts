@@ -2,14 +2,18 @@ import type { AgentIr } from '@orbit/agent-ir';
 import type { RunTrigger } from '@orbit/contracts';
 import { describe, expect, it } from 'vitest';
 
-import { executeAgentVersion } from './interpreter';
-import { createFakeBrowser, createFakeBrowserFactory, createRecordingStore } from './testing/fakes';
+import { executeAgentVersion } from '../execution/interpreter';
+import {
+  createFakeBrowser,
+  createFakeBrowserFactory,
+  createRecordingStore,
+} from '../testing/fakes';
 import {
   createFakeJudge,
   createNeverCalledJudge,
   type FakeJudgeOptions,
-} from './testing/fake-judge';
-import { SEEDED_AGENT_VERSION_ID } from './testing/fixture';
+} from '../testing/fake-judge';
+import { SEEDED_AGENT_VERSION_ID } from '../testing/fixture';
 
 /**
  * Judged decisions, bounded.
@@ -388,7 +392,7 @@ describe('a runtime with no judge wired', () => {
 
   it('still runs every 0.1 agent that contains no judged decision', async () => {
     // The compatibility commitment, checked rather than asserted.
-    const { loadFixtureAgentIr } = await import('./testing/fixture');
+    const { loadFixtureAgentIr } = await import('../testing/fixture');
     const store = createRecordingStore();
 
     const result = await executeAgentVersion({
@@ -504,7 +508,7 @@ describe('the per-run call ceiling the Agent Version declares', () => {
 
   it('never asks a judge anything when no judged step is reached', async () => {
     const judge = createNeverCalledJudge();
-    const { loadFixtureAgentIr } = await import('./testing/fixture');
+    const { loadFixtureAgentIr } = await import('../testing/fixture');
 
     const result = await executeAgentVersion({
       agentVersionId: SEEDED_AGENT_VERSION_ID,

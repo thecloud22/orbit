@@ -3,9 +3,13 @@ import { buttonFingerprint, fieldFingerprint } from '@orbit/execution-mapping/te
 import { describe, expect, it } from 'vitest';
 
 import type { ExecutionBindingResolver, StepBinding } from './drift';
-import { executeAgentVersion } from './interpreter';
-import { createFakeBrowser, createFakeBrowserFactory, createRecordingStore } from './testing/fakes';
-import { loadFixtureAgentIr, SEEDED_AGENT_VERSION_ID } from './testing/fixture';
+import { executeAgentVersion } from '../execution/interpreter';
+import {
+  createFakeBrowser,
+  createFakeBrowserFactory,
+  createRecordingStore,
+} from '../testing/fakes';
+import { loadFixtureAgentIr, SEEDED_AGENT_VERSION_ID } from '../testing/fixture';
 
 /**
  * The drift check, exercised through a whole run rather than in isolation.

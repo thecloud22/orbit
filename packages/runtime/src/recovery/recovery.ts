@@ -3,7 +3,7 @@ import type { AgentVersionId, RunStepId } from '@orbit/contracts';
 import type { ElementFingerprint, FingerprintMismatch } from '@orbit/execution-mapping';
 
 import type { StepBinding } from './drift';
-import type { RuntimeLogger } from './logger';
+import type { RuntimeLogger } from '../logger';
 import type {
   BrowserExecutor,
   DriftCandidateObservation,
@@ -11,7 +11,7 @@ import type {
   RecoveryProposalOutcome,
   RecoveryProposer,
   RunRecorder,
-} from './ports';
+} from '../ports';
 
 /**
  * The runtime's half of bounded recovery (ADR-033).

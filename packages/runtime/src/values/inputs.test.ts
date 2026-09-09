@@ -1,9 +1,9 @@
 import type { AgentIr } from '@orbit/agent-ir';
 import { describe, expect, it } from 'vitest';
 
-import { isRuntimeError, type RuntimeError } from './errors';
+import { isRuntimeError, type RuntimeError } from '../errors';
 import { validateRunInputs } from './inputs';
-import { loadFixtureAgentIr } from './testing/fixture';
+import { loadFixtureAgentIr } from '../testing/fixture';
 
 function declarations(): AgentIr['inputs'] {
   return loadFixtureAgentIr().inputs;

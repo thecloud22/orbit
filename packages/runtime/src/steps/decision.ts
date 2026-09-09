@@ -1,8 +1,8 @@
 import type { AgentIr, ModelDecideAlternative, ModelDecideStep } from '@orbit/agent-ir';
 import type { AgentVersionId, RunStepId } from '@orbit/contracts';
 
-import { RuntimeError } from './errors';
-import { redactForModel, truncateForModel } from './redact';
+import { RuntimeError } from '../errors';
+import { redactForModel, truncateForModel } from '../values/redact';
 import type {
   BrowserExecutor,
   DecisionJudge,
@@ -11,7 +11,7 @@ import type {
   JudgeUsage,
   RecordedArtifact,
   RunRecorder,
-} from './ports';
+} from '../ports';
 
 /**
  * Judged decisions, as the runtime sees them.

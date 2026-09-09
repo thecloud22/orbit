@@ -2,8 +2,12 @@ import type { RunTrigger } from '@orbit/contracts';
 import { describe, expect, it } from 'vitest';
 
 import { executeAgentVersion } from './interpreter';
-import { createFakeBrowser, createFakeBrowserFactory, createRecordingStore } from './testing/fakes';
-import { loadFixtureAgentIr, SEEDED_AGENT_VERSION_ID } from './testing/fixture';
+import {
+  createFakeBrowser,
+  createFakeBrowserFactory,
+  createRecordingStore,
+} from '../testing/fakes';
+import { loadFixtureAgentIr, SEEDED_AGENT_VERSION_ID } from '../testing/fixture';
 
 const TRIGGER: RunTrigger = {
   type: 'watchtower_manual',

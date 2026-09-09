@@ -1,7 +1,7 @@
 import type { AgentIr } from '@orbit/agent-ir';
 import { runInputsSchema, type RunInputs } from '@orbit/contracts';
 
-import { RuntimeError, type ErrorDetail } from './errors';
+import { RuntimeError, type ErrorDetail } from '../errors';
 
 /**
  * Validates run inputs against the Agent Version's own declarations.

@@ -7,9 +7,9 @@ import {
   type SelectorChain,
 } from '@orbit/execution-mapping';
 
-import { RuntimeError } from './errors';
-import type { RuntimeLogger } from './logger';
-import type { BrowserExecutor, DriftObservation } from './ports';
+import { RuntimeError } from '../errors';
+import type { RuntimeLogger } from '../logger';
+import type { BrowserExecutor, DriftObservation } from '../ports';
 import { attemptRecovery, type RecoveryContext } from './recovery';
 
 /**
