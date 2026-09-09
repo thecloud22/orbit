@@ -600,9 +600,11 @@ describe('Watchtower end to end', () => {
       const page = await open();
       await openReview(page);
 
-      expect((await page.getByTestId('sop-review-state').textContent()) ?? '').toContain(
-        'Revision 1',
-      );
+      // The untouched original -- revision 1, never published -- says just the
+      // state. "Revision" only becomes accurate once an edit really does fork
+      // a second one, which this test is about to cause.
+      const before = (await page.getByTestId('sop-review-state').textContent()) ?? '';
+      expect(before).not.toContain('Revision');
 
       await page.getByTestId('sop-step-edit-open_portal').click();
       await page.getByTestId('field-purpose').fill('Open the corrected portal sign-in page');

@@ -16,7 +16,9 @@ import {
   publishBlockedReason,
   reviewLead,
   reviewPhase,
+  reviewProgress,
   reviseConfirmation,
+  revisionHeadline,
   stateLabel,
   stepKindLabel,
 } from './sop-review-view-model';
@@ -442,6 +444,68 @@ describe('reviseConfirmation', () => {
     expect(reviseConfirmation({ ...REVIEW, editable: false }).points[2]).toBe(
       'Nothing that is running changes until you publish again.',
     );
+  });
+});
+
+describe('reviewProgress', () => {
+  it('is at the draft step while something still has to be mapped', () => {
+    const steps = reviewProgress(REVIEW, bindings([bindingStep()]));
+
+    expect(steps.map((step) => step.status)).toEqual(['current', 'upcoming', 'upcoming']);
+  });
+
+  it('reaches ready once every step has an approved mapping, but never further', () => {
+    const steps = reviewProgress(REVIEW, bindings([APPROVED]));
+
+    expect(steps.map((step) => step.status)).toEqual(['done', 'current', 'upcoming']);
+  });
+
+  it('reaches published once this exact revision is what published', () => {
+    const steps = reviewProgress(PUBLISHED_AT_THIS_REVISION, bindings([APPROVED]));
+
+    expect(steps.map((step) => step.status)).toEqual(['done', 'done', 'current']);
+  });
+
+  it('does not claim published for a revised document, even though reviewPhase does', () => {
+    // The case reviewPhase's own test calls load-bearing, answered the other
+    // way here: a revised document is published *and* editable *and* fully
+    // bound at once (ADR-036), and reviewPhase correctly says `published`
+    // because a running version is the most important fact about the
+    // *document*. A progress bar answers a narrower question -- has *this*
+    // revision been published -- and must not show step 3 as done for a
+    // revision nothing has published yet.
+    const revised: SopReviewView = {
+      ...PUBLISHED_AT_THIS_REVISION,
+      revisionId: 'soprev_2',
+      revisionNumber: 3,
+      editable: true,
+      state: 'draft',
+    };
+
+    expect(reviewProgress(revised, bindings([APPROVED])).map((step) => step.status)).toEqual([
+      'done',
+      'current',
+      'upcoming',
+    ]);
+  });
+});
+
+describe('revisionHeadline', () => {
+  it('says just the state for the untouched original -- revision 1, never published', () => {
+    expect(revisionHeadline({ ...REVIEW, revisionNumber: 1 })).toBe('Draft');
+  });
+
+  it('names the revision once an edit has forked a second one, publish or not', () => {
+    // REVIEW is already revision 2 and unpublished. An edit really did fork
+    // the graph's history at this point, so the word is accurate regardless
+    // of whether anything has published yet.
+    expect(revisionHeadline(REVIEW)).toBe('Revision 2 · Draft');
+  });
+
+  it('names the revision once something has published, even reading an earlier one', () => {
+    const revised: SopReviewView = { ...PUBLISHED_AT_THIS_REVISION, revisionNumber: 3 };
+
+    expect(revisionHeadline(revised)).toBe('Revision 3 · Approved');
   });
 });
 

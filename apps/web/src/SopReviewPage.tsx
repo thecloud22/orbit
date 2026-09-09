@@ -47,11 +47,13 @@ import {
   publishBlockedReason,
   reviewLead,
   reviewPhase,
+  reviewProgress,
   reviseConfirmation,
-  stateLabel,
+  revisionHeadline,
   undeclaredInputRefs,
   type ReviewFailure,
   type ReviewLead,
+  type ReviewProgressStep,
   type ReviseConfirmation,
 } from './sop-review-view-model';
 import { draftExecutabilityNotice } from './sop-draft-view-model';
@@ -664,8 +666,10 @@ export function SopReviewPage({
           {review.title}
         </h2>
         <p className="text-xs text-slate-500" data-testid="sop-review-state">
-          Revision {review.revisionNumber} · {stateLabel(review.state)}
+          {revisionHeadline(review)}
         </p>
+
+        <ReviewProgress steps={reviewProgress(review, bindings)} />
 
         {blocked !== null && (
           <p className="mt-2 text-xs text-amber-900" data-testid="sop-publish-blocked">
@@ -799,6 +803,52 @@ export function SopReviewPage({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Where this revision sits along Draft -> Ready to publish -> Published.
+ *
+ * Shown unconditionally, unlike the lead card below (which the `ready` phase
+ * deliberately skips so it does not repeat the header). A person who has just
+ * finished recording or a walkthrough otherwise lands on a page with no signal
+ * that anything is actually finished; this is the thing that says so at a
+ * glance, before they read a word of the steps list.
+ */
+function ReviewProgress({ steps }: { readonly steps: readonly ReviewProgressStep[] }) {
+  return (
+    <ol className="mt-3 flex items-center" data-testid="sop-review-progress">
+      {steps.map((step, index) => (
+        <Fragment key={step.phase}>
+          {index > 0 && (
+            <span
+              aria-hidden="true"
+              className={`h-px flex-1 ${step.status === 'upcoming' ? 'bg-slate-200' : 'bg-indigo-400'}`}
+            />
+          )}
+          <li
+            className="flex items-center gap-1.5 whitespace-nowrap px-1 text-xs font-medium"
+            data-status={step.status}
+            data-testid={`sop-review-progress-step-${step.phase}`}
+          >
+            <span
+              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] ${
+                step.status === 'done'
+                  ? 'bg-indigo-600 text-white'
+                  : step.status === 'current'
+                    ? 'border-2 border-indigo-600 text-indigo-700'
+                    : 'border border-slate-300 text-slate-400'
+              }`}
+            >
+              {step.status === 'done' ? '✓' : index + 1}
+            </span>
+            <span className={step.status === 'upcoming' ? 'text-slate-400' : 'text-slate-900'}>
+              {step.label}
+            </span>
+          </li>
+        </Fragment>
+      ))}
+    </ol>
   );
 }
 

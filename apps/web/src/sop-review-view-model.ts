@@ -161,6 +161,65 @@ export function reviseConfirmation(review: SopReviewView): ReviseConfirmation {
   };
 }
 
+export interface ReviewProgressStep {
+  readonly phase: ReviewPhase;
+  readonly label: string;
+  readonly status: 'done' | 'current' | 'upcoming';
+}
+
+/**
+ * Where the revision on screen sits along Draft -> Ready to publish -> Published.
+ *
+ * Deliberately scoped to *this revision*, not the document. `reviewPhase`
+ * answers "what is the most important true fact about this document", and
+ * `published` wins there even for a freshly revised, unpublished draft
+ * (ADR-036) -- exactly the case a progress bar must not claim is finished. A
+ * stepper needs the narrower question: has *this* revision itself been
+ * published, fully mapped, or neither.
+ */
+export function reviewProgress(
+  review: SopReviewView,
+  bindings: SopBindingsView | null,
+): readonly ReviewProgressStep[] {
+  const publishedAtThisRevision =
+    review.publication.agentVersionId !== null &&
+    review.publication.compiledFromRevisionId === review.revisionId;
+
+  const currentIndex = publishedAtThisRevision ? 2 : isFullyBoundForPublish(bindings) ? 1 : 0;
+
+  const steps: readonly { readonly phase: ReviewPhase; readonly label: string }[] = [
+    { phase: 'drafting', label: 'Draft' },
+    { phase: 'ready', label: 'Ready to publish' },
+    { phase: 'published', label: 'Published' },
+  ];
+
+  return steps.map((step, index) => ({
+    ...step,
+    status: index < currentIndex ? 'done' : index === currentIndex ? 'current' : 'upcoming',
+  }));
+}
+
+/**
+ * The header line naming this revision, or not, depending on whether that word
+ * means anything yet.
+ *
+ * "Revision" is accurate the moment there is a second one -- an edit really
+ * did fork the graph's history, publish or not -- and it is accurate the
+ * moment something has published, because a future edit really would revise a
+ * running thing. Neither is true yet for the untouched graph a recording or a
+ * draft first lands as: revision 1, unedited, unpublished, with nothing behind
+ * it to be a revision *of*. Calling that "Revision 1" implies a history that
+ * does not exist; this is the one case that gets just the state instead.
+ */
+export function revisionHeadline(review: SopReviewView): string {
+  const isUntouchedOriginal =
+    review.revisionNumber === 1 && review.publication.agentVersionId === null;
+
+  return isUntouchedOriginal
+    ? stateLabel(review.state)
+    : `Revision ${String(review.revisionNumber)} · ${stateLabel(review.state)}`;
+}
+
 export const REVIEW_STATE_LABELS: Readonly<Record<string, string>> = {
   draft: 'Draft',
   needs_clarification: 'Needs clarification',
