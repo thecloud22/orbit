@@ -482,6 +482,21 @@ export async function approveCandidate(
   });
 }
 
+/**
+ * Closes out a candidate that will never be approved -- a recorded sign-in
+ * Orbit cannot supply, most commonly -- by a human decision rather than
+ * leaving it to sit uncompiled-over. Recompiling still supersedes a rejected
+ * candidate and starts a fresh one, so this never blocks a retry.
+ */
+export async function rejectCandidate(
+  candidateId: string,
+  note?: string,
+): Promise<CandidateActionView> {
+  return send<CandidateActionView>(`/v1/agent-ir-candidates/${candidateId}/reject`, 'POST', {
+    ...(note === undefined ? {} : { note }),
+  });
+}
+
 /** Publishes an approved candidate as a runnable Agent Version. */
 export async function publishCandidate(candidateId: string): Promise<PublishedAgentVersionView> {
   return send<PublishedAgentVersionView>(

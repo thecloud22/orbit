@@ -19,6 +19,13 @@ export type PublicationStage =
   | { readonly kind: 'awaiting_approval'; readonly candidateId: string }
   /** Compiled and checked but never approvable — needs a secret Orbit cannot supply. */
   | { readonly kind: 'cannot_validate'; readonly candidateId: string }
+  /**
+   * Rejected by a reviewer's own decision, most often from `cannot_validate`.
+   * Recompiling still supersedes it and starts a fresh candidate, which is
+   * why this is not `not_compiled` again: the panel says what happened, not
+   * just that nothing exists yet.
+   */
+  | { readonly kind: 'rejected'; readonly candidateId: string }
   /** Approved. This is the only stage that offers a Publish action. */
   | { readonly kind: 'publishable'; readonly candidateId: string }
   /** Published. The page links out rather than changing its own claim. */
@@ -63,6 +70,10 @@ export function publicationStage(
     return { kind: 'not_compiled' };
   }
 
+  if (publication.candidateState === 'rejected') {
+    return { kind: 'rejected', candidateId: publication.candidateId };
+  }
+
   if (publication.sandboxState === 'cannot_validate') {
     return { kind: 'cannot_validate', candidateId: publication.candidateId };
   }
@@ -81,6 +92,8 @@ export function publicationSummary(stage: PublicationStage): string {
       return 'An agent has been compiled from this workflow and is waiting for technical approval.';
     case 'cannot_validate':
       return 'This workflow needs a sign-in Orbit cannot perform yet, so it cannot be approved or published.';
+    case 'rejected':
+      return 'This candidate was rejected. Publishing again compiles a fresh one.';
     case 'publishable':
       return 'This workflow has been approved and can be published as a runnable agent.';
     case 'published':

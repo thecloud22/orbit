@@ -15,6 +15,7 @@ import {
   insertSopStep,
   publishBoundDocument,
   publishRecording,
+  rejectCandidate,
   reorderSopStep,
   reviseSopDocument,
   startBindingSession,
@@ -100,6 +101,7 @@ export function SopReviewPage({
   const [publishRecordingFailure, setPublishRecordingFailure] = useState<CompileFailure | null>(
     null,
   );
+  const [isRejectingCandidate, setIsRejectingCandidate] = useState(false);
   const [isStartingBinding, setIsStartingBinding] = useState(false);
   const [bindingFailure, setBindingFailure] = useState<BindingFailure | null>(null);
   const [startUrl, setStartUrl] = useState<string | null>(null);
@@ -397,6 +399,7 @@ export function SopReviewPage({
       declaredOutcomes={review.declaredOutcomes}
       fullyBound={isFullyBoundForPublish(bindings)}
       isPublishing={isPublishingRecording}
+      isRejecting={isRejectingCandidate}
       onPublish={() => {
         setIsPublishingRecording(true);
         setPublishRecordingFailure(null);
@@ -415,6 +418,30 @@ export function SopReviewPage({
           })
           .finally(() => {
             setIsPublishingRecording(false);
+          });
+      }}
+      onReject={() => {
+        const candidateId = review.publication.candidateId;
+        if (candidateId === null) {
+          return;
+        }
+
+        setIsRejectingCandidate(true);
+        setFailure(null);
+
+        void rejectCandidate(candidateId)
+          .then(() => load())
+          .catch((caught: unknown) => {
+            setFailure(
+              describeReviewFailure(
+                caught instanceof ApiRequestError
+                  ? caught
+                  : new ApiRequestError({ status: 0, message: 'The API could not be reached.' }),
+              ),
+            );
+          })
+          .finally(() => {
+            setIsRejectingCandidate(false);
           });
       }}
       provenanceKind={review.provenance.kind}

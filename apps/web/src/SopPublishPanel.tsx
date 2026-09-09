@@ -51,6 +51,9 @@ export function SopPublishPanel(props: {
   readonly isPublishing: boolean;
   readonly publishFailure: CompileFailure | null;
   readonly onPublish: () => void;
+  readonly isRejecting: boolean;
+  /** Closes out a candidate that will never be approved (`cannot_validate`). */
+  readonly onReject: () => void;
 }): React.JSX.Element {
   const stage = publicationStage(props.publication, props.revisionId);
 
@@ -69,7 +72,7 @@ export function SopPublishPanel(props: {
     stage.kind === 'published'
       ? publicationSummary(stage)
       : oneClick
-        ? stage.kind === 'cannot_validate'
+        ? stage.kind === 'cannot_validate' || stage.kind === 'rejected'
           ? publicationSummary(stage)
           : 'Publish this workflow as a runnable agent.'
         : 'Every step of this workflow has to be bound to a real page before it can run. Bind the steps below, then publish.';
@@ -83,6 +86,20 @@ export function SopPublishPanel(props: {
       <p className="mt-1 text-sm text-slate-600" data-testid="sop-publish-summary">
         {summary}
       </p>
+
+      {stage.kind === 'cannot_validate' ? (
+        <button
+          className="mt-3 w-fit rounded-md border border-rose-300 px-3 py-1.5 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-50 disabled:border-slate-200 disabled:text-slate-400"
+          data-testid="reject-candidate-button"
+          disabled={props.isRejecting}
+          onClick={() => {
+            props.onReject();
+          }}
+          type="button"
+        >
+          {props.isRejecting ? 'Rejecting…' : 'Reject this candidate'}
+        </button>
+      ) : null}
 
       {showForm && !hasOutcomes ? (
         <p className="mt-3 text-sm text-slate-500" data-testid="publish-blocked-reason">

@@ -99,3 +99,60 @@ valid documents against the raw schemas instead. Mutation-tested by
 reverting all four sites and confirming exactly the five negative-case tests
 failed (the four positive-case tests pass trivially either way); restored.
 
+
+---
+
+## 3. Wire the "reject a candidate" button into Studio
+
+**The gap.** `SopCandidateService.reject()` existed at the service layer
+(`packages/sop-service/src/candidate-service.ts`) and in the database
+transition table (`compiled -> rejected`), but had no HTTP route, no client
+function, and no button anywhere. `compileDocument` and `approveCandidate`
+were likewise fully implemented client-side but called from no component —
+one-click publish (ADR-025/027) compiles, approves and publishes in a single
+server-side call, so a person reviewing a workflow never sees a raw candidate
+to individually approve or reject.
+
+The one place this actually matters: `cannot_validate` (ADR-021 — a recorded
+sign-in Orbit cannot supply). A candidate stuck there can never be approved,
+but nothing let a reviewer say so explicitly; it just sat in `compiled` state
+forever, and the publish panel's own copy already read as a dead end
+("...so it cannot be approved or published") with no action to close it out.
+
+**Decision.** Add the missing route (`POST
+/v1/agent-ir-candidates/:candidateId/reject`, mirroring `/approve` exactly)
+and client function, and surface a "Reject this candidate" button in
+`SopPublishPanel` specifically when `stage.kind === 'cannot_validate'` — the
+one stage this whole feature exists for. Not offered elsewhere: an
+`awaiting_approval` or `publishable` candidate has no reason to be rejected
+by hand today, and adding a button with no real use invites confusion about
+what it is for.
+
+Rejection intentionally asks nothing of the sandbox (unlike approval's
+`not_ready` check) — a reviewer can reject a candidate whether or not it
+could ever be checked, because rejecting is a judgment call, not a technical
+gate.
+
+**A gap this exposed.** `publicationStage()` had no branch for
+`candidateState === 'rejected'` at all — it would have fallen into
+`awaiting_approval` ("...waiting for technical approval"), which is actively
+wrong once rejected. Added a `rejected` stage with its own summary text.
+Confirmed `isPublishableStage()` already treats every non-`published` kind as
+offering the one-click Publish button, so hitting Publish again after a
+rejection correctly recompiles a fresh candidate rather than requiring a
+separate "try again" affordance.
+
+**Verification.** Route: 5 new tests mirroring the approve route's exact
+pattern (success, no-note, illegal-transition, not-found, malformed id).
+View model: 2 new tests (`rejected` stage reads from `candidateState` even
+when `sandboxState` says `ready`, proving `candidateState` is checked before
+`sandboxState`), mutation-tested by removing the branch and confirming the
+new test fails on the resulting `awaiting_approval` misclassification.
+Live-checked the reject route end-to-end against the real running API and
+database: hitting it against a real already-approved candidate correctly
+returned the `illegal_transition` refusal with the exact message the route
+constructs. Could not manufacture a real `compiled`-state candidate live in
+the time available (every seeded document's current revision was either
+already superseded past `approved` or blocked by an unrelated stale binding
+on recompile); the success path is covered by the route-level and
+view-model-level tests instead, both mutation-verified.

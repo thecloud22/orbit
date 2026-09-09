@@ -50,6 +50,18 @@ describe('publicationStage', () => {
     expect(publicationSummary(stage)).toContain('sign-in');
   });
 
+  it('is rejected once a reviewer closes out a candidate, even one that could be checked', () => {
+    // Rejection asks nothing of the sandbox -- checked here with
+    // sandboxState: 'ready' precisely to prove candidateState wins the
+    // reading, not sandboxState.
+    const stage = publicationStage(
+      publication({ candidateId: 'aircand_1', candidateState: 'rejected', sandboxState: 'ready' }),
+    );
+
+    expect(stage).toEqual({ kind: 'rejected', candidateId: 'aircand_1' });
+    expect(publicationSummary(stage)).toContain('rejected');
+  });
+
   it('is publishable exactly once a candidate is approved', () => {
     const stage = publicationStage(
       publication({ candidateId: 'aircand_1', candidateState: 'approved', sandboxState: 'ready' }),

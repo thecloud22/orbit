@@ -55,6 +55,10 @@ const approveBodySchema = z.strictObject({
   note: z.string().trim().min(1).max(2000).optional(),
 });
 
+const rejectBodySchema = z.strictObject({
+  note: z.string().trim().min(1).max(2000).optional(),
+});
+
 export function registerCandidateRoutes(app: FastifyInstance, context: ApiContext): void {
   app.post<{ Params: { documentId: string } }>(
     '/v1/sop-documents/:documentId/candidates',
@@ -140,6 +144,47 @@ export function registerCandidateRoutes(app: FastifyInstance, context: ApiContex
 
         throw badRequest(
           `This candidate is ${result.state}, and only a freshly compiled candidate may be approved.`,
+        );
+      }
+
+      const payload: DataEnvelope<CandidateActionView> = {
+        data: toCandidateActionView(result.candidate),
+      };
+
+      return reply.code(200).send(payload);
+    },
+  );
+
+  /**
+   * Closing out a candidate that will never be approved, by a human decision
+   * rather than by leaving it to sit uncompiled-over.
+   *
+   * Unlike approval, rejection asks nothing of the sandbox: a reviewer may
+   * reject a candidate whether or not it could be checked. `cannot_validate`
+   * (a recorded sign-in Orbit cannot supply, ADR-021) is the case this exists
+   * for -- recompiling still supersedes it and starts a fresh candidate, so
+   * rejecting never blocks a retry, it only records that this attempt is
+   * done.
+   */
+  app.post<{ Params: { candidateId: string } }>(
+    '/v1/agent-ir-candidates/:candidateId/reject',
+    async (request, reply) => {
+      const candidateId = parseCandidateId(request.params);
+      const body = rejectBodySchema.safeParse(request.body ?? {});
+
+      if (!body.success) {
+        throw badRequest('That is not a valid rejection note.');
+      }
+
+      const result = await context.sopCandidateService.reject(candidateId as never, body.data.note);
+
+      if (!result.ok) {
+        if (result.reason === 'not_found') {
+          throw notFound(`Candidate "${candidateId}" does not exist.`);
+        }
+
+        throw badRequest(
+          `This candidate is ${result.state}, and only a freshly compiled candidate may be rejected.`,
         );
       }
 

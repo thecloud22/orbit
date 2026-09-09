@@ -1,4 +1,8 @@
-import type { ApproveCandidateResult, CompileDocumentResult } from '@orbit/sop-service';
+import type {
+  ApproveCandidateResult,
+  CompileDocumentResult,
+  RejectCandidateResult,
+} from '@orbit/sop-service';
 import { describe, expect, it } from 'vitest';
 
 import { buildServer } from '../server';
@@ -29,6 +33,13 @@ function compileServer(compileDocument: (input: unknown) => Promise<CompileDocum
 function approveServer(approve: (id: string, note?: string) => Promise<ApproveCandidateResult>) {
   return buildServer({
     context: createStubContext({ sopCandidateService: { approve: approve as never } }),
+    logLevel: 'silent',
+  });
+}
+
+function rejectServer(reject: (id: string, note?: string) => Promise<RejectCandidateResult>) {
+  return buildServer({
+    context: createStubContext({ sopCandidateService: { reject: reject as never } }),
     logLevel: 'silent',
   });
 }
@@ -220,6 +231,85 @@ describe('POST /v1/agent-ir-candidates/:candidateId/approve', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/v1/agent-ir-candidates/not-an-orbit-id/approve',
+    });
+
+    expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
+});
+
+describe('POST /v1/agent-ir-candidates/:candidateId/reject', () => {
+  it('rejects and describes the resulting candidate', async () => {
+    const candidate = agentIrCandidateRecord({ state: 'rejected' });
+    const app = rejectServer(() => Promise.resolve({ ok: true, candidate }));
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-ir-candidates/${CANDIDATE_ID}/reject`,
+      payload: { note: 'Needs a sign-in Orbit cannot supply.' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.state).toBe('rejected');
+
+    await app.close();
+  });
+
+  // Unlike approval, rejection asks nothing of the sandbox: a candidate that
+  // could never be checked is exactly the case a reviewer needs to be able to
+  // reject.
+  it('accepts a rejection with no note', async () => {
+    const candidate = agentIrCandidateRecord({ state: 'rejected' });
+    const app = rejectServer(() => Promise.resolve({ ok: true, candidate }));
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-ir-candidates/${CANDIDATE_ID}/reject`,
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    await app.close();
+  });
+
+  it('refuses to reject a candidate that is not in a rejectable state', async () => {
+    const app = rejectServer(() =>
+      Promise.resolve({ ok: false, reason: 'illegal_transition', state: 'approved' }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-ir-candidates/${CANDIDATE_ID}/reject`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.message).toContain('approved');
+
+    await app.close();
+  });
+
+  it('reports an unknown candidate as missing', async () => {
+    const app = rejectServer(() => Promise.resolve({ ok: false, reason: 'not_found' }));
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-ir-candidates/${CANDIDATE_ID}/reject`,
+    });
+
+    expect(response.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it('rejects a candidate id that is not an Orbit identifier', async () => {
+    const app = rejectServer(() => {
+      throw new Error('the service must not be called for a malformed id');
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/agent-ir-candidates/not-an-orbit-id/reject',
     });
 
     expect(response.statusCode).toBe(400);
