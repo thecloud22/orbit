@@ -555,11 +555,7 @@ describe('a decision resolved by comparing values', () => {
       operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'neq';
       right: string;
     },
-    branchOverrides?: readonly {
-      when: string;
-      nextStepId: string;
-      otherwise?: boolean;
-    }[],
+    branchOverrides?: { when: string; nextStepId: string; otherwise?: boolean }[],
   ): SopGraph {
     const base = findServiceRequestGraph();
     const steps: SopStep[] = [
