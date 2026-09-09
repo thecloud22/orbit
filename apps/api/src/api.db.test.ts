@@ -138,6 +138,8 @@ describe('Orbit API over real persistence', () => {
             model: 'claude-haiku-4-5',
             reason: null,
           },
+          runs: createRepositories(getDatabase().db).runs,
+          processStartedAt: new Date(),
         }),
       },
     });

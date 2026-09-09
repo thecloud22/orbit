@@ -745,5 +745,10 @@ export function toPlatformView(snapshot: PlatformSnapshot): PlatformView {
       unrecognised: migrations.unrecognised,
       current: isMigrationLevelCurrent(migrations),
     },
+    orphanedRuns: snapshot.orphanedRuns.map((run) => ({
+      runId: run.runId,
+      status: run.status,
+      queuedAt: run.queuedAt.toISOString(),
+    })),
   };
 }

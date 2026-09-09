@@ -1,5 +1,7 @@
-import { inspectDatabase, type DatabaseCheck, type Executor } from '@orbit/db';
+import { inspectDatabase, type DatabaseCheck, type Executor, type RunRepository } from '@orbit/db';
 import type { ModelResolution } from '@orbit/model-provider';
+
+import { detectOrphanedRuns, type OrphanedRun } from './orphan-runs';
 
 /**
  * Read-only facts about the deployment this API process is.
@@ -31,6 +33,13 @@ export interface PlatformSnapshot {
   readonly artifactRoot: string;
   readonly model: ModelSelectionSummary;
   readonly database: DatabaseCheck;
+  /**
+   * A run still `queued` or `running` from before this process started --
+   * left behind by a killed API process, detected but not acted on. See
+   * `orphan-runs.ts` for why this is unambiguous under Phase 1's
+   * single-process model, and why nothing here resolves one automatically.
+   */
+  readonly orphanedRuns: readonly OrphanedRun[];
 }
 
 /**
@@ -91,6 +100,9 @@ export interface PlatformFactsDependencies {
   readonly host: string;
   readonly port: number;
   readonly modelSelection: ModelSelectionSummary;
+  readonly runs: RunRepository;
+  /** When this process started, for telling an orphaned run from a live one. */
+  readonly processStartedAt: Date;
 }
 
 export function createPlatformFacts(deps: PlatformFactsDependencies): PlatformFacts {
@@ -100,12 +112,17 @@ export function createPlatformFacts(deps: PlatformFactsDependencies): PlatformFa
       // underneath a running process, which is exactly the case an operator
       // opens this page to check. Read on every request rather than cached.
       const database = await inspectDatabase(deps.executor);
+      const orphanedRuns = detectOrphanedRuns(
+        await deps.runs.listNonTerminal(),
+        deps.processStartedAt,
+      );
 
       return {
         api: { host: deps.host, port: deps.port },
         artifactRoot: deps.artifactRoot,
         model: deps.modelSelection,
         database,
+        orphanedRuns,
       };
     },
   };

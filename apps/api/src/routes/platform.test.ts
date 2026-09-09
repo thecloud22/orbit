@@ -27,6 +27,7 @@ function snapshot(overrides: Partial<PlatformSnapshot> = {}): PlatformSnapshot {
         unrecognised: 0,
       },
     },
+    orphanedRuns: [],
     ...overrides,
   };
 }
@@ -67,6 +68,7 @@ describe('GET /v1/platform', () => {
           unrecognised: 0,
           current: false,
         },
+        orphanedRuns: [],
       },
     });
 

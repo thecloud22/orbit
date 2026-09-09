@@ -408,3 +408,58 @@ confirmed a second attempt for the same document returns the new typed
 `{error: {code: 'SESSION_ALREADY_OPEN', details: [{field: 'sessionId', ...}]}}`
 envelope carrying the real open session's id, then cancelled it and
 confirmed a fresh session opens normally afterward.
+
+---
+
+## 9. Retention/orphan reconciliation for runs left running by a killed API process
+
+**Detection-only, as asked.** Phase 1 executes in-process with no durable
+queue (ADR-011): dispatching a run holds nothing durable outside the run row
+itself. If the API process is killed mid-run (a crash, a restart, a `kill
+-9`), the run row is left `queued` or `running` forever -- `runs` has a
+CHECK constraint that a terminal status requires `finishedAt`, but nothing
+requires the reverse, so a non-terminal row with no `finishedAt` can sit
+indefinitely with no signal anywhere that anything is wrong.
+
+**The key realization that makes detection unambiguous rather than a
+heuristic.** A `queued`/`running` run is either work the current process is
+about to pick up or is actively executing right now -- there is no third
+possibility, since nothing else can move a run out of either state. That
+means a non-terminal run **queued before this process started** cannot
+belong to this process: whatever process was executing it is gone. No
+"how long is too long" guess is needed, unlike a typical stale-job timeout --
+just a comparison against the current process's own boot time.
+
+**Decision.** `RunRepository.listNonTerminal()` (new, using the existing
+`runs_status_idx`) plus a pure `detectOrphanedRuns(runs, processStartedAt)`
+in `apps/api/src/orphan-runs.ts` that flags any run with `queuedAt` before
+the given instant. Wired into `PlatformSnapshot`/`PlatformView` (the same
+seam the Admin page's other read-only deployment facts already flow
+through) as `orphanedRuns`, computed fresh on every `GET /v1/platform` the
+same way the migration-level check already is. Also logged once at boot,
+immediately after `app.listen()` succeeds, since that is the cheapest and
+most useful moment to notice -- an operator restarting the process sees the
+warning in the same log stream as the startup message, without needing to
+know to check the Admin page.
+
+**Deliberately does nothing about an orphan beyond reporting it.** Auto-
+failing one risks marking a run wrong if it were somehow still genuinely
+executing under a process this deployment does not know about, and a run's
+terminal status is a fact other things read (evidence, business outcome) --
+never something to write from a guess. Resolving one is an explicit operator
+decision, matching the task's stated scope exactly.
+
+**Verification.** Pure-function tests for `detectOrphanedRuns` (before/after/
+at-the-boundary of `processStartedAt`, multiple orphans, empty input),
+mutation-verified on the boundary comparison. A new db-integration test for
+`listNonTerminal` seeds one queued, one running and one completed run and
+confirms only the two non-terminal ones come back, oldest first; mutation-
+verified by removing the status filter. A new Admin-facts test confirms the
+"no orphans" and "N orphans, named by id" wordings, mutation-verified.
+Live-verified against the real running API in the best possible way: `GET
+/v1/platform` found a **genuinely real orphaned run** already sitting in the
+dev database -- `run_01M20G3326YY44WWPXWZVJAN4Z`, `status: running`,
+`queuedAt`/`startedAt` from the previous day, `finishedAt: null` -- left
+behind by an earlier API restart during this session's own testing. Not a
+synthetic fixture; the feature caught a real instance of exactly the problem
+it exists for on its first live query.

@@ -128,13 +128,15 @@ describe('platformFacts', () => {
     artifactRoot: '/srv/orbit/data/artifacts',
     model: model(),
     database: database(),
+    orphanedRuns: [],
   };
 
-  it('reports the address, artifact root and database', () => {
+  it('reports the address, artifact root, database and orphaned runs', () => {
     expect(platformFacts(platform).map((fact) => fact.id)).toEqual([
       'api-address',
       'artifact-root',
       'database-name',
+      'orphaned-runs',
     ]);
   });
 
@@ -142,6 +144,22 @@ describe('platformFacts', () => {
     const address = platformFacts(platform).find((fact) => fact.id === 'api-address');
 
     expect(address?.value).toBe('127.0.0.1:3002');
+  });
+
+  it('reports no orphaned runs plainly rather than an empty-looking value', () => {
+    const orphans = platformFacts(platform).find((fact) => fact.id === 'orphaned-runs');
+
+    expect(orphans?.value).toBe('None');
+  });
+
+  it('names an orphaned run by id', () => {
+    const orphans = platformFacts({
+      ...platform,
+      orphanedRuns: [{ runId: 'run_orphan', status: 'running', queuedAt: '2026-09-09T00:00:00Z' }],
+    }).find((fact) => fact.id === 'orphaned-runs');
+
+    expect(orphans?.value).toContain('run_orphan');
+    expect(orphans?.value).toContain('1');
   });
 
   it('never repeats the model, which has its own section', () => {

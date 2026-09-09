@@ -236,6 +236,45 @@ describe('runs', () => {
     const runs = await repositories.runs.listByAgentVersion(agentVersion.id);
     expect(runs.map((run) => run.id)).toEqual([newer.id, older.id]);
   });
+
+  it('lists only queued and running runs, oldest first, for orphan detection', async () => {
+    const { db } = testDatabase();
+    const repositories = createRepositories(db);
+    const agentVersion = await seedTestAgentVersion(db);
+
+    const stillQueued = await repositories.runs.create({
+      agentVersionId: agentVersion.id,
+      trigger: TEST_TRIGGER,
+      inputs: FOUND_INPUTS,
+      queuedAt: new Date('2026-09-05T15:00:00.000Z'),
+    });
+    const stillRunning = await repositories.runs.create({
+      agentVersionId: agentVersion.id,
+      trigger: TEST_TRIGGER,
+      inputs: FOUND_INPUTS,
+      queuedAt: new Date('2026-09-05T16:00:00.000Z'),
+    });
+    await repositories.runs.markRunning(stillRunning.id);
+
+    const succeeded = await repositories.runs.create({
+      agentVersionId: agentVersion.id,
+      trigger: TEST_TRIGGER,
+      inputs: FOUND_INPUTS,
+      queuedAt: new Date('2026-09-05T14:00:00.000Z'),
+    });
+    await repositories.runs.markRunning(succeeded.id);
+    await repositories.runs.complete(succeeded.id, {
+      businessOutcome: 'request_found',
+      outputs: FOUND_OUTPUTS,
+    });
+
+    const nonTerminal = await repositories.runs.listNonTerminal();
+
+    expect(nonTerminal.map((run) => run.id)).toEqual([stillQueued.id, stillRunning.id]);
+    expect(nonTerminal.every((run) => run.status === 'queued' || run.status === 'running')).toBe(
+      true,
+    );
+  });
 });
 
 describe('run steps', () => {

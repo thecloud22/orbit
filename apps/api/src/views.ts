@@ -723,6 +723,18 @@ export interface PlatformView {
   readonly artifactRoot: string;
   readonly model: PlatformModelView;
   readonly database: PlatformDatabaseView;
+  /**
+   * A run left `queued` or `running` by a process that is not this one --
+   * most often the API being killed mid-run. Detection only: nothing here
+   * resolves one, an operator decides what it should become.
+   */
+  readonly orphanedRuns: readonly PlatformOrphanedRunView[];
+}
+
+export interface PlatformOrphanedRunView {
+  readonly runId: string;
+  readonly status: string;
+  readonly queuedAt: string;
 }
 
 /** Which model is in force. Never the credential that reaches it. */

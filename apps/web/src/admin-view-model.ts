@@ -140,5 +140,17 @@ export function platformFacts(platform: PlatformView): readonly AdminFact[] {
       detail:
         'The database this process is actually attached to, asked of the connection rather than read from a URL.',
     },
+    {
+      id: 'orphaned-runs',
+      label: 'Orphaned runs',
+      value:
+        platform.orphanedRuns.length === 0
+          ? 'None'
+          : `${String(platform.orphanedRuns.length)} — ${platform.orphanedRuns.map((run) => run.runId).join(', ')}`,
+      detail:
+        platform.orphanedRuns.length === 0
+          ? 'Every run either finished or was dispatched by this process. Phase 1 has no durable queue, so a run left queued or running by a process that is not this one was interrupted -- most often the API being killed mid-run.'
+          : 'Left queued or running by a process that is not this one -- most often the API being killed mid-run. Detected, not resolved: deciding what an interrupted run should become is an operator call.',
+    },
   ];
 }

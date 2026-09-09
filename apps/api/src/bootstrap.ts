@@ -29,6 +29,7 @@ import {
 import type { RecordingSessionFactory } from './recording/session-registry';
 import { createInProcessRunDispatcher } from './dispatch';
 import { withDuplicateDispatchSuppression } from './dispatch-dedup';
+import { detectOrphanedRuns } from './orphan-runs';
 import { buildServer } from './server';
 
 /**
@@ -90,6 +91,11 @@ export interface StartedApi {
 }
 
 export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi> {
+  // As close to process boot as this function gets: a run queued before this
+  // instant belongs to whatever process handled it before, not this one
+  // (orphan-runs.ts).
+  const processStartedAt = new Date();
+
   const handle = createDatabase({ url: options.databaseUrl });
 
   const storage = await createLocalFilesystemArtifactStorage({ root: options.artifactRoot });
@@ -154,6 +160,8 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
         host: options.host,
         port: options.port,
         modelSelection: options.modelSelection ?? UNREPORTED_MODEL_SELECTION,
+        runs: createRepositories(handle.db).runs,
+        processStartedAt,
       }),
       dispatcher: withDuplicateDispatchSuppression(
         createInProcessRunDispatcher({
@@ -177,6 +185,23 @@ export async function startApi(options: ApiBootstrapOptions): Promise<StartedApi
     app.log.error(error);
     await handle.close();
     throw error;
+  }
+
+  // Detection only, at the moment it is cheapest to notice: everything
+  // non-terminal at this instant necessarily predates this process, since
+  // nothing has been dispatched yet (orphan-runs.ts). Logged rather than
+  // acted on -- an operator decides what a run that was actually interrupted
+  // should become, not a boot-time guess.
+  const orphanedAtBoot = detectOrphanedRuns(
+    await createRepositories(handle.db).runs.listNonTerminal(),
+    processStartedAt,
+  );
+
+  if (orphanedAtBoot.length > 0) {
+    app.log.warn(
+      { orphanedRuns: orphanedAtBoot.map((run) => ({ runId: run.runId, status: run.status })) },
+      `${String(orphanedAtBoot.length)} run(s) were left ${orphanedAtBoot.length === 1 ? 'in a non-terminal state' : 'in non-terminal states'} by a previous process and were not resumed. See Admin > Platform.`,
+    );
   }
 
   return {

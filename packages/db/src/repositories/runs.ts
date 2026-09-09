@@ -46,6 +46,17 @@ export interface RunRepository {
     agentVersionId: AgentVersionId,
     options?: { readonly limit?: number },
   ): Promise<readonly RunRecord[]>;
+  /**
+   * Every run still `queued` or `running`, oldest first.
+   *
+   * Phase 1 executes in-process with no durable queue (ADR-011): a run in
+   * either state has to be work this process is either about to pick up or is
+   * actively executing right now. There is no third possibility -- nothing
+   * else can move a run out of `queued`/`running` -- which is what makes a row
+   * still here from *before this process started* an unambiguous orphan
+   * rather than a guess, if the API was killed mid-run.
+   */
+  listNonTerminal(): Promise<readonly RunRecord[]>;
   markRunning(id: RunId, startedAt?: Date): Promise<RunRecord>;
   complete(id: RunId, input: CompleteRunInput): Promise<RunRecord>;
   fail(id: RunId, input: FailRunInput): Promise<RunRecord>;
@@ -132,6 +143,16 @@ export function createRunRepository(executor: Executor): RunRepository {
         .orderBy(desc(runs.queuedAt));
 
       const rows = await (options?.limit === undefined ? query : query.limit(options.limit));
+      return rows.map(toRunRecord);
+    },
+
+    async listNonTerminal() {
+      const rows = await executor
+        .select()
+        .from(runs)
+        .where(inArray(runs.status, ['queued', 'running']))
+        .orderBy(runs.queuedAt);
+
       return rows.map(toRunRecord);
     },
 
