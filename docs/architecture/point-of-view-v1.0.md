@@ -1,8 +1,9 @@
 # Orbit: an architecture point of view (v1.0 — long form)
 
-> **Read [`point-of-view.md`](./point-of-view.md) first.** That is v1.1: the same argument in five
-> minutes, for an architect or a CIO. This document is the evidence base behind it — every claim
-> traced to a file, a test, or an ADR. Come here to check something v1.1 asserts.
+> **Which version do you want?**
+> [v1.2](./point-of-view-v1.2.md) — executives and technology leaders, plain language, 5 min ·
+> [v1.1](./point-of-view.md) — architects, the summary argument ·
+> [v1.0](./point-of-view-v1.0.md) — the full technical evidence, every claim traced to a file
 
 **Status:** Position paper. Written for architects who have already made the objection below.
 Everything factual here is cited to a file, a test, or an ADR, and was measured against the

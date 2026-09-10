@@ -1,7 +1,11 @@
 # Orbit: why this is not an RPA bot
 
-**v1.1 · five minutes.** For architects and CIOs. The long form, with every claim traced to a file
-and a test, is [`point-of-view-v1.0.md`](./point-of-view-v1.0.md).
+**v1.1 · for architects.** Five minutes.
+
+> **Which version do you want?**
+> [v1.2](./point-of-view-v1.2.md) — executives and technology leaders, plain language, 5 min ·
+> [v1.1](./point-of-view.md) — architects, the summary argument ·
+> [v1.0](./point-of-view-v1.0.md) — the full technical evidence, every claim traced to a file
 
 ---
 
